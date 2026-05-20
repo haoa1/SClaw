@@ -50,7 +50,7 @@ export function createRoutes(
       const request = req.body as ScreenRequest;
 
       if (!request.strategies || request.strategies.length === 0) {
-        res.status(400).json({ error: '至少选择一个策略' });
+        res.status(400).json({ error: 'At least one strategy is required' });
         return;
       }
 
@@ -91,7 +91,7 @@ export function createRoutes(
       res.json(response);
     } catch (err) {
       console.error('[API] Screen error:', err);
-      res.status(500).json({ error: '选股执行失败', detail: String(err) });
+      res.status(500).json({ error: 'Screen execution failed', detail: String(err) });
     }
   });
 
@@ -102,9 +102,9 @@ export function createRoutes(
     dataFetcher.clearCache();
     try {
       const stocks = await dataFetcher.fetchAllStocks();
-      res.json({ message: '数据已刷新', count: stocks.length });
+      res.json({ message: 'Data refreshed', count: stocks.length });
     } catch (err) {
-      res.status(500).json({ error: '数据刷新失败', detail: String(err) });
+      res.status(500).json({ error: 'Data refresh failed', detail: String(err) });
     }
   });
 
@@ -118,7 +118,7 @@ export function createRoutes(
       const kline = await dataFetcher.fetchKLine(code, market, days);
       res.json({ code, market, data: kline });
     } catch (err) {
-      res.status(500).json({ error: '获取K线失败', detail: String(err) });
+      res.status(500).json({ error: 'Failed to fetch K-line data', detail: String(err) });
     }
   });
 

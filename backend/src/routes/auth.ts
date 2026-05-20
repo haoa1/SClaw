@@ -13,12 +13,12 @@ export function createAuthRoutes(): Router {
   router.post("/api/login", (req: Request, res: Response) => {
     const { username, password } = req.body || {};
     if (!username || !password) {
-      res.status(400).json({ error: "用户名和密码不能为空" });
+      res.status(400).json({ error: "Username and password are required" });
       return;
     }
     const session = login(username, password);
     if (!session) {
-      res.status(401).json({ error: "用户名或密码错误" });
+      res.status(401).json({ error: "Invalid username or password" });
       return;
     }
     res.json({
@@ -47,7 +47,7 @@ export function createAuthRoutes(): Router {
       : undefined;
     const session = validateSession(token);
     if (!session) {
-      res.status(401).json({ error: "未登录" });
+      res.status(401).json({ error: "Not logged in" });
       return;
     }
     res.json({

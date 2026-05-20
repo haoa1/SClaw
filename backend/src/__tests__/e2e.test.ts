@@ -41,7 +41,7 @@ describe("POST /api/login", () => {
     const res = await request(app.app).post("/api/login").send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("用户名和密码不能为空");
+    expect(res.body.error).toBe("Username and password are required");
   });
 
   it("rejects wrong password", async () => {
@@ -50,7 +50,7 @@ describe("POST /api/login", () => {
       .send({ username: "admin", password: "wrong" });
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe("用户名或密码错误");
+    expect(res.body.error).toBe("Invalid username or password");
   });
 
   it("accepts valid credentials and returns a token", async () => {
@@ -128,7 +128,7 @@ describe("POST /api/screen", () => {
       .send({ strategies: [] });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("至少选择一个策略");
+    expect(res.body.error).toBe("At least one strategy is required");
   });
 
   it("rejects missing strategies field", async () => {
@@ -159,10 +159,10 @@ describe("POST /api/screen", () => {
 // ============================================================================
 describe("POST /api/logout", () => {
   it("invalidates the token after logout", async () => {
-    // Login
+    // Login as a different user so we don't invalidate the shared authToken
     const loginRes = await request(app.app)
       .post("/api/login")
-      .send({ username: "jack", password: "123456" });
+      .send({ username: "demo1", password: "demo123" });
     expect(loginRes.status).toBe(200);
     const token = loginRes.body.token;
 
@@ -402,7 +402,7 @@ describe("POST /api/chat", () => {
       .post("/api/chat")
       .send({ message: "test" });
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe("未登录");
+    expect(res.body.error).toBe("Not logged in");
   });
 
   it("rejects empty message body", async () => {

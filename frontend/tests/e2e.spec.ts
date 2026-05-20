@@ -112,7 +112,7 @@ test.describe('Login flow', () => {
     await expect(page.getByRole('button', { name: 'Logs' })).toBeVisible();
 
     // Verify execute button
-    await expect(page.getByRole('button', { name: /Run Screening/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Run Screening/ }).first()).toBeVisible();
 
     // Verify user info
     await expect(page.getByText('Admin')).toBeVisible();
@@ -127,7 +127,7 @@ test.describe('Login flow', () => {
     await expect(page.getByText('SClaw')).toBeVisible({ timeout: 10_000 });
 
     // Should show plugin count
-    await expect(page.getByText(/plugins/)).toBeVisible();
+    await expect(page.getByText(/plugins/).first()).toBeVisible();
 
     // Plugin panel should render strategies
     await expect(page.getByText(/Strategy/).first()).toBeVisible({ timeout: 5_000 });

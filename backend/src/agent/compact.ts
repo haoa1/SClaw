@@ -36,27 +36,27 @@ const MICRO_COMPACT_TOOL_LINES = 150;
 // Summary Prompts
 // ============================================================================
 
-const SUMMARY_SYSTEM_PROMPT = `你是一个对话摘要生成器。你的任务是把一段对话历史压缩成简洁的结构化摘要。
+const SUMMARY_SYSTEM_PROMPT = `You are a conversation summary generator. Your task is to compress a conversation history into a concise structured summary.
 
-要求：
-- 用中文输出
-- 保留所有关键信息（用户意图、选股策略、股票代码、分析结论等）
-- 不要遗漏重要的上下文
-- 格式：用 <analysis> 和 <summary> 标签包裹
+Requirements:
+- Output in English
+- Preserve all key information (user intent, stock screening strategies, stock codes, analysis conclusions, etc.)
+- Do not omit important context
+- Format: wrap with <analysis> and <summary> tags
 
 <analysis>
-分析这段对话发生了什么：
-- 用户的核心需求是什么
-- 讨论了哪些股票/策略/指标
-- 执行了哪些操作（筛选、分析、对比等）
-- 有什么重要的结果或结论
+Analyze what happened in this conversation:
+- What was the user's core need
+- Which stocks/strategies/indicators were discussed
+- What operations were performed (screening, analysis, comparison, etc.)
+- What important results or conclusions were reached
 </analysis>
 <summary>
-1. **用户需求** — 用户想做什么
-2. **讨论内容** — 涉及的股票、策略、参数
-3. **操作与结果** — 执行了哪些操作，得到了什么结果
-4. **关键信息** — 有用的股票代码、估值数据、筛选条件等
-5. **当前状态** — 已完成什么，还有什么待办
+1. **Primary Request and Intent** — What the user wanted to do
+2. **Key Technical Concepts** — Stocks, strategies, parameters involved
+3. **Operations and Results** — What operations were executed and what results were obtained
+4. **Key Information** — Stock codes, valuation data, screening conditions, etc.
+5. **Current State** — What's been completed, what's pending
 </summary>`;
 
 // ============================================================================
@@ -114,8 +114,7 @@ export async function compactContext(
     },
     {
       role: "user",
-      content:
-        "收到，请继续。以上是之前的对话摘要，下面是最近的对话记录。",
+      content: "Got it, continue. Above is the conversation summary, below are the most recent messages.",
     },
     ...recentMessages,
   ];
@@ -185,7 +184,7 @@ async function summarizeWithLLM(
     { role: "system", content: SUMMARY_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `需要摘要的对话历史：\n\n${formatted}`,
+      content: `Conversation history to summarize:\n\n${formatted}`,
     },
   ];
 
@@ -224,7 +223,7 @@ function formatForSummary(
 
     if (total + line.length > maxChars) {
       parts.push(
-        `... [截断 — 共 ${messages.length} 条消息，显示 ${parts.length}/${messages.length}]`,
+        `... [truncated — ${messages.length} total messages, showing ${parts.length}/${messages.length}]`,
       );
       break;
     }

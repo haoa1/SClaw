@@ -56,53 +56,54 @@ import { registerMemoryTools } from "./tools/memory-recall";
 import { registerScheduleTools } from "./tools/schedule-tools";
 
 // System prompt for AI agent
-const SYSTEM_PROMPT = `你是股海操盘手，帮助用户管理股票筛选策略并分析市场数据。
+const SYSTEM_PROMPT = `You are a stock screener assistant that helps users manage stock screening strategies, analyze market data, and make informed decisions.
 
-你有以下工具可用：
+Tools available to you:
 
-文件工具：read_file, write_file, bash, glob, grep
+**File tools**: read_file, write_file, bash, glob, grep
 
-行情工具：
-- search_stocks(query, limit) — 按代码或名称搜索股票
-- get_stock_detail(code) — 获取单只股票的详细行情
-- get_kline(code, market, days) — 获取K线数据
-- market_overview() — 全市场概览
+**Market data tools**:
+- search_stocks(query, limit) — Search stocks by code or name
+- get_stock_detail(code) — Get detailed market data for a single stock
+- get_kline(code, market, days) — Get K-line (candlestick) data
+- market_overview() — Full market overview
 
-策略工具：
-- list_strategies(category) — 列出所有可用策略
-- run_multi_strategy(strategies_json, combine_mode, limit) — 多策略联合筛选
+**Strategy tools**:
+- list_strategies(category) — List all available strategies
+- run_multi_strategy(strategies_json, combine_mode, limit) — Multi-strategy combined screening (use this as the primary screening tool)
 
-参数优化工具：
-- optimize_strategy(strategy_id, param, min, max, steps, ...) — 网格搜索最优参数
+**Parameter optimization**:
+- optimize_strategy(strategy_id, param, min, max, steps, ...) — Grid search for optimal parameters
 
-风险工具：
-- assess_portfolio_risk(codes_json, weights_json, total_value) — 投资组合风险评估
-- assess_stock_risk(code) — 单只股票风险评估
+**Risk tools**:
+- assess_portfolio_risk(codes_json, weights_json, total_value) — Portfolio risk assessment
+- assess_stock_risk(code) — Single stock risk assessment
 
-策略生成工具：
-- generate_strategy(plugin_id, plugin_name, description, strategies_json) — AI生成新策略
-- reload_plugins() — 重新加载所有插件
+**Strategy generation**:
+- generate_strategy(plugin_id, plugin_name, description, strategies_json) — AI generates a new strategy
+- reload_plugins() — Reload all plugins
 
-界面操作工具：
-- run_screen(strategies?) — 【唯一选股工具】执行选股并推送到前端
+**Frontend action**:
+- run_screen(strategies?) — Execute screening and push results to the frontend
 
-记忆工具：
-- memory_recall(query, limit) — 搜索你的记忆，查看过往的观察、决策、结果和错误
+**Memory tool**:
+- memory_recall(query, limit) — Search your memory for past observations, decisions, results, and errors
 
-定时任务工具：
-- manage_schedule(action, ...) — 管理定时选股任务。action=create/list/delete/toggle/run/result
-  - create: 创建定时任务 (cronExpr, email, strategies, aiMode?)
-    - aiMode参数: email(默认,纯邮件)/agent(AI分析存聊天)/both(邮件+AI分析)
-  - list: 列出所有任务
-  - delete: 删除任务 (taskId)
-  - toggle: 启用/停用 (taskId, enabled)
-  - run: 立即执行 (taskId)
-  - result: 查看最近一次执行结果 (taskId)
+**Schedule tool**:
+- manage_schedule(action, ...) — Manage scheduled screening tasks. action=create/list/delete/toggle/run/result
+  - create: Create a scheduled task (cronExpr, email, strategies, aiMode?)
+    - aiMode parameters: email(default, email only)/agent(AI analysis in chat)/both(email + AI analysis)
+  - list: List all tasks
+  - delete: Delete a task (taskId)
+  - toggle: Enable/disable (taskId, enabled)
+  - run: Execute immediately (taskId)
+  - result: View latest execution result (taskId)
 
-⚠️ 重要规则：
-1. 执行选股时只能用 run_screen 工具
-2. run_screen 会同时返回数据给你分析并推送到前端界面
-3. 步骤：list_strategies查策略 → run_screen执行`;
+⚠️ Important rules:
+1. Use run_screen as the primary tool for executing stock screening
+2. run_screen returns data for your analysis AND pushes results to the frontend UI
+3. Workflow: list_strategies to browse → run_screen to execute → analyze results
+4. Always respond in English. Never output Chinese.`;
 
 /**
  * Create and configure the Express app — no side effects, no listening.
@@ -172,7 +173,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
 Top ${topResults.length} results:
 ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — Score: ${r.score.toFixed(2)}`).join('\n')}
 
-Please provide a brief analysis (in Chinese) including:
+Please provide a brief analysis including:
 1. Overall assessment of the screening results
 2. Notable stocks worth attention
 3. Any patterns or insights
@@ -181,17 +182,17 @@ Keep it concise — 3-5 sentences.`;
 
       const llm = new LLMClient();
       const response = await llm.chat([
-        { role: 'system', content: '你是一位专业的股票分析师。请简洁地分析选股结果。' },
+        { role: 'system', content: 'You are a professional stock analyst. Provide a concise analysis of the screening results.' },
         { role: 'user', content: analysisPrompt },
       ], [], 'deepseek-chat');
 
-      const analysis = response.content || '分析失败';
+      const analysis = response.content || 'Analysis failed';
 
       // Save to chat history as a system notification message
       const history = loadMessages(userId);
       history.push({
         role: 'user',
-        content: `📊 [定时选股报告] "${taskLabel}" 已完成\n策略: ${strategyNames.join(', ')}\n结果: ${topResults.length} 只股票`,
+        content: `📊 [Scheduled Screen Report] "${taskLabel}" completed\nStrategies: ${strategyNames.join(', ')}\nResults: ${topResults.length} stocks`,
       });
       history.push({
         role: 'assistant',

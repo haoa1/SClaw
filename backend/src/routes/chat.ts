@@ -96,13 +96,13 @@ export function createChatRoutes(
   router.post("/api/chat", async (req: Request, res: Response) => {
     const userId = getUserId(req);
     if (!userId) {
-      res.status(401).json({ error: "未登录" });
+      res.status(401).json({ error: "Not logged in" });
       return;
     }
 
     const { message, context } = req.body || {};
     if (!message) {
-      res.status(400).json({ error: "消息不能为空" });
+      res.status(400).json({ error: "Message cannot be empty" });
       return;
     }
 
@@ -220,7 +220,7 @@ export function createChatRoutes(
 
       // Check if max turns reached
       const finalContent = result.response === "Reached maximum turns without final response."
-        ? "对话已超过最大轮数限制(25轮)，请开始新对话"
+        ? "Conversation has exceeded maximum turn limit (25), please start a new conversation"
         : result.response;
 
       // Save conversation history (user + assistant messages)
@@ -244,7 +244,7 @@ export function createChatRoutes(
   router.get("/api/messages", (req: Request, res: Response) => {
     const userId = getUserId(req);
     if (!userId) {
-      res.status(401).json({ error: "未登录" });
+      res.status(401).json({ error: "Not logged in" });
       return;
     }
     const messages = loadMessages(userId);
@@ -255,7 +255,7 @@ export function createChatRoutes(
   router.post("/api/messages", (req: Request, res: Response) => {
     const userId = getUserId(req);
     if (!userId) {
-      res.status(401).json({ error: "未登录" });
+      res.status(401).json({ error: "Not logged in" });
       return;
     }
     const { messages } = req.body || {};
