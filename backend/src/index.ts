@@ -158,7 +158,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   // ===== Initialize agent manager =====
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir);
   // Override system prompt
-  (agentManager as any).systemPrompt = SYSTEM_PROMPT;
+  agentManager.systemPrompt = SYSTEM_PROMPT;
 
   // Wire scheduler to push notifications to agent manager
   scheduler.pushNotification = (userId, notification) => {

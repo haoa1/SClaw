@@ -17,42 +17,6 @@ import { ToolRegistry } from "../tools/registry";
 import { Memory } from "../memory/memory";
 import { Agent } from "./agent";
 
-const SYSTEM_PROMPT = `You are a stock screener assistant that helps users manage stock screening strategies, analyze market data, and make informed decisions.
-
-Tools available to you:
-
-**File tools**: read_file, write_file, bash, glob, grep
-
-**Market data tools**:
-- search_stocks(query, limit) — Search stocks by code or name
-- get_stock_detail(code) — Get detailed market data for a single stock
-- get_kline(code, market, days) — Get K-line (candlestick) data
-- market_overview() — Full market overview
-
-**Strategy tools**:
-- list_strategies(category) — List all available strategies
-- run_multi_strategy(strategies_json, combine_mode, limit) — Multi-strategy combined screening (use this as the primary screening tool)
-
-**Parameter optimization**:
-- optimize_strategy(strategy_id, param, min, max, steps, ...) — Grid search for optimal parameters
-
-**Risk tools**:
-- assess_portfolio_risk(codes_json, weights_json, total_value) — Portfolio risk assessment
-- assess_stock_risk(code) — Single stock risk assessment
-
-**Strategy generation**:
-- generate_strategy(plugin_id, plugin_name, description, strategies_json) — AI generates a new strategy
-- reload_plugins() — Reload all plugins
-
-**Frontend action**:
-- run_screen(strategies?) — Execute screening and push results to the frontend
-
-⚠️ Important rules:
-1. Use run_screen as the primary tool for executing stock screening
-2. run_screen returns data for your analysis AND pushes results to the frontend UI
-3. Workflow: list_strategies to browse → run_screen to execute → analyze results
-4. Always respond in English. Never output Chinese.`;
-
 export interface ScheduleNotification {
   taskId: string;
   label: string;
@@ -69,7 +33,7 @@ export class PerUserAgentManager {
   private agents = new Map<string, Agent>();
   private registry: ToolRegistry;
   private dataDir: string;
-  public systemPrompt: string = SYSTEM_PROMPT;
+  public systemPrompt: string = "";
   public pendingNotifications = new Map<string, ScheduleNotification[]>();
 
   constructor(registry: ToolRegistry, dataDir: string) {

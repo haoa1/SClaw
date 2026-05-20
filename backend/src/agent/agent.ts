@@ -37,6 +37,8 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       maxTurns: config.maxTurns ?? 1000,
       verbose: config.verbose ?? false,
     };
+    // Inject system prompt as first message so the LLM actually receives it
+    this.messages.push({ role: "system", content: this.config.systemPrompt });
   }
 
   async run(userInput: string, onToken?: (token: string) => void, onReasoning?: (token: string) => void, onToolCall?: (tc: {id: string; name: string; arguments: string}) => void, onTurnStart?: (turn: number) => void, onToolResult?: (name: string, content: string) => void): Promise<{
@@ -49,8 +51,24 @@ Use tools when you need to perform actions. Be concise and helpful.`,
     let turnCount = 0;
     let totalToolCalls = 0;
 
+    // Safety: max messages in context to prevent unbounded growth
+    const MAX_CONTEXT_MESSAGES = 100;
+
     while (turnCount < this.config.maxTurns) {
       turnCount++;
+
+      // Stop early if context is too large (prevents token-limit blowups)
+      if (this.messages.length > MAX_CONTEXT_MESSAGES) {
+        const warning = `Context limit reached (${this.messages.length} messages). Please start a new conversation.`;
+        console.log(`  [AGENT] ${warning}`);
+        return {
+          response: warning,
+          toolCalls: totalToolCalls,
+          inputTokens: this.totalInputTokens,
+          outputTokens: this.totalOutputTokens,
+        };
+      }
+
       if (onTurnStart) onTurnStart(turnCount);
 
       // Get LLM response (streaming or not)
