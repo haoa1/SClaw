@@ -1,0 +1,481 @@
+/**
+ * Data Manager — 数据预下载 + 增量更新 + 完整性检查
+ *
+ * 职责：
+ *   1. 将现有JSON缓存迁移到SQLite
+ *   2. 从Tushare按日批量拉取历史数据
+ *   3. 从东方财富按股票拉取历史数据
+ *   4. 数据完整性检查（断档检测）
+ *   5. 增量更新（只拉取缺失日期）
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { LocalDatabase, DailyKLine, StockInfo } from './local-database';
+
+// ===== Types =====
+
+export interface DataManagerConfig {
+  /** Tushare token */
+  tushareToken: string;
+  /** 数据目录 */
+  dataDir: string;
+  /** 并行度（API请求并发数） */
+  concurrency?: number;
+  /** 是否只迁移，不拉取新数据 */
+  migrateOnly?: boolean;
+}
+
+// ===== Data Manager =====
+
+export class DataManager {
+  private db: LocalDatabase;
+  private config: DataManagerConfig;
+
+  constructor(db: LocalDatabase, config: DataManagerConfig) {
+    this.db = db;
+    this.config = {
+      concurrency: 5,
+      migrateOnly: false,
+      ...config,
+    };
+  }
+
+  // ===== Public API =====
+
+  /**
+   * 全流程：迁移已有数据 → 检查完整性 → 增量拉取
+   */
+  async syncAll(): Promise<{ migrated: number; newDays: number; errors: string[] }> {
+    const result = { migrated: 0, newDays: 0, errors: [] as string[] };
+
+    // 1. 从已有的 JSON 缓存迁移
+    try {
+      const migrated = await this.migrateExistingData();
+      result.migrated = migrated;
+    } catch (err: any) {
+      result.errors.push(`Migration error: ${err.message}`);
+    }
+
+    if (this.config.migrateOnly) {
+      return result;
+    }
+
+    // 2. 检查完整性，增量拉取
+    try {
+      const dateGaps = await this.checkDateGaps();
+      if (dateGaps.length > 0) {
+        console.log(`[DataManager] Found ${dateGaps.length} date gaps, fetching...`);
+        const fetched = await this.fetchDateRange(dateGaps[0], dateGaps[dateGaps.length - 1]);
+        result.newDays = fetched;
+      } else {
+        console.log('[DataManager] No date gaps found, data is complete');
+      }
+    } catch (err: any) {
+      result.errors.push(`Sync error: ${err.message}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * 拉取指定日期范围的日线数据（Tushare 按日拉取）
+   */
+  async fetchDateRange(startDate: string, endDate: string): Promise<number> {
+    const TUSHARE_API = 'http://api.tushare.pro';
+    const token = this.config.tushareToken;
+
+    // 生成所有日期
+    const allDates = this.generateWeekdays(startDate, endDate);
+    console.log(`[DataManager] Fetching ${allDates.length} trading days from Tushare...`);
+
+    let fetchedDays = 0;
+    let apiCallsWithoutDelay = 0;
+
+    for (let i = 0; i < allDates.length; i++) {
+      const date = allDates[i];
+
+      // 跳过已同步的日期
+      if (this.db.isDateSynced(date, 'tushare')) {
+        continue;
+      }
+
+      const tushareDate = date.replace(/-/g, '');
+
+      try {
+        const res = await fetch(TUSHARE_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_name: 'daily',
+            token,
+            params: { trade_date: tushareDate },
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        apiCallsWithoutDelay++;
+
+        const json: any = await res.json();
+
+        if (json.code !== 0) {
+          // 可能遇到频率限制
+          if (json.code === -1 || json.msg?.includes('limit') || json.msg?.includes('freq')) {
+            console.log(`[DataManager] Rate limit hit after ${apiCallsWithoutDelay} calls, waiting 60s...`);
+            await new Promise(r => setTimeout(r, 60000));
+            apiCallsWithoutDelay = 0;
+            // Retry this date
+            i--;
+            continue;
+          }
+          this.db.logSync({ source: 'tushare', date, stockCount: 0, status: 'failed', message: json.msg });
+          continue;
+        }
+
+        const data = json.data;
+        if (!data || !data.items || data.items.length === 0) {
+          // 非交易日
+          this.db.logSync({ source: 'tushare', date, stockCount: 0, status: 'success', message: 'Not a trading day' });
+          continue;
+        }
+
+        // 解析数据
+        const fields = data.fields as string[];
+        const fTsCode = fields.indexOf('ts_code');
+        const fOpen = fields.indexOf('open');
+        const fHigh = fields.indexOf('high');
+        const fLow = fields.indexOf('low');
+        const fClose = fields.indexOf('close');
+        const fVol = fields.indexOf('vol');
+        const fAmount = fields.indexOf('amount');
+        const fPctChg = fields.indexOf('pct_chg');
+
+        const klines: DailyKLine[] = [];
+        const stockInfos: StockInfo[] = [];
+
+        for (const item of data.items) {
+          const tsCode: string = item[fTsCode];
+          const code = tsCode.split('.')[0];
+          const market = tsCode.split('.').pop() as 'SH' | 'SZ';
+
+          if (!['SH', 'SZ'].includes(market)) continue;
+
+          klines.push({
+            code,
+            date,
+            open: parseFloat(item[fOpen]) || 0,
+            high: parseFloat(item[fHigh]) || 0,
+            low: parseFloat(item[fLow]) || 0,
+            close: parseFloat(item[fClose]) || 0,
+            volume: parseFloat(item[fVol]) || 0,
+            amount: parseFloat(item[fAmount]) || 0,
+            changePct: parseFloat(item[fPctChg]) || 0,
+            turnoverRate: 0,
+          });
+
+          // 积累股票信息
+          if (!this.db.getStockInfo(code)) {
+            stockInfos.push({ code, name: code, market });
+          }
+        }
+
+        // 写入数据库
+        this.db.insertDailyKLines(klines);
+        if (stockInfos.length > 0) {
+          // 将有代码但无名称的股票标记，后续从stock_basic补充
+          this.db.upsertStockInfos(stockInfos);
+        }
+        this.db.logSync({ source: 'tushare', date, stockCount: klines.length, status: 'success' });
+        fetchedDays++;
+
+        // 控制请求频率：每1.5秒一个请求（Tushare限制：50次/分钟 ≈ 1.2秒/次）
+        if (apiCallsWithoutDelay % 2 === 0) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      } catch (err: any) {
+        this.db.logSync({ source: 'tushare', date, stockCount: 0, status: 'failed', message: err.message });
+        console.error(`[DataManager] Error fetching ${date}: ${err.message}`);
+      }
+    }
+
+    console.log(`[DataManager] Fetched ${fetchedDays} new days, ${allDates.length - fetchedDays} already synced`);
+    return fetchedDays;
+  }
+
+  /**
+   * 从 stock_basic API 补充股票名称
+   */
+  async syncStockNames(): Promise<number> {
+    const TUSHARE_API = 'http://api.tushare.pro';
+    const token = this.config.tushareToken;
+
+    try {
+      const res = await fetch(TUSHARE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_name: 'stock_basic',
+          token,
+          params: { exchange: '', list_status: 'L' },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const json: any = await res.json();
+
+      if (json.code !== 0 || !json.data?.items) {
+        console.error('[DataManager] Failed to fetch stock_basic');
+        return 0;
+      }
+
+      const stockInfos: StockInfo[] = [];
+      for (const item of json.data.items) {
+        const tsCode: string = item[0];
+        const code = tsCode.split('.')[0];
+        const name: string = item[2];
+        const marketStr = tsCode.split('.').pop() || '';
+        const market = marketStr === 'SH' ? 'SH' : marketStr === 'SZ' ? 'SZ' : 'BJ' as 'SH' | 'SZ' | 'BJ';
+        stockInfos.push({ code, name, market });
+      }
+
+      this.db.upsertStockInfos(stockInfos);
+      console.log(`[DataManager] Synced ${stockInfos.length} stock names`);
+      return stockInfos.length;
+    } catch (err: any) {
+      console.error('[DataManager] Stock name sync failed:', err.message);
+      return 0;
+    }
+  }
+
+  /**
+   * 拉取沪深300/创业板指等指数数据（用于基准对比）
+   */
+  async syncBenchmarkIndexes(): Promise<void> {
+    const TUSHARE_API = 'http://api.tushare.pro';
+    const token = this.config.tushareToken;
+    const indexes = [
+      { code: '000300.SH', name: '沪深300' },
+      { code: '399006.SZ', name: '创业板指' },
+      { code: '000001.SH', name: '上证指数' },
+      { code: '399001.SZ', name: '深证成指' },
+    ];
+
+    for (const idx of indexes) {
+      try {
+        const res = await fetch(TUSHARE_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_name: 'index_daily',
+            token,
+            params: { ts_code: idx.code, start_date: '20200101', end_date: '20261231' },
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const json: any = await res.json();
+
+        if (json.code !== 0 || !json.data?.items) {
+          console.warn(`[DataManager] Failed to fetch ${idx.code}: ${json.msg}`);
+          continue;
+        }
+
+        const fields = json.data.fields as string[];
+        const fDate = fields.indexOf('trade_date');
+        const fClose = fields.indexOf('close');
+
+        const items = json.data.items.map((item: any) => ({
+          code: idx.code,
+          date: item[fDate].slice(0, 4) + '-' + item[fDate].slice(4, 6) + '-' + item[fDate].slice(6, 8),
+          close: parseFloat(item[fClose]) || 0,
+        }));
+
+        this.db.insertIndexDailyBatch(items);
+        console.log(`[DataManager] Synced ${idx.name} (${items.length} days)`);
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (err: any) {
+        console.error(`[DataManager] Failed to sync ${idx.code}: ${err.message}`);
+      }
+    }
+  }
+
+  // ===== Migration =====
+
+  /**
+   * 迁移现有 JSON 缓存到 SQLite
+   * 来源1: data/tushare-kline/YYYYMMDD.json (按日)
+   * 来源2: data/historical/SH_600000.json (按股票)
+   */
+  async migrateExistingData(): Promise<number> {
+    let totalRows = 0;
+
+    // 收集所有唯一股票代码
+    const seenCodes = new Set<string>();
+
+    // 来源1: Tushare 按日缓存
+    const tushareDir = path.join(this.config.dataDir, 'tushare-kline');
+    if (fs.existsSync(tushareDir)) {
+      const files = fs.readdirSync(tushareDir).filter(f => f.endsWith('.json'));
+      console.log(`[DataManager] Migrating ${files.length} Tushare day files...`);
+
+      for (const file of files) {
+        const dateFormatted = file.replace('.json', '');
+
+        // 跳过已同步的日期
+        if (this.db.hasDateData(dateFormatted)) continue;
+
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(tushareDir, file), 'utf-8'));
+          const entries = Object.entries(content) as [string, any][];
+
+          const klines: DailyKLine[] = [];
+          for (const [code, item] of entries) {
+            klines.push({
+              code,
+              date: dateFormatted,
+              open: item.open || 0,
+              high: item.high || 0,
+              low: item.low || 0,
+              close: item.close || 0,
+              volume: item.volume || 0,
+              amount: item.amount || 0,
+              changePct: item.changePct || 0,
+              turnoverRate: item.turnoverRate || 0,
+            });
+            seenCodes.add(code);
+          }
+
+          this.db.insertDailyKLines(klines);
+          totalRows += klines.length;
+          console.log(`  [${dateFormatted}] ${klines.length} stocks`);
+        } catch (err) {
+          console.warn(`  [${file}] Failed to migrate: ${err}`);
+        }
+      }
+    }
+
+    // 来源2: 东方财富 按股票缓存
+    const histDir = path.join(this.config.dataDir, 'historical');
+    if (fs.existsSync(histDir)) {
+      const files = fs.readdirSync(histDir).filter(f => f.endsWith('.json'));
+      console.log(`[DataManager] Migrating ${files.length} East Money stock files...`);
+
+      for (const file of files) {
+        // 文件名格式: SH_600000.json 或 SZ_000001.json
+        const match = file.match(/^([A-Z]+)_(\d+)\.json$/);
+        if (!match) continue;
+
+        const market = match[1] as 'SH' | 'SZ' | 'BJ';
+        const code = match[2];
+        seenCodes.add(code);
+
+        try {
+          const items: any[] = JSON.parse(fs.readFileSync(path.join(histDir, file), 'utf-8'));
+          const klines: DailyKLine[] = [];
+
+          for (const item of items) {
+            const date = item.date;
+            // 跳过已存在的数据（避免重复迁移）
+            if (this.db.hasDateData(date)) continue;
+
+            klines.push({
+              code,
+              date,
+              open: item.open || 0,
+              high: item.high || 0,
+              low: item.low || 0,
+              close: item.close || 0,
+              volume: item.volume || 0,
+              amount: item.amount || 0,
+              changePct: item.changePct || 0,
+              turnoverRate: item.turnoverRate || 0,
+            });
+          }
+
+          if (klines.length > 0) {
+            this.db.insertDailyKLines(klines);
+            totalRows += klines.length;
+          }
+        } catch (err) {
+          console.warn(`  [${file}] Failed to migrate: ${err}`);
+        }
+      }
+    }
+
+    // 将收集到的唯一股票存到 stock_info（使用 code 前缀推断市场）
+    const toInsert: StockInfo[] = [];
+    for (const code of seenCodes) {
+      if (!this.db.getStockInfo(code)) {
+        let market: 'SH' | 'SZ' | 'BJ' = 'SZ';
+        const num = parseInt(code, 10);
+        if (num >= 600000 || (num >= 110000 && num < 120000)) {
+          market = 'SH';
+        } else if (num >= 400000) {
+          market = 'BJ';
+        }
+        toInsert.push({ code, name: code, market });
+      }
+    }
+    if (toInsert.length > 0) {
+      this.db.upsertStockInfos(toInsert);
+      console.log(`[DataManager] Saved ${toInsert.length} stock info entries`);
+    }
+
+    console.log(`[DataManager] Migration complete: ${totalRows} rows imported`);
+    return totalRows;
+  }
+
+  // ===== Integrity Check =====
+
+  /**
+   * 检查数据完整性，返回断档日期列表
+   */
+  async checkDateGaps(): Promise<string[]> {
+    const range = this.db.getDateRange();
+    if (!range.minDate || !range.maxDate) return [];
+
+    const existingDates = new Set(
+      this.db.query<{ date: string }>('SELECT DISTINCT date FROM stock_daily ORDER BY date')
+        .map(r => r.date)
+    );
+
+    const allWeekdays = this.generateWeekdays(range.minDate, range.maxDate);
+    const gaps = allWeekdays.filter(d => !existingDates.has(d));
+
+    if (gaps.length > 0) {
+      console.log(`[DataManager] Found ${gaps.length} date gaps (out of ${allWeekdays.length} weekdays)`);
+      console.log(`  Missing: ${gaps.slice(0, 5).join(', ')}${gaps.length > 5 ? '...' : ''}`);
+    }
+
+    return gaps;
+  }
+
+  /**
+   * 统计每日的股票覆盖数量
+   */
+  async getDateCoverage(): Promise<Array<{ date: string; stockCount: number }>> {
+    return this.db.query<{ date: string; stockCount: number }>(`
+      SELECT date, COUNT(*) as stockCount
+      FROM stock_daily
+      GROUP BY date
+      ORDER BY date
+    `);
+  }
+
+  // ===== Helpers =====
+
+  /** 生成两个日期之间的所有工作日 */
+  private generateWeekdays(startDate: string, endDate: string): string[] {
+    const dates: string[] = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const current = new Date(start);
+
+    while (current <= end) {
+      const dow = current.getDay();
+      if (dow !== 0 && dow !== 6) {
+        dates.push(current.toISOString().slice(0, 10));
+      }
+      current.setDate(current.getDate() + 1);
+    }
+
+    return dates;
+  }
+}
