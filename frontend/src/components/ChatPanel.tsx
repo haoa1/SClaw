@@ -80,7 +80,7 @@ async function loadMessagesFromServer(): Promise<Message[]> {
         return data.messages.map(convertToSegments)
     }
   } catch {}
-  return [{ role: 'assistant' as const, segments: [{ type: 'content' as const, data: '连接成功，输入指令开始分析' }] }]
+  return [{ role: 'assistant' as const, segments: [{ type: 'content' as const, data: 'Connected, enter command to start analysis' }] }]
 }
 
 async function saveMessagesToServer(messages: Message[]) {
@@ -101,7 +101,7 @@ function loadMessages(): Message[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed.map(convertToSegments)
     }
   } catch {}
-  return [{ role: 'assistant', segments: [{ type: 'content', data: '连接成功，输入指令开始分析' }] }]
+  return [{ role: 'assistant', segments: [{ type: 'content', data: 'Connected, enter command to start analysis' }] }]
 }
 
 function saveMessages(messages: Message[]) {
@@ -142,7 +142,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   useEffect(() => {
     loadMessagesFromServer().then(serverMessages => {
       if (serverMessages.length > 1 ||
-          (serverMessages.length === 1 && serverMessages[0].segments?.[0]?.data !== '连接成功，输入指令开始分析')) {
+          (serverMessages.length === 1 && serverMessages[0].segments?.[0]?.data !== 'Connected, enter command to start analysis')) {
         setMessages(serverMessages)
       } else {
         const local = loadMessages()
@@ -199,7 +199,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     segmentAccum.current = null
 
     if (onHighlight && highlightTimeout) {
-      onHighlight('发送中...')
+      onHighlight('Sending...')
       if (highlightTimeout.current) clearTimeout(highlightTimeout.current)
     }
 
@@ -294,7 +294,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     })
 
     if (onHighlight && highlightTimeout) {
-      onHighlight('AI 回应')
+      onHighlight('AI Response')
       if (highlightTimeout.current) clearTimeout(highlightTimeout.current)
       highlightTimeout.current = setTimeout(() => onHighlight(null), 2000)
     }
@@ -383,7 +383,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             onClick={() => setExpanded(!expanded)}
             className="text-gray-600 hover:text-gray-400 text-xs mt-1 outline-none"
           >
-            {expanded ? '▲ 收起' : '▼ 展开全部 (' + (data.length / 1000).toFixed(1) + 'K)'}
+            {expanded ? '▲ Collapse' : '▼ Expand all (' + (data.length / 1000).toFixed(1) + 'K)'}
           </button>
         )}
       </div>
@@ -418,7 +418,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             onClick={() => setCollapsed(false)}
             className="text-gray-600 hover:text-gray-400 text-xs outline-none cursor-pointer"
           >
-            ▶ 展开思考过程 ({segments.length} 段)
+            ▶ Show reasoning ({segments.length} steps)
           </button>
         </div>
       )
@@ -433,7 +433,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
               onClick={() => setCollapsed(true)}
               className="text-gray-600 hover:text-gray-400 text-xs outline-none cursor-pointer"
             >
-              ▼ 收起思考过程
+              ▼ Hide reasoning
             </button>
           </div>
         )}
@@ -555,7 +555,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             onClick={() => setCollapsed(false)}
             className="text-gray-600 hover:text-gray-400 text-xs ml-auto outline-none cursor-pointer flex-shrink-0"
           >
-            ▶ 展开
+            ▶ Expand
           </button>
         </div>
       </div>
@@ -600,7 +600,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入指令..."
+            placeholder="Enter command..."
             rows={1}
             disabled={streaming}
             className="flex-1 bg-transparent text-gray-200 border-0 px-0 py-2 text-sm font-mono resize-none outline-none disabled:opacity-50 min-h-[36px] max-h-[100px]"

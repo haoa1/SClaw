@@ -9,17 +9,17 @@ interface Props {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  'long-term': '📈 长线价值',
-  'mid-term': '📊 中线波段',
-  'short-term': '⚡ 短线交易',
-  'day-trade': '🎯 做T/超短',
-  'sector': '🏭 板块轮动',
-  'macro': '🌍 宏观对冲',
-  'quant': '🤖 量化套利',
-  'momentum': '🚀 趋势跟踪',
-  'income': '💰 红利收息',
-  'reversal': '🔄 反转策略',
-  'special': '⭐ 特殊事件',
+  'long-term': '📈 Long-term Value',
+  'mid-term': '📊 Mid-term Swing',
+  'short-term': '⚡ Short-term Trading',
+  'day-trade': '🎯 Day Trade',
+  'sector': '🏭 Sector Rotation',
+  'macro': '🌍 Macro Hedge',
+  'quant': '🤖 Quant Arbitrage',
+  'momentum': '🚀 Trend Following',
+  'income': '💰 Dividend Income',
+  'reversal': '🔄 Reversal',
+  'special': '⭐ Special Events',
 }
 
 const CATEGORY_ORDER = [
@@ -55,14 +55,14 @@ export default function PluginPanel({ plugins, selected, onAdd, onRemove }: Prop
   return (
     <div className="bg-stock-card rounded-xl border border-gray-800 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-200">选股策略</h2>
-        <p className="text-xs text-gray-500 mt-0.5">已选 {selected.length} 个策略</p>
+        <h2 className="text-sm font-semibold text-gray-200">Screening Strategies</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Selected {selected.length} strategies</p>
       </div>
 
       <div className="divide-y divide-gray-800/50 max-h-[70vh] overflow-y-auto">
         {plugins.length === 0 && (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
-            暂无插件，请将插件放入 plugins/ 目录
+            No plugins found. Add plugins to the plugins/ directory
           </div>
         )}
 
@@ -106,7 +106,7 @@ export default function PluginPanel({ plugins, selected, onAdd, onRemove }: Prop
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-200">{strategy.name}</span>
                             {selected_item && (
-                              <span className="text-[10px] text-blue-400 bg-blue-900/30 px-1.5 py-0.5 rounded">已选</span>
+                              <span className="text-[10px] text-blue-400 bg-blue-900/30 px-1.5 py-0.5 rounded">Active</span>
                             )}
                           </div>
                           <p className="text-xs text-gray-500 truncate mt-0.5">{strategy.description}</p>
@@ -134,7 +134,7 @@ export default function PluginPanel({ plugins, selected, onAdd, onRemove }: Prop
                               : 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/40'
                           }`}
                         >
-                          {selected_item ? '移除' : '添加'}
+                          {selected_item ? 'Remove' : 'Add'}
                         </button>
                       </div>
                     )

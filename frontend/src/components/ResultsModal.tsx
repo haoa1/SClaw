@@ -29,13 +29,13 @@ export default function ResultsModal({ results, stats, strategyLabels, onClose }
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              📊 AI 选股结果
+              📊 AI Screening Results
             </h2>
             <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
               <span>{strategyLabels}</span>
               <span className="w-px h-3 bg-gray-700" />
-              <span>扫描 {stats.totalStocks.toLocaleString()} 只</span>
-              <span className="text-blue-400">命中 {stats.matchedStocks} 只</span>
+              <span>Scanned {stats.totalStocks.toLocaleString()} stocks</span>
+              <span className="text-blue-400">Matched {stats.matchedStocks} stocks</span>
             </div>
           </div>
           <button
@@ -51,11 +51,11 @@ export default function ResultsModal({ results, stats, strategyLabels, onClose }
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-gray-800 z-10">
               <tr className="border-b border-gray-700">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 w-14">排名</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">代码</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">名称</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">评分</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">信号</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 w-14">Rank</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Code</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Name</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Score</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Signals</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
@@ -95,7 +95,7 @@ export default function ResultsModal({ results, stats, strategyLabels, onClose }
           </table>
           {results.length > 50 && (
             <div className="text-center text-xs text-gray-500 py-3 border-t border-gray-800">
-              仅显示前 50 只，共 {results.length} 只匹配 — 详情见「选股结果」Tab
+              Showing top 50 of {results.length} matched — see Results tab for details
             </div>
           )}
         </div>
@@ -119,7 +119,7 @@ export default function ResultsModal({ results, stats, strategyLabels, onClose }
             onClick={onClose}
             className="px-4 py-1.5 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg transition"
           >
-            关闭
+            Close
           </button>
         </div>
       </div>

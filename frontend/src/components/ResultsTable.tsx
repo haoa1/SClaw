@@ -16,7 +16,7 @@ export default function ResultsTable({ results, stats, loading }: Props) {
     return (
       <div className="bg-stock-card rounded-xl border border-gray-800 p-12 text-center">
         <div className="text-5xl mb-4 animate-pulse">🔍</div>
-        <p className="text-sm text-gray-400">正在选股中，请稍候...</p>
+        <p className="text-sm text-gray-400">Screening in progress, please wait...</p>
       </div>
     )
   }
@@ -25,8 +25,8 @@ export default function ResultsTable({ results, stats, loading }: Props) {
     return (
       <div className="bg-stock-card rounded-xl border border-gray-800 p-12 text-center">
         <div className="text-5xl mb-4">📭</div>
-        <h3 className="text-lg font-semibold text-gray-300 mb-2">尚无结果</h3>
-        <p className="text-sm text-gray-500">请切换到策略配置页，选择策略后执行选股</p>
+        <h3 className="text-lg font-semibold text-gray-300 mb-2">No Results</h3>
+        <p className="text-sm text-gray-500">Switch to the Strategy tab, select strategies, and run screening</p>
       </div>
     )
   }
@@ -49,17 +49,17 @@ export default function ResultsTable({ results, stats, loading }: Props) {
       {/* Stats bar */}
       <div className="flex items-center gap-6 bg-stock-card rounded-xl border border-gray-800 px-6 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">总股票</span>
+          <span className="text-xs text-gray-500">Total Stocks</span>
           <span className="text-sm font-semibold text-gray-200">{stats.totalStocks.toLocaleString()}</span>
         </div>
         <div className="w-px h-6 bg-gray-800" />
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">匹配</span>
+          <span className="text-xs text-gray-500">Matched</span>
           <span className="text-sm font-semibold text-blue-400">{stats.matchedStocks.toLocaleString()}</span>
         </div>
         <div className="w-px h-6 bg-gray-800" />
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">命中率</span>
+          <span className="text-xs text-gray-500">Hit Rate</span>
           <span className="text-sm font-semibold text-gray-200">
             {stats.totalStocks > 0
               ? ((stats.matchedStocks / stats.totalStocks) * 100).toFixed(2) + '%'
@@ -70,7 +70,7 @@ export default function ResultsTable({ results, stats, loading }: Props) {
         <button
           onClick={() => {
             const csv = [
-              ['代码', '名称', '评分', ...metricKeys, '信号'].join(','),
+              ['Code', 'Name', 'Score', ...metricKeys, 'Signals'].join(','),
               ...results.map(r => [
                 r.code, r.name, r.score,
                 ...metricKeys.map(k => r.metrics[k] ?? ''),
@@ -81,13 +81,13 @@ export default function ResultsTable({ results, stats, loading }: Props) {
             const url = URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = url
-            a.download = `选股结果_${new Date().toISOString().slice(0, 10)}.csv`
+            a.download = `screening_results_${new Date().toISOString().slice(0, 10)}.csv`
             a.click()
             URL.revokeObjectURL(url)
           }}
           className="text-xs text-gray-500 hover:text-blue-400 transition"
         >
-          📥 导出 CSV
+          📥 Export CSV
         </button>
       </div>
 
@@ -97,16 +97,16 @@ export default function ResultsTable({ results, stats, loading }: Props) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-800/50 border-b border-gray-800">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 w-16">排名</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">代码</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">名称</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">评分</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 w-16">Rank</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Code</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Name</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Score</th>
                 {metricKeys.map(key => (
                   <th key={key} className="px-4 py-3 text-right text-xs font-medium text-gray-500 whitespace-nowrap">
-                    {key === 'pe' ? 'PE' : key === 'pb' ? 'PB' : key === 'price' ? '价格' : key === 'changePercent' ? '涨幅%' : key === 'volume' ? '成交量' : key === 'marketCap' ? '市值' : key === 'turnover' ? '成交额' : key}
+                    {key === 'pe' ? 'PE' : key === 'pb' ? 'PB' : key === 'price' ? 'Price' : key === 'changePercent' ? 'Chg%' : key === 'volume' ? 'Vol' : key === 'marketCap' ? 'Mkt Cap' : key === 'turnover' ? 'Turnover' : key}
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">信号</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Signals</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
@@ -128,9 +128,9 @@ export default function ResultsTable({ results, stats, loading }: Props) {
                     let color = 'text-gray-300'
 
                     if (key === 'marketCap' && val) {
-                      display = (val / 1e8).toFixed(0) + '亿'
+                      display = (val / 1e8).toFixed(0) + 'B'
                     } else if (key === 'volume' && val) {
-                      display = (val / 10000).toFixed(0) + '万'
+                      display = (val / 10000).toFixed(0) + 'M'
                     } else if (key === 'changePercent') {
                       display = val?.toFixed(2) ?? '-'
                       if (val != null) color = val > 0 ? 'text-stock-up' : val < 0 ? 'text-stock-down' : 'text-gray-400'
@@ -164,18 +164,18 @@ export default function ResultsTable({ results, stats, loading }: Props) {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800 text-xs text-gray-500">
-            <span>第 {page}/{totalPages} 页，共 {results.length} 条</span>
+            <span>Page {page}/{totalPages}, {results.length} results</span>
             <div className="flex items-center gap-2">
               <button
                 disabled={page <= 1}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 className={`px-3 py-1 rounded border ${page <= 1 ? 'border-gray-800 text-gray-700 cursor-not-allowed' : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'}`}
-              >‹ 上一页</button>
+              >‹ Prev</button>
               <button
                 disabled={page >= totalPages}
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 className={`px-3 py-1 rounded border ${page >= totalPages ? 'border-gray-800 text-gray-700 cursor-not-allowed' : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'}`}
-              >下一页 ›</button>
+              >Next ›</button>
             </div>
           </div>
         )}

@@ -13,12 +13,12 @@ const BACKEND = 'http://localhost:3001';
 const USER = { username: 'admin', password: 'admin123' };
 
 function login(page: Page) {
-  return page.getByRole('button', { name: '登录' }).click();
+  return page.getByRole('button', { name: 'Login' }).click();
 }
 
 async function loginAndWait(page: Page) {
-  await page.getByPlaceholder('输入用户名').fill(USER.username);
-  await page.getByPlaceholder('输入密码').fill(USER.password);
+  await page.getByPlaceholder('Enter username').fill(USER.username);
+  await page.getByPlaceholder('Enter password').fill(USER.password);
   await Promise.all([
     page.waitForResponse(resp => resp.url().includes('/api/login')),
     login(page),
@@ -55,40 +55,40 @@ test.describe('Login page', () => {
   test('renders login form with all elements', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByText('股海操盘手')).toBeVisible();
-    await expect(page.getByText('登录以继续')).toBeVisible();
-    await expect(page.getByPlaceholder('输入用户名')).toBeVisible();
-    await expect(page.getByPlaceholder('输入密码')).toBeVisible();
-    await expect(page.getByRole('button', { name: '登录' })).toBeVisible();
+    await expect(page.getByText('Stock Navigator')).toBeVisible();
+    await expect(page.getByText('Login to continue')).toBeVisible();
+    await expect(page.getByPlaceholder('Enter username')).toBeVisible();
+    await expect(page.getByPlaceholder('Enter password')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Login' })).toBeVisible();
   });
 
   test('shows error on wrong password', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByPlaceholder('输入用户名').fill('admin');
-    await page.getByPlaceholder('输入密码').fill('wrongpassword');
+    await page.getByPlaceholder('Enter username').fill('admin');
+    await page.getByPlaceholder('Enter password').fill('wrongpassword');
 
     // Click login and wait for the API response before checking DOM
     await Promise.all([
       page.waitForResponse(resp => resp.url().includes('/api/login')),
-      page.getByRole('button', { name: '登录' }).click(),
+      page.getByRole('button', { name: 'Login' }).click(),
     ]);
 
-    await expect(page.getByText('用户名或密码错误')).toBeVisible();
+    await expect(page.getByText('Invalid username or password')).toBeVisible();
   });
 
   test('disables login button with empty fields', async ({ page }) => {
     await page.goto('/');
 
-    const loginBtn = page.getByRole('button', { name: '登录' });
+    const loginBtn = page.getByRole('button', { name: 'Login' });
     await expect(loginBtn).toBeDisabled();
 
     // Fill username only — still disabled
-    await page.getByPlaceholder('输入用户名').fill('admin');
+    await page.getByPlaceholder('Enter username').fill('admin');
     await expect(loginBtn).toBeDisabled();
 
     // Fill both — enabled
-    await page.getByPlaceholder('输入密码').fill('admin123');
+    await page.getByPlaceholder('Enter password').fill('admin123');
     await expect(loginBtn).toBeEnabled();
   });
 });
@@ -106,16 +106,16 @@ test.describe('Login flow', () => {
     await expect(page.getByText('SClaw')).toBeVisible({ timeout: 10_000 });
 
     // Verify tabs are present
-    await expect(page.getByRole('button', { name: '策略配置' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '选股结果' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '历史' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '日志' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Strategy' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Results' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'History' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Logs' })).toBeVisible();
 
     // Verify execute button
-    await expect(page.getByRole('button', { name: /执行选股/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Run Screening/ })).toBeVisible();
 
     // Verify user info
-    await expect(page.getByText('管理员')).toBeVisible();
+    await expect(page.getByText('Admin')).toBeVisible();
   });
 
   test('loads plugins after login', async ({ page }) => {
@@ -127,10 +127,10 @@ test.describe('Login flow', () => {
     await expect(page.getByText('SClaw')).toBeVisible({ timeout: 10_000 });
 
     // Should show plugin count
-    await expect(page.getByText(/个插件/)).toBeVisible();
+    await expect(page.getByText(/plugins/)).toBeVisible();
 
     // Plugin panel should render strategies
-    await expect(page.getByText(/策略/).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Strategy/).first()).toBeVisible({ timeout: 5_000 });
   });
 });
 
@@ -148,15 +148,15 @@ test.describe('Stock screening', () => {
     await page.waitForTimeout(2_000);
 
     // Try to find and click a strategy add button (if any plugins exist)
-    const addButtons = page.locator('button:has-text("+"), button:has-text("添加"), button:has-text("选择")');
+    const addButtons = page.locator('button:has-text("+"), button:has-text("Add"), button:has-text("Select")');
     const firstAddBtn = addButtons.first();
     const hasAddBtn = await firstAddBtn.isVisible({ timeout: 2_000 }).catch(() => false);
     if (hasAddBtn) {
       await firstAddBtn.click();
     }
 
-    // Click "执行选股" button (may be disabled if no strategies selected)
-    const runBtn = page.getByRole('button', { name: /执行选股/ });
+    // Click "Run Screening" button (may be disabled if no strategies selected)
+    const runBtn = page.getByRole('button', { name: /Run Screening/ });
     const isEnabled = await runBtn.isEnabled().catch(() => false);
     if (isEnabled) {
       await runBtn.click();
@@ -164,7 +164,7 @@ test.describe('Stock screening', () => {
     }
 
     // Either results tab or the screen itself should be visible
-    const resultsTab = page.getByRole('button', { name: /选股结果/ });
+    const resultsTab = page.getByRole('button', { name: /Results/ });
     await expect(resultsTab).toBeVisible();
   });
 });
@@ -180,7 +180,7 @@ test.describe('Chat panel', () => {
     await expect(page.getByText('SClaw')).toBeVisible({ timeout: 10_000 });
 
     // AI indicator should be visible in header
-    await expect(page.getByText('AI 助手')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('AI Assistant')).toBeVisible({ timeout: 5_000 });
 
     // Check for chat input
     const chatInput = page.locator('textarea, input[type="text"]').last();
@@ -197,14 +197,14 @@ test.describe('Chat panel', () => {
 
     // Find chat input (the last text input or textarea on the page)
     const chatInput = page.locator('textarea, input[type="text"], input:not([type])').last();
-    await chatInput.fill('你好');
+    await chatInput.fill('Hello');
     await chatInput.press('Enter');
 
     // Wait for AI response
     await page.waitForTimeout(3_000);
 
     // AI indicator should pulse (green)
-    const aiIndicator = page.locator('div:has(span:text("AI 助手"))').first();
+    const aiIndicator = page.locator('div:has(span:text("AI Assistant"))').first();
     await expect(aiIndicator).toBeVisible();
   }, 30_000);
 });
@@ -222,7 +222,7 @@ test.describe('Navigation', () => {
     await page.waitForTimeout(2_000);
 
     // Click each tab and verify content
-    const tabs = ['策略配置', '选股结果', '历史', '日志'];
+    const tabs = ['Strategy', 'Results', 'History', 'Logs'];
     for (const tab of tabs) {
       const btn = page.getByRole('button', { name: tab });
       if (await btn.isVisible().catch(() => false)) {
@@ -245,7 +245,7 @@ test.describe('Logout', () => {
     await expect(page.getByText('SClaw')).toBeVisible({ timeout: 10_000 });
 
     // Click logout button and wait for the API response
-    const logoutBtn = page.getByRole('button', { name: '退出' });
+    const logoutBtn = page.getByRole('button', { name: 'Logout' });
     await expect(logoutBtn).toBeVisible();
     await Promise.all([
       page.waitForResponse(resp => resp.url().includes('/api/logout')),
@@ -256,7 +256,7 @@ test.describe('Logout', () => {
     await page.waitForTimeout(500);
 
     // Should return to login page
-    await expect(page.getByText('股海操盘手')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('登录以继续')).toBeVisible();
+    await expect(page.getByText('Stock Navigator')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Login to continue')).toBeVisible();
   });
 });

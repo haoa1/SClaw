@@ -2,7 +2,7 @@ interface Props {
   message?: string
 }
 
-export default function LoadingSpinner({ message = '加载中...' }: Props) {
+export default function LoadingSpinner({ message = 'Loading...' }: Props) {
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">

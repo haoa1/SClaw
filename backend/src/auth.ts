@@ -16,9 +16,9 @@ export interface AuthUser {
 }
 
 const USERS: AuthUser[] = [
-  { id: "1", username: "admin", password: "admin123", displayName: "管理员", role: "admin" },
-  { id: "2", username: "jack",  password: "123456",   displayName: "Jack", role: "user" },
-  { id: "3", username: "siwei", password: "siwei123", displayName: "Siwei", role: "user" },
+  { id: "1", username: "admin", password: "admin123", displayName: "Admin", role: "admin" },
+  { id: "2", username: "demo1", password: "demo123",  displayName: "Demo User 1", role: "user" },
+  { id: "3", username: "demo2", password: "demo456",  displayName: "Demo User 2", role: "user" },
 ];
 
 // ===== Session Management =====

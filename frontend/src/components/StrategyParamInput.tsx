@@ -14,7 +14,7 @@ export default function StrategyParamInput({ strategyIndex, selected, onUpdatePa
   return (
     <div className="space-y-3">
       {selected.paramsDef.length === 0 && (
-        <p className="text-xs text-gray-500">该策略无需配置参数</p>
+        <p className="text-xs text-gray-500">This strategy has no configurable parameters</p>
       )}
 
       {selected.paramsDef.map(param => (
@@ -30,7 +30,7 @@ export default function StrategyParamInput({ strategyIndex, selected, onUpdatePa
                   : 'bg-gray-700 text-gray-400'
               }`}
             >
-              {selected.params[param.key] ? '是' : '否'}
+              {selected.params[param.key] ? 'Yes' : 'No'}
             </button>
           ) : param.type === 'select' ? (
             <select

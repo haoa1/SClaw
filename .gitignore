@@ -40,3 +40,6 @@ npm-debug.log*
 test-results/
 playwright-report/
 backend/data/
+
+# --- Garuda workspace (local only) ---
+.garuda/

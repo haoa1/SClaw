@@ -77,7 +77,7 @@ export default function App() {
     if (backendStatus !== 'online' || !user) return
     api.getPlugins()
       .then(res => setPlugins(res.plugins))
-      .catch(err => setError(`加载插件失败: ${err.message}`))
+      .catch(err => setError(`Failed to load plugins: ${err.message}`))
   }, [backendStatus, user])
 
   // Load user config from server on login
@@ -162,7 +162,7 @@ export default function App() {
       setUser(res.user)
       setLoginForm({ username: '', password: '' })
     } catch (err: any) {
-      setLoginError(err.message || '登录失败')
+      setLoginError(err.message || 'Login failed')
     }
   }
 
@@ -193,7 +193,7 @@ export default function App() {
 
   const runScreen = useCallback(async () => {
     if (selected.length === 0) {
-      setError('请至少选择一个策略')
+      setError('Please select at least one strategy')
       return
     }
     setLoading(true)
@@ -211,7 +211,7 @@ export default function App() {
       setResults(res.results)
       setStats(res.stats)
     } catch (err: any) {
-      setError(`选股失败: ${err.message}`)
+      setError(`Screening failed: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -235,7 +235,7 @@ export default function App() {
           setModalData({
             results: payload.results,
             stats: payload.stats,
-            strategyLabels: labels || 'AI 选股',
+            strategyLabels: labels || 'AI Screening',
           })
           setTab('results')
         } else if (payload.strategies && payload.strategies.length > 0) {
@@ -259,7 +259,7 @@ export default function App() {
             setResults(res.results)
             setStats(res.stats)
           }).catch((err: any) => {
-            setError(`选股失败: ${err.message}`)
+            setError(`Screening failed: ${err.message}`)
           }).finally(() => {
             setLoading(false)
           })
@@ -268,7 +268,7 @@ export default function App() {
         }
         break
       case 'set_highlight':
-        setAgentHighlight(payload.message || 'AI 操作')
+        setAgentHighlight(payload.message || 'AI Action')
         if (highlightTimeout.current) clearTimeout(highlightTimeout.current)
         highlightTimeout.current = setTimeout(() => setAgentHighlight(null), 3000)
         break
@@ -281,15 +281,15 @@ export default function App() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center text-gray-400">
           <div className="text-6xl mb-4">🔌</div>
-          <div className="text-xl font-semibold mb-2">后端未连接</div>
-          <div className="text-sm">请确认后端服务是否启动</div>
+          <div className="text-xl font-semibold mb-2">Backend Offline</div>
+          <div className="text-sm">Please check if backend service is running</div>
         </div>
       </div>
     )
   }
 
   if (backendStatus === 'checking') {
-    return <LoadingSpinner message="正在连接后端..." />
+    return <LoadingSpinner message="Connecting to backend..." />
   }
 
   if (!user) {
@@ -298,32 +298,32 @@ export default function App() {
         <form onSubmit={handleLogin} className="bg-stock-card border border-gray-800 rounded-xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
             <span className="text-5xl block mb-2">📈</span>
-            <h1 className="text-2xl font-bold text-white">股海操盘手</h1>
-            <p className="text-gray-500 text-sm mt-1">登录以继续</p>
+            <h1 className="text-2xl font-bold text-white">Stock Navigator</h1>
+            <p className="text-gray-500 text-sm mt-1">Login to continue</p>
           </div>
           {loginError && (
             <div className="bg-red-900/50 border border-red-800 text-red-200 text-sm px-4 py-2 rounded-lg mb-4">{loginError}</div>
           )}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-400 mb-1">用户名</label>
+              <label className="block text-sm text-gray-400 mb-1">Username</label>
               <input
                 type="text"
                 value={loginForm.username}
                 onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-200 text-sm outline-none focus:border-blue-500"
-                placeholder="输入用户名"
+                placeholder="Enter username"
                 autoFocus
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1">密码</label>
+              <label className="block text-sm text-gray-400 mb-1">Password</label>
               <input
                 type="password"
                 value={loginForm.password}
                 onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-200 text-sm outline-none focus:border-blue-500"
-                placeholder="输入密码"
+                placeholder="Enter password"
               />
             </div>
             <button
@@ -331,7 +331,7 @@ export default function App() {
               disabled={!loginForm.username || !loginForm.password}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white py-2.5 rounded-lg font-medium text-sm transition"
             >
-              登录
+              Login
             </button>
           </div>
         </form>
@@ -349,7 +349,7 @@ export default function App() {
             <span className="text-3xl">📈</span>
             <h1 className="text-xl font-bold text-white">SClaw</h1>
             <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
-              插件化 · {plugins.length} 个插件
+              Plugin · {plugins.length} plugins
             </span>
           </div>
           <div className="flex items-center gap-4">
@@ -357,23 +357,23 @@ export default function App() {
             <div className="flex bg-gray-800 rounded-lg overflow-hidden">
               <button onClick={() => setTab('config')}
                 className={`px-3 py-2 text-sm font-medium transition ${tab === 'config' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                策略配置
+                Strategy
               </button>
               <button onClick={() => setTab('results')}
                 className={`px-3 py-2 text-sm font-medium transition ${tab === 'results' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                选股结果{results.length > 0 && <span className="ml-1.5 text-xs bg-gray-700 px-1.5 py-0.5 rounded">{results.length}</span>}
+                Results{results.length > 0 && <span className="ml-1.5 text-xs bg-gray-700 px-1.5 py-0.5 rounded">{results.length}</span>}
               </button>
               <button onClick={() => setTab('history')}
                 className={`px-3 py-2 text-sm font-medium transition ${tab === 'history' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                历史
+                History
               </button>
               <button onClick={() => setTab('logs')}
                 className={`px-3 py-2 text-sm font-medium transition ${tab === 'logs' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                日志
+                Logs
               </button>
               <button onClick={() => setTab('backtest')}
                 className={`px-3 py-2 text-sm font-medium transition ${tab === 'backtest' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                📊 回测
+                📊 Backtest
               </button>
             </div>
 
@@ -381,7 +381,7 @@ export default function App() {
             <div className="flex items-center gap-2 text-sm">
               <span className="text-gray-400">{user.displayName}</span>
               <span className="text-xs text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">{user.role}</span>
-              <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-400 transition">退出</button>
+              <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-400 transition">Logout</button>
             </div>
 
             {/* AI indicator */}
@@ -391,7 +391,7 @@ export default function App() {
                 : 'bg-gray-800 text-gray-400 border border-gray-700'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full ${agentHighlight ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
-              <span>🧠 AI 助手</span>
+              <span>🧠 AI Assistant</span>
             </div>
 
             <button
@@ -399,7 +399,7 @@ export default function App() {
               disabled={loading || selected.length === 0}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white px-6 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2"
             >
-              {loading ? <><span className="loading-dot">●</span><span className="loading-dot">●</span><span className="loading-dot">●</span></> : '🚀 执行选股'}
+              {loading ? <><span className="loading-dot">●</span><span className="loading-dot">●</span><span className="loading-dot">●</span></> : '🚀 Run Screening'}
             </button>
           </div>
         </div>
@@ -432,19 +432,19 @@ export default function App() {
 
           {tab === 'history' && (
             <div className="max-w-4xl mx-auto space-y-3">
-              <h2 className="text-lg font-semibold text-white mb-4">选股历史</h2>
+              <h2 className="text-lg font-semibold text-white mb-4">Screening History</h2>
               {screens.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">暂无选股历史</div>
+                <div className="text-center text-gray-500 py-12">No screening history yet</div>
               ) : (
                 screens.map(s => (
                   <div key={s.id} className="bg-stock-card border border-gray-800 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm text-gray-300">
-                        <span className="font-medium">{new Date(s.timestamp).toLocaleString('zh-CN')}</span>
+                        <span className="font-medium">{new Date(s.timestamp).toLocaleString('en-US')}</span>
                       </div>
                       <div className="flex gap-3 text-xs text-gray-500">
-                        <span>{s.strategies.length} 个策略</span>
-                        <span>命中 {s.stats.matchedStocks}</span>
+                        <span>{s.strategies.length} strategies</span>
+                        <span>Matched {s.stats.matchedStocks}</span>
                         <span>{s.stats.executionTime}ms</span>
                       </div>
                     </div>
@@ -465,7 +465,7 @@ export default function App() {
                       onClick={() => setExpandedScreen(expandedScreen === s.id ? null : s.id)}
                       className="text-xs text-blue-400 hover:text-blue-300 mt-2"
                     >
-                      {expandedScreen === s.id ? '收起' : '展开全部结果'}
+                      {expandedScreen === s.id ? 'Collapse' : 'Show all results'}
                     </button>
                     {expandedScreen === s.id && s.topResults.length > 0 && (
                       <div className="mt-2 space-y-1 border-t border-gray-800 pt-2">
@@ -473,7 +473,7 @@ export default function App() {
                           <div key={r.code} className="text-xs text-gray-400 flex gap-2">
                             <span className="text-blue-300 w-20">{r.code}</span>
                             <span className="w-20">{r.name}</span>
-                            <span className="text-yellow-400 w-10">得分:{r.score}</span>
+                            <span className="text-yellow-400 w-10">Score:{r.score}</span>
                             <span className="text-gray-500">{r.signals.slice(0, 3).join(', ')}</span>
                           </div>
                         ))}
@@ -487,9 +487,9 @@ export default function App() {
 
           {tab === 'logs' && (
             <div className="max-w-4xl mx-auto">
-              <h2 className="text-lg font-semibold text-white mb-4">操作日志</h2>
+              <h2 className="text-lg font-semibold text-white mb-4">Activity Logs</h2>
               {logs.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">暂无操作日志</div>
+                <div className="text-center text-gray-500 py-12">No activity logs yet</div>
               ) : (
                 <div className="space-y-1">
                   {logs.map(l => (

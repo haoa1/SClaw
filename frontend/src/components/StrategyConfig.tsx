@@ -14,9 +14,9 @@ export default function StrategyConfig({ selected, onUpdateParams, onRemove, onR
     return (
       <div className="bg-stock-card rounded-xl border border-gray-800 p-12 text-center">
         <div className="text-5xl mb-4">🧩</div>
-        <h3 className="text-lg font-semibold text-gray-300 mb-2">尚未选择策略</h3>
+        <h3 className="text-lg font-semibold text-gray-300 mb-2">No Strategy Selected</h3>
         <p className="text-sm text-gray-500">
-          从左侧插件面板选择一个或多个筛选策略，然后执行选股
+          Select one or more strategies from the plugin panel, then run screening
         </p>
       </div>
     )
@@ -41,7 +41,7 @@ export default function StrategyConfig({ selected, onUpdateParams, onRemove, onR
               onClick={() => onRemove(idx)}
               className="text-xs text-gray-500 hover:text-red-400 transition px-2 py-1 rounded hover:bg-red-900/20"
             >
-              移除
+              Remove
             </button>
           </div>
 
@@ -65,9 +65,9 @@ export default function StrategyConfig({ selected, onUpdateParams, onRemove, onR
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white py-3 rounded-xl font-medium transition flex items-center justify-center gap-2"
       >
         {loading ? (
-          <><span className="loading-dot">●</span><span className="loading-dot">●</span><span className="loading-dot">●</span> 执行中...</>
+          <><span className="loading-dot">●</span><span className="loading-dot">●</span><span className="loading-dot">●</span> Running...</>
         ) : (
-          `🚀 执行选股 (${selected.length} 个策略)`
+          `🚀 Run Screening (${selected.length} strategies)`
         )}
       </button>
     </div>
