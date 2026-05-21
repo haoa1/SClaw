@@ -1,7 +1,7 @@
-# 选股系统 (Stock Screener) — Task Plan
+# SClaw (Stock Screener) — Task Plan
 
 ## 项目概述
-全栈 TypeScript 插件化选股系统，支持动态加载选股策略插件，网页界面操作。
+全栈 TypeScript 插件化SClaw，支持动态加载选股策略插件，网页界面操作。
 
 ## 技术栈
 - **前端**: React + Vite + TypeScript + TailwindCSS

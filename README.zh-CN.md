@@ -3,7 +3,7 @@
 
 </p>
 
-<h1 align="center">🦀 SClaw — AI 选股系统<
+<h1 align="center">🦀 SClaw</h1>
 
 
 <p align="center">
