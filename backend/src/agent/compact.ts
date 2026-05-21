@@ -39,7 +39,6 @@ const MICRO_COMPACT_TOOL_LINES = 150;
 const SUMMARY_SYSTEM_PROMPT = `You are a conversation summary generator. Your task is to compress a conversation history into a concise structured summary.
 
 Requirements:
-- Output in English
 - Preserve all key information (user intent, stock screening strategies, stock codes, analysis conclusions, etc.)
 - Do not omit important context
 - Format: wrap with <analysis> and <summary> tags
