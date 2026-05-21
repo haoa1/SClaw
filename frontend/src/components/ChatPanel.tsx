@@ -147,13 +147,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         setMessages(serverMessages)
         saveMessages(serverMessages)
       } else {
-        // Server empty — start fresh, do NOT restore old localStorage to server
-        // (that would recreate deleted data on the server)
-        const local = loadMessages()
-        if (local.length > 0) {
-          // Just show local data for display, but DON'T push back to server
-          setMessages(local)
-        }
+        // Server empty — clear localStorage and start fresh
+        // IMPORTANT: old localStorage data must NOT be shown, otherwise
+        // even after server data is deleted, browser still displays old chats
+        localStorage.removeItem(STORAGE_KEY)
+        // Show default welcome message (no old history)
       }
       setLoaded(true)
     })
