@@ -143,11 +143,17 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     loadMessagesFromServer().then(serverMessages => {
       if (serverMessages.length > 1 ||
           (serverMessages.length === 1 && serverMessages[0].segments?.[0]?.data !== 'Connected, enter command to start analysis')) {
+        // Server has data — use it and sync to localStorage
         setMessages(serverMessages)
+        saveMessages(serverMessages)
       } else {
+        // Server empty — start fresh, do NOT restore old localStorage to server
+        // (that would recreate deleted data on the server)
         const local = loadMessages()
-        setMessages(local)
-        saveMessagesToServer(local)
+        if (local.length > 0) {
+          // Just show local data for display, but DON'T push back to server
+          setMessages(local)
+        }
       }
       setLoaded(true)
     })

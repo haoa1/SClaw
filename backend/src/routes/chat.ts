@@ -89,6 +89,7 @@ function getUserId(req: Request): string | null {
 
 export function createChatRoutes(
   agentManager: PerUserAgentManager,
+  dataDir?: string,
 ): Router {
   const router = Router();
 
@@ -268,6 +269,41 @@ export function createChatRoutes(
     const flat = messages.map(normalizeToFlatFormat);
     saveMessages(userId, flat);
     res.json({ status: "ok" });
+  });
+
+  /** POST /api/clear — clear all user data (chat history + memory + agent reset) */
+  router.post("/api/clear", (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Not logged in" });
+      return;
+    }
+    // 1. Delete chat file
+    try {
+      const chatPath = getMessagesPath(userId);
+      if (fs.existsSync(chatPath)) {
+        fs.unlinkSync(chatPath);
+        console.log(`[CLEAR] Deleted chat file for user ${userId}`);
+      }
+    } catch (e) {
+      console.log(`[CLEAR] Failed to delete chat file: ${e}`);
+    }
+    // 2. Delete user data directory (memory, logs, etc.)
+    if (dataDir) {
+      try {
+        const userDir = path.join(dataDir, "users", userId);
+        if (fs.existsSync(userDir)) {
+          fs.rmSync(userDir, { recursive: true, force: true });
+          console.log(`[CLEAR] Deleted user data dir for user ${userId}`);
+        }
+      } catch (e) {
+        console.log(`[CLEAR] Failed to delete user data: ${e}`);
+      }
+    }
+    // 3. Remove agent from memory (resets its messages array)
+    agentManager.removeAgent(userId);
+    console.log(`[CLEAR] Removed agent for user ${userId}`);
+    res.json({ status: "ok", message: "All user data cleared" });
   });
 
   return router;

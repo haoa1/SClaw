@@ -205,7 +205,7 @@ Keep it concise — 3-5 sentences.`;
   app.use(authRoutes);
 
   // Chat routes (POST /api/chat SSE, GET/POST /api/messages)
-  const chatRoutes = createChatRoutes(agentManager);
+  const chatRoutes = createChatRoutes(agentManager, dataDir);
   app.use(chatRoutes);
 
   // User routes (config, screens, logs)
