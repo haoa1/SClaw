@@ -1,16 +1,25 @@
 /**
  * Skill Manager — scans, reads, and lists skills from disk.
  *
- * Skills are Markdown files in ~/.sclaw/skills/<name>/SKILL.md
+ * Runtime skills live in ~/.sclaw/skills/<name>/SKILL.md
  * with YAML frontmatter for metadata.
  *
+ * Built-in skills live in <repo>/backend/builtin-skills/<name>/
+ * and are auto-bootstrapped to ~/.sclaw/skills/ at startup
+ * (without overwriting existing files).
+ *
  * Structure:
- *   ~/.sclaw/skills/
+ *   backend/builtin-skills/          ← source of truth in repo
  *     fund-tracker/
  *       SKILL.md
- *     backtest-view/
+ *       scripts/
+ *         fund_api.js
+ *
+ *   ~/.sclaw/skills/                 ← runtime copy (auto-bootstrapped)
+ *     fund-tracker/
  *       SKILL.md
- *     ...
+ *       scripts/
+ *         fund_api.js
  */
 
 import * as fs from "fs";
@@ -29,11 +38,64 @@ export interface SkillMeta {
 export class SkillManager {
   private skillsDir: string;
 
-  constructor(skillsDir?: string) {
+  /**
+   * @param skillsDir   Runtime skills directory (default: ~/.sclaw/skills)
+   * @param builtinDir  Built-in skills source (default: <this file>/../../builtin-skills)
+   */
+  constructor(skillsDir?: string, builtinDir?: string) {
     this.skillsDir = skillsDir || path.join(os.homedir(), ".sclaw", "skills");
-    // Ensure directory exists
+
+    // 1. Ensure runtime directory exists
+    this.ensureDir(this.skillsDir);
+
+    // 2. Bootstrap built-in skills to runtime directory
+    // Try relative to src/ or dist/ — both resolve to backend/builtin-skills/
+    const srcDir = builtinDir || path.resolve(__dirname, "..", "builtin-skills");
+    if (fs.existsSync(srcDir)) {
+      this.bootstrapBuiltinSkills(srcDir, this.skillsDir);
+    }
+  }
+
+  /** Bootstrap built-in skills from repo to runtime dir (no overwrite). */
+  private bootstrapBuiltinSkills(src: string, dest: string): void {
     try {
-      fs.mkdirSync(this.skillsDir, { recursive: true });
+      const entries = fs.readdirSync(src, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const srcSkillDir = path.join(src, entry.name);
+        const destSkillDir = path.join(dest, entry.name);
+
+        // Don't overwrite if skill already exists at destination
+        const destSkillFile = path.join(destSkillDir, "SKILL.md");
+        if (fs.existsSync(destSkillFile)) continue;
+
+        // Copy entire skill directory
+        this.copyDir(srcSkillDir, destSkillDir);
+        console.log(`  [SKILL] Bootstrap '${entry.name}' → ${destSkillDir}`);
+      }
+    } catch {
+      // builtin dir not available — skip
+    }
+  }
+
+  /** Recursively copy a directory (with mkdirp). */
+  private copyDir(src: string, dest: string): void {
+    this.ensureDir(dest);
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        this.copyDir(srcPath, destPath);
+      } else if (entry.isFile()) {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
+
+  private ensureDir(dir: string): void {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
     } catch {
       // ignore
     }
