@@ -115,7 +115,7 @@ test.describe('Login flow', () => {
     await expect(page.getByRole('button', { name: /Run Screening/ }).first()).toBeVisible();
 
     // Verify user info
-    await expect(page.getByText('Admin')).toBeVisible();
+    await expect(page.getByText('Admin', { exact: true })).toBeVisible();
   });
 
   test('loads plugins after login', async ({ page }) => {

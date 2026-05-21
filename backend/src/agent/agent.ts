@@ -21,6 +21,8 @@ export class Agent {
   private config: Required<AgentConfig>;
   private totalInputTokens = 0;
   private totalOutputTokens = 0;
+  /** Loaded skills: name → markdown content */
+  private loadedSkills = new Map<string, string>();
 
   constructor(
     tools: ToolRegistry,
@@ -45,7 +47,7 @@ Use tools when you need to perform actions. Be concise and helpful.`,
     // Inject system prompt as first message so the LLM actually receives it
     this.messages.push({ role: "system", content: this.config.systemPrompt });
     // Load SOUL.md personality on top of system prompt
-    this.loadSoul();
+    this.rebuildSystemMessage();
   }
 
   async run(userInput: string, onToken?: (token: string) => void, onReasoning?: (token: string) => void, onToolCall?: (tc: {id: string; name: string; arguments: string}) => void, onTurnStart?: (turn: number) => void, onToolResult?: (name: string, content: string) => void): Promise<{
@@ -144,8 +146,8 @@ Use tools when you need to perform actions. Be concise and helpful.`,
         };
       }
 
-      // Reload SOUL.md after each turn (user may have edited it)
-      this.loadSoul();
+      // Reload SOUL.md + skills after each turn (user may have edited it)
+      this.rebuildSystemMessage();
 
       // Execute each tool call, push results with proper role: "tool"
       for (const tc of llmResponse.tool_calls) {
@@ -171,19 +173,54 @@ Use tools when you need to perform actions. Be concise and helpful.`,
     };
   }
 
-  /** Reload SOUL.md from disk - replaces system message[0] with freshest personality + instructions.
-   *  Called at startup and after each agent loop turn to pick up live edits. */
-  private loadSoul(): void {
+  /** Reload SOUL.md + loaded skills - replaces system message[0] with freshest personality, instructions, and skills.
+   *  Called at startup, after each agent loop turn, and on load/unload skill. */
+  private rebuildSystemMessage(): void {
     try {
-      const soulContent = fs.readFileSync(this.config.soulPath, 'utf-8');
-      if (soulContent.trim() && this.messages.length > 0 && this.messages[0].role === 'system') {
-        this.messages[0].content = `${soulContent.trim()}\n\n---\n\n${this.config.systemPrompt}`;
-        if (this.config.verbose) console.log('  [SOUL] Loaded from ' + this.config.soulPath);
+      const soulContent = fs.readFileSync(this.config.soulPath, 'utf-8').trim();
+      let content = soulContent
+        ? `${soulContent}\n\n---\n\n${this.config.systemPrompt}`
+        : this.config.systemPrompt;
+
+      // Append loaded skills
+      if (this.loadedSkills.size > 0) {
+        const skillsSection = Array.from(this.loadedSkills.entries())
+          .map(([name, body]) => `<skill name="${name}">\n${body}\n</skill>`)
+          .join('\n\n');
+        content += `\n\n## Loaded Skills\n\n${skillsSection}`;
       }
+
+      if (this.messages.length > 0 && this.messages[0].role === 'system') {
+        this.messages[0].content = content;
+      }
+      if (this.config.verbose) console.log(`  [SOUL] Rebuilt (${this.loadedSkills.size} skills loaded)`);
     } catch {
       // SOUL.md not found or unreadable - fall through gracefully
       if (this.config.verbose) console.log('  [SOUL] No SOUL.md at ' + this.config.soulPath + ', using systemPrompt only');
     }
+  }
+
+  /** Load a skill: reads SKILL.md from disk and injects it into the system prompt. */
+  loadSkill(name: string, content: string): string {
+    if (!name || !content) return "Skill name and content are required.";
+    this.loadedSkills.set(name, content);
+    this.rebuildSystemMessage();
+    return `Skill '${name}' loaded. Its instructions are now part of the system prompt.`;
+  }
+
+  /** Unload a skill: removes it from the system prompt. */
+  unloadSkill(name: string): string {
+    if (!this.loadedSkills.has(name)) {
+      return `Skill '${name}' is not loaded.`;
+    }
+    this.loadedSkills.delete(name);
+    this.rebuildSystemMessage();
+    return `Skill '${name}' unloaded.`;
+  }
+
+  /** Get list of currently loaded skill names. */
+  getLoadedSkills(): string[] {
+    return Array.from(this.loadedSkills.keys());
   }
 
   private async executeTool(tc: ToolCall): Promise<string> {
@@ -391,5 +428,8 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
     this.messages = [];
     this.totalInputTokens = 0;
     this.totalOutputTokens = 0;
+    // Re-inject system message so the agent can be reused
+    this.messages.push({ role: "system", content: this.config.systemPrompt });
+    this.rebuildSystemMessage();
   }
 }

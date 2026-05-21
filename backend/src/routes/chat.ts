@@ -12,7 +12,7 @@ import * as path from "path";
 import { validateSession } from "../auth";
 import { PerUserAgentManager } from "../agent/manager";
 import { LLMClient } from "../agent/llm";
-import { shouldCompact, compactContext, microCompactMessages } from "../agent/compact";
+import { shouldCompact, compactContext, microCompactMessages, estimateTotalTokens } from "../agent/compact";
 import { clearUserActions, drainUserActions } from "../tools/frontend-actions";
 import { runWithUserId } from "../request-context";
 
@@ -121,16 +121,18 @@ export function createChatRoutes(
       // Load past messages into agent context
       let history = loadMessages(userId);
 
-      // Auto-compact if history is too large
+      // Auto-compact if history is too large (token-based)
       if (history.length > 0 && shouldCompact(history)) {
+        const totalTokens = estimateTotalTokens(history);
         console.log(
-          `    [COMPACT] History too large (${history.length} msgs), auto-compacting...`,
+          `    [COMPACT] History too large (~${Math.round(totalTokens / 1000)}k tokens, ${history.length} msgs), auto-compacting...`,
         );
         try {
           const compactLLM = new LLMClient();
           history = await compactContext(history, compactLLM);
           saveMessages(userId, history);
-          console.log(`    [COMPACT] Compressed to ${history.length} msgs`);
+          const afterTokens = estimateTotalTokens(history);
+          console.log(`    [COMPACT] Compressed to ~${Math.round(afterTokens / 1000)}k tokens (${history.length} msgs)`);
         } catch (e) {
           // Fallback: compact without LLM
           history = await compactContext(history);

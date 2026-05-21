@@ -14,11 +14,21 @@ import { LLMClient, LLMMessage } from "./llm";
 // Thresholds
 // ============================================================================
 
-/** If history has more messages than this, trigger compact */
-const COMPACT_THRESHOLD = 20;
+/**
+ * Token estimation factors.
+ * For Chinese-heavy text (stock screener), ~1.5 chars per token.
+ * For English text, ~4 chars per token.
+ * Conservative default: 2 chars per token (works for mixed CJK/EN).
+ */
+const CHARS_PER_TOKEN = 2;
+const CHINESE_CHARS_PER_TOKEN = 1.5;
+const ASCII_CHARS_PER_TOKEN = 4;
 
-/** Keep this many most-recent messages intact after compact */
-const COMPACT_KEEP_RECENT = 10;
+/** If total estimated tokens exceed this, trigger compact (100k = ~10w tokens) */
+const COMPACT_TOKEN_THRESHOLD = 100_000;
+
+/** Keep this many tokens worth of most-recent messages intact after compact */
+const COMPACT_KEEP_RECENT_TOKENS = 20_000;
 
 /** Max chars for the LLM summarizer input */
 const SUMMARY_INPUT_MAX_CHARS = 20_000;
@@ -68,11 +78,69 @@ export interface ChatMessage {
   reasoning_content?: string;
 }
 
+// ============================================================================
+// Token Estimation
+// ============================================================================
+
 /**
- * Check if history needs compaction.
+ * Estimate token count for a string.
+ * Uses heuristic: count CJK chars (Chinese, Japanese, Korean) vs ASCII chars.
+ * - CJK chars: ~1.5 chars per token
+ * - ASCII chars: ~4 chars per token
+ * - Fallback: 2 chars per token
+ *
+ * This is a rough estimate (not as accurate as tiktoken), but good enough
+ * for triggering compaction decisions.
+ */
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+
+  let cjkChars = 0;
+  let asciiChars = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if ((code >= 0x4E00 && code <= 0x9FFF) ||   // CJK Unified
+        (code >= 0x3040 && code <= 0x30FF) ||   // Hiragana + Katakana
+        (code >= 0xAC00 && code <= 0xD7AF)) {   // Hangul
+      cjkChars++;
+    } else if (code < 0x80) {
+      asciiChars++;
+    }
+  }
+
+  const cjkTokens = cjkChars / CHINESE_CHARS_PER_TOKEN;
+  const asciiTokens = asciiChars / ASCII_CHARS_PER_TOKEN;
+  const otherChars = text.length - cjkChars - asciiChars;
+  const otherTokens = otherChars / CHARS_PER_TOKEN;
+
+  return Math.ceil(cjkTokens + asciiTokens + otherTokens);
+}
+
+/**
+ * Estimate total tokens across a list of messages.
+ */
+export function estimateTotalTokens(messages: ChatMessage[]): number {
+  let total = 0;
+  for (const msg of messages) {
+    total += estimateTokens(msg.content);
+    if (msg.reasoning_content) {
+      total += estimateTokens(msg.reasoning_content);
+    }
+  }
+  return total;
+}
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+/**
+ * Check if history needs compaction — based on estimated token count.
  */
 export function shouldCompact(messages: ChatMessage[]): boolean {
-  return messages.length > COMPACT_THRESHOLD;
+  const totalTokens = estimateTotalTokens(messages);
+  return totalTokens > COMPACT_TOKEN_THRESHOLD;
 }
 
 /**
@@ -89,7 +157,18 @@ export async function compactContext(
 ): Promise<ChatMessage[]> {
   if (!shouldCompact(messages)) return messages;
 
-  const splitIdx = Math.max(0, messages.length - COMPACT_KEEP_RECENT);
+  // Find split point by token count: accumulate from newest until we have
+  // enough recent tokens to keep
+  let recentTokens = 0;
+  let splitIdx = messages.length;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    recentTokens += estimateTokens(messages[i].content);
+    if (recentTokens >= COMPACT_KEEP_RECENT_TOKENS) {
+      splitIdx = i;
+      break;
+    }
+  }
+
   const oldMessages = messages.slice(0, splitIdx);
   const recentMessages = messages.slice(splitIdx);
 
@@ -157,8 +236,9 @@ export function microCompactMessages(
   }
 
   if (freed > 0) {
+    const freedTokens = estimateTokens('X'.repeat(freed));
     console.log(
-      `    [MICRO-COMPACT] Freed ~${Math.round(freed / 4)} tokens by compressing tool results`,
+      `    [MICRO-COMPACT] Freed ~${freedTokens} tokens (${freed} chars) by compressing tool results`,
     );
   }
 

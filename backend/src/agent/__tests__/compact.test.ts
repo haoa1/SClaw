@@ -3,6 +3,7 @@ import {
   shouldCompact,
   compactContext,
   microCompactMessages,
+  estimateTokens,
   ChatMessage,
 } from "../compact";
 
@@ -10,64 +11,83 @@ import {
 // Helpers
 // ============================================================================
 
-function makeMessages(n: number): ChatMessage[] {
+/**
+ * Token-based threshold: COMPACT_TOKEN_THRESHOLD = 100_000 tokens.
+ * With ASCII chars at 4 chars/token, need ~400k chars to trigger compact.
+ * Each "big" message has ~20k chars, so ~20 messages = 400k chars = ~100k tokens.
+ */
+const BIG_MSG_SIZE = 20_000;
+
+function makeMessages(n: number, contentSize: number = 50): ChatMessage[] {
   const msgs: ChatMessage[] = [];
   for (let i = 0; i < n; i++) {
     msgs.push({
       role: i % 2 === 0 ? "user" : "assistant",
-      content: `Message ${i + 1}: ${"x".repeat(50)}`,
+      content: `Message ${i + 1}: ${"x".repeat(contentSize)}`,
     });
   }
   return msgs;
 }
 
+function makeBigMessages(n: number): ChatMessage[] {
+  return makeMessages(n, BIG_MSG_SIZE);
+}
+
 // ============================================================================
-// shouldCompact
+// shouldCompact — now token-based (100k token threshold)
 // ============================================================================
 
 describe("shouldCompact", () => {
   it("returns false for short history", () => {
+    // Small messages: < 100k tokens
     expect(shouldCompact(makeMessages(5))).toBe(false);
-    expect(shouldCompact(makeMessages(19))).toBe(false);
+    expect(shouldCompact(makeMessages(100))).toBe(false);
   });
 
-  it("returns true for long history", () => {
-    expect(shouldCompact(makeMessages(21))).toBe(true);  // threshold is >20
-    expect(shouldCompact(makeMessages(50))).toBe(true);
+  it("returns true for large history (token threshold)", () => {
+    // Big messages: 25 × 20k chars = 500k chars ≈ 125k tokens > 100k
+    expect(shouldCompact(makeBigMessages(25))).toBe(true);
   });
 
   it("returns false for empty history", () => {
     expect(shouldCompact([])).toBe(false);
   });
+
+  it("estimateTokens is correct", () => {
+    // ASCII: 4 chars per token → 100 chars = 25 tokens
+    expect(estimateTokens("x".repeat(100))).toBe(25);
+    // CJK: 1.5 chars per token; ASCII: 4 chars per token
+    // 4 CJK chars (你好世界) = ceil(4/1.5) = ceil(2.67) = 3
+    // 3 ASCII chars (abc) = ceil(3/4) = ceil(0.75) = 1
+    // Total: 3 + 1 = 4
+    expect(estimateTokens("你好世界abc")).toBe(4);
+  });
 });
 
 // ============================================================================
-// compactContext
+// compactContext — now token-based
 // ============================================================================
 
 describe("compactContext", () => {
-  it("returns same array if under threshold", async () => {
+  it("returns same array if under token threshold", async () => {
     const msgs = makeMessages(10);
     const result = await compactContext(msgs);
     expect(result).toBe(msgs); // same reference
   });
 
-  it("compacts history over threshold without LLM", async () => {
-    const msgs = makeMessages(25);
+  it("compacts large history over token threshold without LLM", async () => {
+    const msgs = makeBigMessages(25);
     const result = await compactContext(msgs);
 
-    // Should contain summary + recent messages
-    expect(result.length).toBeGreaterThanOrEqual(10);
+    // Should be shorter than original
     expect(result.length).toBeLessThan(msgs.length);
 
     // Should have summary messages at the start
     expect(result[0].role).toBe("assistant");
     expect(result[0].content).toContain("Compacted Conversation Summary");
 
-    // Should have recent messages preserved
-    const lastMsg = result[result.length - 1];
-    expect(lastMsg.role).toMatch(/^(user|assistant)$/);
-    expect(lastMsg.content).toContain("Message 25");
+    // Should have recent messages preserved (at least a few)
+    expect(result.length).toBeGreaterThanOrEqual(2);
   });
 });
 

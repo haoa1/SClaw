@@ -54,6 +54,9 @@ import { registerOptimizeTools } from "./tools/strategy-optimize";
 import { registerFrontendTools } from "./tools/frontend-actions";
 import { registerMemoryTools } from "./tools/memory-recall";
 import { registerScheduleTools } from "./tools/schedule-tools";
+import { registerSandboxTools } from "./tools/sandbox";
+import { SkillManager } from "./skill-manager";
+import { registerSkillTools } from "./tools/skill-tools";
 
 // System prompt for AI agent
 const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven, opinionated.
@@ -80,6 +83,8 @@ const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven,
 - Schedule: manage_schedule — create/list/delete/toggle/run/result cron tasks
 - Memory: memory_recall — search past observations and results
 - Files: read_file | write_file | glob | grep (project directory only)
+- Scripts: run_script — sandboxed Node.js script execution in ~/.sclaw/skills/<skill>/scripts/
+- Fund: run_script({ skill: "fund-tracker", script: "fund_api.js", args: [...] }) — search funds, get NAV, holdings, historical NAV
 
 ## Safety
 - Never give financial advice ("buy this", "sell that"). Present data, let user decide.
@@ -131,6 +136,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   registerOptimizeTools(toolRegistry);
   registerFrontendTools(toolRegistry);
   registerMemoryTools(toolRegistry);
+  registerSandboxTools(toolRegistry);
   registerScheduleTools(toolRegistry, scheduler, pluginManager, () => {
     // Lazy: get current userId from per-request context
     const { getCurrentUserId } = require("./request-context");
@@ -141,6 +147,13 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir);
   // Override system prompt
   agentManager.systemPrompt = SYSTEM_PROMPT;
+
+  // ===== Initialize skill system =====
+  const skillManager = new SkillManager();
+  registerSkillTools(toolRegistry, skillManager, agentManager, () => {
+    const { getCurrentUserId } = require("./request-context");
+    return getCurrentUserId();
+  });
 
   // Wire scheduler to push notifications to agent manager
   scheduler.pushNotification = (userId, notification) => {

@@ -53,12 +53,10 @@ describe("Agent — system prompt injection", () => {
       { systemPrompt: testPrompt }
     );
 
-    // Reset clears messages but system prompt should be re-injected
+    // Reset clears messages and re-injects the system prompt
     agent.reset();
-    // After reset, messages should be empty again...
-    // Actually reset() clears this.messages = [] and doesn't re-inject
-    // This is by design — the agent is reset for new use
-    expect(agent.getMessageCount()).toBe(0);
+    // After reset, system message should be preserved so agent is ready
+    expect(agent.getMessageCount()).toBe(1);
   });
 
   it("loadHistory preserves system prompt position", () => {

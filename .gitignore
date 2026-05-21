@@ -41,5 +41,6 @@ test-results/
 playwright-report/
 backend/data/
 
-# --- Garuda workspace (local only) ---
+# --- Workspace / Runtime data (local only) ---
 .garuda/
+.sclaw/
