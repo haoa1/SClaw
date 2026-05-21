@@ -1,12 +1,16 @@
 import { LLMClient, LLMMessage, ToolCall } from "./llm";
 import { ToolRegistry } from "../tools/registry";
 import { Memory } from "../memory/memory";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 export interface AgentConfig {
   systemPrompt?: string;
   model?: string;
   maxTurns?: number;
   verbose?: boolean;
+  soulPath?: string;
 }
 
 export class Agent {
@@ -36,9 +40,12 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       model: config.model ?? process.env["LLM_MODEL"] ?? "",
       maxTurns: config.maxTurns ?? 1000,
       verbose: config.verbose ?? false,
+      soulPath: config.soulPath ?? path.join(os.homedir(), '.sclaw', 'workspace', 'SOUL.md'),
     };
     // Inject system prompt as first message so the LLM actually receives it
     this.messages.push({ role: "system", content: this.config.systemPrompt });
+    // Load SOUL.md personality on top of system prompt
+    this.loadSoul();
   }
 
   async run(userInput: string, onToken?: (token: string) => void, onReasoning?: (token: string) => void, onToolCall?: (tc: {id: string; name: string; arguments: string}) => void, onTurnStart?: (turn: number) => void, onToolResult?: (name: string, content: string) => void): Promise<{
@@ -137,6 +144,9 @@ Use tools when you need to perform actions. Be concise and helpful.`,
         };
       }
 
+      // Reload SOUL.md after each turn (user may have edited it)
+      this.loadSoul();
+
       // Execute each tool call, push results with proper role: "tool"
       for (const tc of llmResponse.tool_calls) {
         totalToolCalls++;
@@ -159,6 +169,21 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       inputTokens: this.totalInputTokens,
       outputTokens: this.totalOutputTokens,
     };
+  }
+
+  /** Reload SOUL.md from disk - replaces system message[0] with freshest personality + instructions.
+   *  Called at startup and after each agent loop turn to pick up live edits. */
+  private loadSoul(): void {
+    try {
+      const soulContent = fs.readFileSync(this.config.soulPath, 'utf-8');
+      if (soulContent.trim() && this.messages.length > 0 && this.messages[0].role === 'system') {
+        this.messages[0].content = `${soulContent.trim()}\n\n---\n\n${this.config.systemPrompt}`;
+        if (this.config.verbose) console.log('  [SOUL] Loaded from ' + this.config.soulPath);
+      }
+    } catch {
+      // SOUL.md not found or unreadable - fall through gracefully
+      if (this.config.verbose) console.log('  [SOUL] No SOUL.md at ' + this.config.soulPath + ', using systemPrompt only');
+    }
   }
 
   private async executeTool(tc: ToolCall): Promise<string> {
