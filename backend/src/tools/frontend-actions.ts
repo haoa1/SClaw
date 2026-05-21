@@ -1,29 +1,44 @@
 /**
  * Frontend Action Tools — allows AI to control the SClaw UI.
  * 
+ * Per-user action queue: each user's AI actions are stored separately,
+ * preventing cross-user contamination when multiple users chat simultaneously.
+ *
  * Tools:
  *   run_screen(strategies) — execute screening AND push results to frontend
  *     Automatically switches to results tab and highlights on completion.
- *
- * IMPORTANT: run_screen is the SINGLE tool for executing screening.
- * Strategy format: [{"id":"volume-surge","params":{"minChange":5}}]
- * OR simplified: {"id":"volume-surge","params":{}} for single strategy
- *
- * When you need to validate a single strategy, pass just one item in the array,
- * e.g. [{"id":"low-pe","params":{"maxPe":10}}] — run_screen handles it.
  */
 
 import { ToolRegistry, Tool } from "./registry";
+import { getCurrentUserId } from "../request-context";
 
-// Shared action queue — the SSE writer reads from this after agent.run()
-export const frontendActions: Array<{
-  type: string;
-  payload: any;
-}> = [];
+// ===== Per-user action queue =====
+// Map<userId, Array<action>> — each user gets their own isolated queue.
+const _userActions = new Map<string, Array<{ type: string; payload: any }>>();
 
-export function clearActions(): void {
-  frontendActions.length = 0;
+export function clearUserActions(userId: string): void {
+  _userActions.set(userId, []);
 }
+
+export function pushUserAction(userId: string, type: string, payload: any): void {
+  let actions = _userActions.get(userId);
+  if (!actions) {
+    actions = [];
+    _userActions.set(userId, actions);
+  }
+  actions.push({ type, payload });
+}
+
+/** Drain and return all pending actions for a user. Resets the queue. */
+export function drainUserActions(userId: string): Array<{ type: string; payload: any }> {
+  const actions = _userActions.get(userId) || [];
+  _userActions.delete(userId);
+  return actions;
+}
+
+/** Legacy global aliases — keep for backward compat, but deprecated. */
+export const frontendActions: Array<{ type: string; payload: any }> = [];
+export function clearActions(): void { frontendActions.length = 0; }
 
 export function registerFrontendTools(registry: ToolRegistry): void {
   registry.register(new Tool(
@@ -70,8 +85,9 @@ Never use list_strategies tools for execution — only for discovering strategy 
       
       if (normalized.length === 0) {
         // Push without specific strategies (use frontend current selection)
-        frontendActions.push({ type: "run_screen", payload: { strategies: normalized } });
-        return `✅ 选股已触发（使用前端当前选择的策略），结果将显示在界面上。`;
+        const userId = getCurrentUserId();
+        if (userId) pushUserAction(userId, "run_screen", { strategies: normalized });
+        return `Screen triggered (using frontend's current strategy selection), results will display on the interface.`;
       }
 
       // Call the screen API to get data for AI analysis + frontend display
@@ -101,11 +117,15 @@ Never use list_strategies tools for execution — only for discovering strategy 
         const stats = screenData.stats || {};
         const results = screenData.results || [];
 
-        // Push to frontend action queue WITH results data (for popup modal)
-        frontendActions.push({
-          type: "run_screen",
-          payload: { strategies: normalized, results, stats },
-        });
+        // Push to per-user frontend action queue
+        const userId = getCurrentUserId();
+        if (userId) {
+          pushUserAction(userId, "run_screen", {
+            strategies: normalized,
+            results,
+            stats,
+          });
+        }
 
         const totalStocks = stats.totalStocks || 0;
         const matchedStocks = stats.matchedStocks || 0;
@@ -113,24 +133,24 @@ Never use list_strategies tools for execution — only for discovering strategy 
         const top = results.slice(0, 20);
         
         const lines = [
-          `✅ 选股已执行！结果已推送到前端界面。`,
-          `运行 ${normalized.length} 个策略: ${strategyLabels}`,
-          `扫描 ${totalStocks} 只股票，命中 ${matchedStocks} 只`,
+          `Screen executed! Results pushed to frontend.`,
+          `Ran ${normalized.length} strategies: ${strategyLabels}`,
+          `Scanned ${totalStocks} stocks, matched ${matchedStocks}`,
           ``,
-          `Top 20 结果：`,
-          `  排名  代码      名称        评分  信号`,
-          `  ────  ────────  ──────────  ────  ──────────────────────────────`,
+          `Top 20 results:`,
+          `  Rank  Code      Name        Score  Signals`,
+          `  ----  --------  ----------  -----  ------------------------------`,
           ...top.map((r: any, i: number) =>
             `  ${(i+1).toString().padEnd(4)} ${(r.code||"").padEnd(8)} ${(r.name||"").padEnd(10)} ${(r.score||0).toString().padEnd(4)} ${(r.signals||[]).join("; ").slice(0, 30)}`
           ),
         ];
-        if (results.length > 20) lines.push(`  ... 还有 ${results.length - 20} 只未显示`);
+        if (results.length > 20) lines.push(`  ... ${results.length - 20} more not shown`);
         lines.push(``);
-        lines.push(`💡 结果已显示在前端「选股结果」Tab 中！切换到浏览器查看详细表格。`);
+        lines.push(`Results are displayed in the frontend "Results" tab — switch to your browser to see the detailed table.`);
         
         return lines.join("\n");
       } catch (e: unknown) {
-        return `✅ 已推送 ${normalized.length} 个策略到前端。计算详情出错: ${e instanceof Error ? e.message : String(e)}`;
+        return `Pushed ${normalized.length} strategies to frontend. Calculation detail: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   ));

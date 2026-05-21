@@ -13,8 +13,8 @@ import { validateSession } from "../auth";
 import { PerUserAgentManager } from "../agent/manager";
 import { LLMClient } from "../agent/llm";
 import { shouldCompact, compactContext, microCompactMessages } from "../agent/compact";
-import { clearActions, frontendActions } from "../tools/frontend-actions";
-import { setCurrentUserId } from "../request-context";
+import { clearUserActions, drainUserActions } from "../tools/frontend-actions";
+import { runWithUserId } from "../request-context";
 
 const CHAT_DATA_DIR = path.resolve(process.cwd(), "data", "chat");
 
@@ -152,11 +152,8 @@ export function createChatRoutes(
         agent.loadHistory(history);
       }
 
-      // Clear frontend action queue before run
-      clearActions();
-
-      // Set current user for tools that need userId (e.g. schedule tools)
-      setCurrentUserId(userId);
+      // Clear per-user frontend action queue before run
+      clearUserActions(userId);
 
       // Check for pending notifications — drain and inject as user messages
       const notifications = agentManager.drainNotifications(userId);
@@ -187,34 +184,38 @@ export function createChatRoutes(
         actualMessage = `[系统通知]\n${notifText}\n\n---\n\n用户消息: ${message}`;
       }
 
-      // Run agent with streaming
-      const result = await agent.run(
-        actualMessage,
-        // onToken
-        (token: string) => {
-          res.write(`data: ${JSON.stringify({ type: "token", content: token })}\n\n`);
-        },
-        // onReasoning
-        (token: string) => {
-          res.write(`data: ${JSON.stringify({ type: "reasoning", content: token })}\n\n`);
-        },
-        // onToolCall
-        (tc: { id: string; name: string; arguments: string }) => {
-          const safeArgs = typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments);
-          try { res.write(`data: ${JSON.stringify({ type: "tool_call", id: String(tc.id || ''), name: String(tc.name || ''), arguments: safeArgs })}\n\n`); } catch(e) {}
-        },
-        // onTurnStart
-        (turn: number) => {
-          res.write(`data: ${JSON.stringify({ type: "turn", turn })}\n\n`);
-        },
-        // onToolResult
-        (name: string, content: string) => {
-          try { res.write(`data: ${JSON.stringify({ type: "tool_result", name, content })}\n\n`); } catch(e) {}
-        },
-      );
+      // Run agent with streaming — inside per-user AsyncLocalStorage context
+      // This ensures tools (run_screen, schedule, etc.) can read getCurrentUserId()
+      const result = await runWithUserId(userId, async () => {
+        return await agent.run(
+          actualMessage,
+          // onToken
+          (token: string) => {
+            res.write(`data: ${JSON.stringify({ type: "token", content: token })}\n\n`);
+          },
+          // onReasoning
+          (token: string) => {
+            res.write(`data: ${JSON.stringify({ type: "reasoning", content: token })}\n\n`);
+          },
+          // onToolCall
+          (tc: { id: string; name: string; arguments: string }) => {
+            const safeArgs = typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments);
+            try { res.write(`data: ${JSON.stringify({ type: "tool_call", id: String(tc.id || ''), name: String(tc.name || ''), arguments: safeArgs })}\n\n`); } catch(e) {}
+          },
+          // onTurnStart
+          (turn: number) => {
+            res.write(`data: ${JSON.stringify({ type: "turn", turn })}\n\n`);
+          },
+          // onToolResult
+          (name: string, content: string) => {
+            try { res.write(`data: ${JSON.stringify({ type: "tool_result", name, content })}\n\n`); } catch(e) {}
+          },
+        );
+      });
 
-      // Send frontend actions (run_screen results) after agent run completes
-      for (const action of frontendActions) {
+      // Send frontend actions (run_screen results) for THIS user only
+      const userActions = drainUserActions(userId);
+      for (const action of userActions) {
         res.write(`data: ${JSON.stringify({ type: "action", action: action.type, payload: action.payload })}\n\n`);
       }
 
