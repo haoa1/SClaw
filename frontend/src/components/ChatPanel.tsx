@@ -192,6 +192,15 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     })
   }
 
+  /** Clear all chat history (server + localStorage) */
+  const handleClear = async () => {
+    try {
+      await authFetch('/api/clear', { method: 'POST' })
+    } catch { /* ignore */ }
+    localStorage.removeItem(STORAGE_KEY)
+    setMessages([{ role: 'assistant', segments: [{ type: 'content', data: 'Connected, enter command to start analysis' }] }])
+  }
+
   const send = async (overrideText?: string) => {
     const text = (overrideText !== undefined ? overrideText : input).trim()
     if (!text || streaming) return
@@ -609,6 +618,14 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             disabled={streaming}
             className="flex-1 bg-transparent text-gray-200 border-0 px-0 py-2 text-sm font-mono resize-none outline-none disabled:opacity-50 min-h-[36px] max-h-[100px]"
           />
+          <button
+            onClick={handleClear}
+            disabled={streaming}
+            title="Clear chat history"
+            className="text-gray-600 hover:text-red-400 disabled:opacity-30 text-xs font-mono px-2 py-1 border border-gray-800 rounded hover:border-red-900 transition-colors cursor-pointer flex-shrink-0"
+          >
+            ✕ Clear
+          </button>
         </div>
       </div>
     </div>
