@@ -284,7 +284,6 @@ export const grepTool = new Tool(
 export function registerFileTools(registry: ToolRegistry): void {
   registry.register(readFileTool);
   registry.register(writeFileTool);
-  registry.register(bashTool);
   registry.register(globTool);
   registry.register(grepTool);
 }
