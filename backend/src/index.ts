@@ -287,12 +287,26 @@ Keep it concise — 3-5 sentences.`;
 
   // ===== Static file serving for frontend =====
   const frontendDist = path.resolve(__dirname, "..", "..", "frontend", "dist");
-  app.use(express.static(frontendDist));
+  // Cache JS/CSS bundles aggressively (hashed filenames), but NOT index.html
+  app.use(express.static(frontendDist, {
+    maxAge: "7d",
+    setHeaders: (res, filePath) => {
+      // index.html must NEVER be cached — otherwise browser loads old bundle after deploy
+      if (filePath.endsWith("index.html")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    },
+  }));
   // SPA fallback: serve index.html for any non-API route
   app.get("*", (req, res) => {
     if (req.path.startsWith("/api/")) {
       res.status(404).json({ error: "Not Found" });
     } else {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(path.join(frontendDist, "index.html"));
     }
   });
