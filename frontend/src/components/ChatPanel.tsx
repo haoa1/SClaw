@@ -43,7 +43,9 @@ function authFetch(url: string, options?: RequestInit): Promise<Response> {
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  return fetch(url, { ...options, headers: { ...headers, ...((options?.headers as Record<string, string>) || {}) } })
+  // cache: 'no-cache' forces Chrome to always go to the network — no disk cache, no memory cache
+  // Combined with Cache-Control headers on the server, this is bulletproof
+  return fetch(url, { ...options, cache: 'no-cache', headers: { ...headers, ...((options?.headers as Record<string, string>) || {}) } })
 }
 
 /** Convert old flat message format to new segments format */
@@ -148,11 +150,9 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         setMessages(serverMessages)
         saveMessages(serverMessages)
       } else {
-        // Server empty — clear localStorage and start fresh
-        // IMPORTANT: old localStorage data must NOT be shown, otherwise
-        // even after server data is deleted, browser still displays old chats
+        // Server empty — clear localStorage and show welcome screen
         localStorage.removeItem(STORAGE_KEY)
-        // Show default welcome message (no old history)
+        setMessages(serverMessages)  // show "Connected, enter command..."
       }
       setLoaded(true)
     })
