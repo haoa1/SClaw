@@ -83,6 +83,7 @@ const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven,
 - Schedule: manage_schedule — create/list/delete/toggle/run/result cron tasks
 - Memory: memory_recall — search past observations and results
 - Files: read_file | write_file | glob | grep (project directory only)
+- Skills: list_skills | load_skill | unload_skill — load/unload Markdown skill files from ~/.sclaw/skills/<name>/
 - Scripts: run_script — sandboxed Node.js script execution in ~/.sclaw/skills/<skill>/scripts/
 - Fund: run_script({ skill: "fund-tracker", script: "fund_api.js", args: [...] }) — search funds, get NAV, holdings, historical NAV
 
