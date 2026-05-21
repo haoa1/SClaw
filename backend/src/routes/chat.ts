@@ -249,6 +249,10 @@ export function createChatRoutes(
       res.status(401).json({ error: "Not logged in" });
       return;
     }
+    // Prevent browser caching — otherwise Ctrl+R returns stale data even after /api/clear deletes it
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     const messages = loadMessages(userId);
     res.json({ messages });
   });

@@ -73,7 +73,8 @@ function convertToSegments(msg: any): Message {
 
 async function loadMessagesFromServer(): Promise<Message[]> {
   try {
-    const res = await authFetch('/api/messages')
+    // Cache-busting: _t param ensures Ctrl+R always hits the server, not browser cache
+    const res = await authFetch('/api/messages?_t=' + Date.now())
     if (res.ok) {
       const data = await res.json()
       if (Array.isArray(data.messages) && data.messages.length > 0)
