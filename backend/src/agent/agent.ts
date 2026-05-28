@@ -1,6 +1,7 @@
 import { LLMClient, LLMMessage, ToolCall } from "./llm";
 import { ToolRegistry } from "../tools/registry";
 import { Memory } from "../memory/memory";
+import { compactContext, estimateTotalTokens } from "./compact";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -60,22 +61,22 @@ Use tools when you need to perform actions. Be concise and helpful.`,
     let turnCount = 0;
     let totalToolCalls = 0;
 
-    // Safety: max messages in context to prevent unbounded growth
-    const MAX_CONTEXT_MESSAGES = 100;
+    // Safety: max messages before forced compact to prevent unbounded growth
+    const MAX_MESSAGES_BEFORE_COMPACT = 1000;
 
     while (turnCount < this.config.maxTurns) {
       turnCount++;
 
-      // Stop early if context is too large (prevents token-limit blowups)
-      if (this.messages.length > MAX_CONTEXT_MESSAGES) {
-        const warning = `Context limit reached (${this.messages.length} messages). Please start a new conversation.`;
-        console.log(`  [AGENT] ${warning}`);
-        return {
-          response: warning,
-          toolCalls: totalToolCalls,
-          inputTokens: this.totalInputTokens,
-          outputTokens: this.totalOutputTokens,
-        };
+      // Auto-compact when context is too large instead of aborting
+      if (this.messages.length > MAX_MESSAGES_BEFORE_COMPACT) {
+        console.log(`  [AGENT] Messages exceeded ${MAX_MESSAGES_BEFORE_COMPACT} (${this.messages.length}), triggering compact...`);
+        const totalTokens = estimateTotalTokens(this.messages);
+        if (totalTokens > 100_000 || this.messages.length > MAX_MESSAGES_BEFORE_COMPACT) {
+          this.messages = await compactContext(this.messages, this.llm);
+          console.log(`  [AGENT] Compact completed: ${this.messages.length} messages remaining`);
+          // Re-inject system message after compact (compact doesn't preserve it)
+          this.rebuildSystemMessage();
+        }
       }
 
       if (onTurnStart) onTurnStart(turnCount);
