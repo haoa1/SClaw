@@ -57,6 +57,7 @@ import { registerScheduleTools } from "./tools/schedule-tools";
 import { registerSandboxTools } from "./tools/sandbox";
 import { SkillManager } from "./skill-manager";
 import { registerSkillTools } from "./tools/skill-tools";
+import { registerEmailTools } from "./tools/email-tools";
 
 // System prompt for AI agent
 const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven, opinionated.
@@ -143,6 +144,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     const { getCurrentUserId } = require("./request-context");
     return getCurrentUserId();
   });
+  registerEmailTools(toolRegistry);
 
   // ===== Initialize agent manager =====
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir);
