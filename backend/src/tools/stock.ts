@@ -7,9 +7,11 @@
 
 import { Tool, ToolParamDef, ToolRegistry } from "./registry";
 import { getStocks } from "./stock-info";
+import { TushareHistoricalDataFetcher } from "../data/tushare-historical";
 import { HistoricalDataFetcher } from "../data/eastmoney-historical";
 
-const fetcher = new HistoricalDataFetcher();
+const tushareFetcher = new TushareHistoricalDataFetcher();
+const eastMoneyFetcher = new HistoricalDataFetcher();
 
 // ===== Historical K-line fetch (moved from historical-data.ts) =====
 
@@ -32,7 +34,12 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
   const format = (args.format as string || 'table').toLowerCase();
 
   try {
-    const data = await fetcher.fetchDailyKLine(code, market, days);
+    // Try Tushare first, fallback to East Money
+    let data = await tushareFetcher.fetchDailyKLine(code, market, days);
+    if (!data || data.length === 0) {
+      console.log(`[StockTool] Tushare empty for ${code}, trying East Money fallback...`);
+      data = await eastMoneyFetcher.fetchDailyKLine(code, market, days);
+    }
     if (!data || data.length === 0) return `ℹ️ No historical data found for ${code} (${market})`;
 
     if (format === 'json') return JSON.stringify({ code, market, days: data.length, data });
