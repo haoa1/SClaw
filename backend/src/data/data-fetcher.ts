@@ -8,7 +8,7 @@ const SINA_API = {
 
 // 腾讯行情 API — 用于补充新浪不提供的字段（如量比）
 // 格式: qt.gtimg.cn/q=sh600000,sz000001,... → v_CODE="field1~field2~...~fieldN";
-// 量比在 field index 51（0-based）
+// 量比在 field index 49（0-based）；field 51 = 均价（已确认）
 const TENCENT_QUOTE_API = "http://qt.gtimg.cn/q";
 
 // 持久化缓存路径
@@ -138,7 +138,7 @@ export class DataFetcher {
   /**
    * Supplement stock data with Tencent quote API for fields Sina doesn't provide (volumeRatio).
    * Tencent API: http://qt.gtimg.cn/q=sh600000,sz000001,... (batch query)
-   * Response: v_CODE="f1~f2~...~fN";  volumeRatio at field index 51 (0-based)
+   * Response: v_CODE="f1~f2~...~fN";  volumeRatio at field index 49
    */
   private async supplementTencentFields(stocks: StockData[]): Promise<void> {
     const CHUNK_SIZE = 200; // Tencent batch limit ~200 per request
@@ -174,7 +174,7 @@ export class DataFetcher {
           const code = fields[2]; // field index 2 = stock code
           const stock = codeIndex.get(code);
           if (!stock) continue;
-          const volRatio = parseFloat(fields[51]); // volumeRatio at index 51
+          const volRatio = parseFloat(fields[49]); // volumeRatio at index 49 (confirmed)
           if (!isNaN(volRatio) && volRatio > 0) {
             (stock as any).volumeRatio = volRatio;
           }
