@@ -153,6 +153,8 @@ run is the MAIN screening tool — use it when user asks to run screening.
 list is for DISCOVERY — find strategy IDs before running.
 multi is for CROSS-VALIDATION — run several strategies at once.
 
+Screen result fields: code, name, score, changePercent(涨跌幅%), volumeRatio(量比), turnoverRate(换手率%), signals, and strategy-specific metrics.
+
 Examples:
   screen(sub_cmd="list")
   screen(sub_cmd="list", category="short-term")

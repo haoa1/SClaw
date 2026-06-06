@@ -11,9 +11,20 @@ const plugin: StockScreenerPlugin = {
       name: '六维精选',
       description: '六维精选',
       category: 'special',
-      params: [],
+      params: [
+        {
+          key: "minVolumeRatio",
+          label: "最低量比",
+          type: "number",
+          default: 1,
+          min: 0.5,
+          max: 5,
+          step: 0.1,
+        },
+      ],
       execute(data: StockData[], params: Record<string, any>): FilterResult[] {
         const results: FilterResult[] = [];
+        const minVolRatio = (params.minVolumeRatio as number) ?? 1;
         for (const item of data) {
           // 条件1: 当日涨幅3%~5%
           const chg = item.changePercent ?? item.pctChg ?? 0;
@@ -23,9 +34,9 @@ const plugin: StockScreenerPlugin = {
           // 依赖历史数据字段检查，如果没有历史数据字段则宽松处理
           const hasLimitUp = item.limitUpIn20Days === true;
 
-          // 条件3: 量比 > 1 (f37)
+          // 条件3: 量比 > minVolumeRatio (默认1.0, 数据源: 腾讯行情API)
           const volRatio = item.volumeRatio ?? 0;
-          if (!volRatio || volRatio <= 1) continue;
+          if (!volRatio || volRatio <= minVolRatio) continue;
 
           // 条件4: 换手率 5%~10%
           const tr = item.turnoverRate ?? item.turnover ?? 0;

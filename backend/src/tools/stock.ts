@@ -162,6 +162,8 @@ detail(code) → Get full detail for one stock
 overview → Market summary (up/down counts)
 history(code, days?, format?) → Fetch historical K-line data
 
+Returned stock fields: code, name, market(SH/SZ), price, open, high, low, close, changePercent(涨跌幅%), volume(成交量手), amount(成交额), turnoverRate(换手率%), pe, pb, marketCap(总市值元), circulatingMarketCap, volumeRatio(量比), priceAboveVwap(分时在均价线上)
+
 Examples:
   stock(sub_cmd="search", query="茅台")
   stock(sub_cmd="detail", code="600519")
