@@ -73,6 +73,25 @@ const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven,
 4. Analyze results → summarize findings, highlight outliers, give opinion
 5. Follow up → suggest refinements (parameter optimize, different strategy)
 
+## Stock Data Fields (available in every stock object returned by screen/stock tools)
+| Field | Description | Example |
+|-------|-------------|---------|
+| code | 股票代码 | "600519" |
+| name | 股票名称 | "贵州茅台" |
+| price | 当前价格 | 1272.86 |
+| changePercent | 涨跌幅 % | 0.64 |
+| volume | 成交量(手) | 31304 |
+| turnover | 成交额 | 3.98亿 |
+| turnoverRate | 换手率 % | 0.25 |
+| pe | 市盈率 | 19.24 |
+| pb | 市净率 | 5.94 |
+| marketCap | 总市值(元) | 15985亿 |
+| volumeRatio | **量比** (0.5缩量, 1.0正常, 1.5放量, 2.5异动) | 0.64 |
+| limitUpIn20Days | 20日内有涨停 (boolean) | true/false |
+| priceAboveVwap | 分时在均价线上 (boolean) | true/false |
+
+**量比 (volumeRatio)**: 当前每分钟平均成交量 ÷ 过去5日平均。量比<0.5极度缩量，0.5~1.0缩量，1.0~1.5放量，>2.5异动放量。数据源为腾讯行情API，已覆盖5196/5206只股票。
+
 ## Tool Categories (brief — full details in tool definitions)
 - Data: stock(sub_cmd=search|detail|overview|history) — unified stock data tool
 - Screen: screen(sub_cmd=run|list|multi) — unified screening tool (run preferred for execution)

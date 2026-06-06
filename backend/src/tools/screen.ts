@@ -74,11 +74,13 @@ const runScreenFn = async (args: Record<string, unknown>): Promise<string> => {
       `Scanned ${totalStocks} stocks, matched ${matchedStocks}`,
       ``,
       `Top 20 results:`,
-      `  Rank  Code      Name        Score  Signals`,
-      `  ----  --------  ----------  -----  ------------------------------`,
-      ...top.map((r: any, i: number) =>
-        `  ${(i + 1).toString().padEnd(4)} ${(r.code || "").padEnd(8)} ${(r.name || "").padEnd(10)} ${(r.score || 0).toString().padEnd(4)} ${(r.signals || []).join("; ").slice(0, 30)}`
-      ),
+      `  Rank  Code      Name        Score  Chg%   VolRatio  Signals`,
+      `  ----  --------  ----------  -----  -----  --------  ------------------------------`,
+      ...top.map((r: any, i: number) => {
+        const chgPct = r.changePercent != null ? (r.changePercent > 0 ? "+" : "") + r.changePercent.toFixed(1) : "N/A";
+        const volRatio = r.volumeRatio != null ? r.volumeRatio.toFixed(2) : "N/A";
+        return `  ${(i + 1).toString().padEnd(4)} ${(r.code || "").padEnd(8)} ${(r.name || "").padEnd(10)} ${(r.score || 0).toString().padEnd(4)} ${chgPct.padEnd(5)} ${volRatio.padEnd(8)} ${(r.signals || []).join("; ").slice(0, 20)}`;
+      }),
     ];
     if (results.length > 20) lines.push(`  ... ${results.length - 20} more not shown`);
     lines.push(``);
