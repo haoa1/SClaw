@@ -267,22 +267,25 @@ async function summarizeWithLLM(
     },
   ];
 
-  // Timeout-safe LLM call (matching Garuda's threading-based timeout)
-  const result = await Promise.race([
-    llmClient.chat(summaryRequest, []),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("Summary timeout")),
-        COMPACT_TIMEOUT * 1000,
-      ),
-    ),
-  ]);
+  // Timeout-safe LLM call using AbortController (no dangling HTTP requests)
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), COMPACT_TIMEOUT * 1000);
 
-  const summary = (result as any).content || "";
-  console.log(
-    `    [COMPACT] Summary generated (${summary.length} chars)`,
-  );
-  return summary;
+  try {
+    const result = await llmClient.chat(summaryRequest, [], undefined, abortController.signal);
+    const summary = result.content || "";
+    console.log(`    [COMPACT] Summary generated (${summary.length} chars)`);
+    return summary;
+  } catch (e: unknown) {
+    if ((e as any)?.name === "AbortError") {
+      console.log(`    [COMPACT] Summary timed out after ${COMPACT_TIMEOUT}s`);
+    } else {
+      console.log(`    [COMPACT] Summary failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    throw e; // Let caller handle fallback
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**

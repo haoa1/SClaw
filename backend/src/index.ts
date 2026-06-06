@@ -46,17 +46,15 @@ import { LLMClient } from "./agent/llm";
 
 // Register all tools
 import { registerFileTools } from "./tools/file-tools";
-import { registerStockTools } from "./tools/stock-info";
-import { registerStrategyTools } from "./tools/strategy-validator";
-import { registerRiskTools } from "./tools/risk-assessment";
-import { registerStrategyGeneratorTools } from "./tools/strategy-generator";
-import { registerOptimizeTools } from "./tools/strategy-optimize";
-import { registerFrontendTools } from "./tools/frontend-actions";
+import { registerStockTool } from "./tools/stock";
+import { registerScreenTool } from "./tools/screen";
+import { registerStrategyTool } from "./tools/strategy";
+import { registerRiskTool } from "./tools/risk";
 import { registerMemoryTools } from "./tools/memory-recall";
 import { registerScheduleTools } from "./tools/schedule-tools";
 import { registerSandboxTools } from "./tools/sandbox";
 import { SkillManager } from "./skill-manager";
-import { registerSkillTools } from "./tools/skill-tools";
+import { registerSkillTool } from "./tools/skill";
 import { registerEmailTools } from "./tools/email-tools";
 
 // System prompt for AI agent
@@ -70,21 +68,20 @@ const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven,
 
 ## Workflow
 1. User asks a vague question → ask clarifying questions (criteria, thresholds)
-2. User gives clear criteria → list_strategies() to find matching strategies
-3. Execute → run_screen(strategies) — this is your primary screening tool
+2. User gives clear criteria → screen(sub_cmd="list") to find matching strategies
+3. Execute → screen(sub_cmd="run", strategies=...) — this is your primary screening tool
 4. Analyze results → summarize findings, highlight outliers, give opinion
 5. Follow up → suggest refinements (parameter optimize, different strategy)
 
 ## Tool Categories (brief — full details in tool definitions)
-- Data: search_stocks | get_stock_detail | market_overview
-- Screen: list_strategies | run_multi_strategy | run_screen (preferred)
-- Optimize: optimize_strategy — grid search parameters
-- Risk: assess_portfolio_risk | assess_stock_risk
-- Strategy: generate_strategy | reload_plugins
+- Data: stock(sub_cmd=search|detail|overview|history) — unified stock data tool
+- Screen: screen(sub_cmd=run|list|multi) — unified screening tool (run preferred for execution)
+- Strategy: strategy(sub_cmd=generate|reload|optimize) — unified strategy management
+- Risk: risk(sub_cmd=portfolio|stock) — unified risk assessment
 - Schedule: manage_schedule — create/list/delete/toggle/run/result cron tasks
 - Memory: memory_recall — search past observations and results
 - Files: read_file | write_file | glob | grep (project directory only)
-- Skills: list_skills | load_skill | unload_skill — load/unload Markdown skill files from ~/.sclaw/skills/<name>/
+- Skills: skill(sub_cmd=list|load|unload) — unified skill management
 - Scripts: run_script — sandboxed Node.js script execution in ~/.sclaw/skills/<skill>/scripts/
 - Fund: run_script({ skill: "fund-tracker", script: "fund_api.js", args: [...] }) — search funds, get NAV, holdings, historical NAV
 
@@ -92,7 +89,7 @@ const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven,
 - Never give financial advice ("buy this", "sell that"). Present data, let user decide.
 - Never execute trades or pretend to.
 - When a tool fails, show the error, suggest what to try next.
-- run_screen is preferred for executing stock screening (it also pushes to frontend).`;
+- screen(sub_cmd="run") is preferred for executing stock screening (it also pushes to frontend).`;
 
 /**
  * Create and configure the Express app — no side effects, no listening.
@@ -131,12 +128,10 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   // ===== Initialize tool registry =====
   const toolRegistry = new ToolRegistry();
   registerFileTools(toolRegistry);
-  registerStockTools(toolRegistry);
-  registerStrategyTools(toolRegistry);
-  registerRiskTools(toolRegistry);
-  registerStrategyGeneratorTools(toolRegistry);
-  registerOptimizeTools(toolRegistry);
-  registerFrontendTools(toolRegistry);
+  registerStockTool(toolRegistry);
+  registerScreenTool(toolRegistry);
+  registerStrategyTool(toolRegistry);
+  registerRiskTool(toolRegistry);
   registerMemoryTools(toolRegistry);
   registerSandboxTools(toolRegistry);
   registerScheduleTools(toolRegistry, scheduler, pluginManager, () => {
@@ -153,7 +148,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
 
   // ===== Initialize skill system =====
   const skillManager = new SkillManager();
-  registerSkillTools(toolRegistry, skillManager, agentManager, () => {
+  registerSkillTool(toolRegistry, skillManager, agentManager, () => {
     const { getCurrentUserId } = require("./request-context");
     return getCurrentUserId();
   });

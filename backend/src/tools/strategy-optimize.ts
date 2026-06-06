@@ -3,7 +3,7 @@
  * Uses grid search over parameter ranges to find the best configuration.
  */
 
-import { Tool, ToolParamDef, ToolRegistry } from "./registry";
+import { Tool, ToolParamDef } from "./registry";
 import { getStocks } from "./stock-info";
 import * as path from "path";
 import * as fs from "fs";
@@ -336,9 +336,3 @@ export const optimizeStrategyTool = new Tool(
   optimizeParams,
   optimizeFn
 );
-
-// ===== Register =====
-
-export function registerOptimizeTools(registry: ToolRegistry): void {
-  registry.register(optimizeStrategyTool);
-}

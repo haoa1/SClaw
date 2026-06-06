@@ -577,18 +577,24 @@ describe("POST /api/chat — system prompt compliance", () => {
     expect(typeof lastEvent.content).toBe("string");
     expect(lastEvent.content.length).toBeGreaterThan(0);
 
-    // Check if the AI called list_strategies tool
+    // Check if the AI called screen tool (replaced list_strategies)
     const toolCalls = events.filter(e => e.type === "tool_call");
-    const calledListStrategies = toolCalls.some(tc =>
-      tc.name === "list_strategies"
-    );
+    const calledScreen = toolCalls.some(tc => {
+      if (tc.name !== "screen") return false;
+      try {
+        const args = typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments;
+        return args?.sub_cmd === "list";
+      } catch {
+        return false;
+      }
+    });
 
     // The AI might have the information already from context or
     // just responded without calling tools — either is acceptable
     if (toolCalls.length > 0) {
-      expect(calledListStrategies).toBe(true);
+      expect(calledScreen).toBe(true);
     }
 
-    console.log(`  [INFO] Tool calls: ${toolCalls.length}, listed strategies: ${calledListStrategies}`);
+    console.log(`  [INFO] Tool calls: ${toolCalls.length}, screen(list): ${calledScreen}`);
   }, 120_000);
 });

@@ -9,7 +9,7 @@
  *     Automatically switches to results tab and highlights on completion.
  */
 
-import { ToolRegistry, Tool } from "./registry";
+import { Tool } from "./registry";
 import { getCurrentUserId } from "../request-context";
 
 // ===== Per-user action queue =====
@@ -40,8 +40,7 @@ export function drainUserActions(userId: string): Array<{ type: string; payload:
 export const frontendActions: Array<{ type: string; payload: any }> = [];
 export function clearActions(): void { frontendActions.length = 0; }
 
-export function registerFrontendTools(registry: ToolRegistry): void {
-  registry.register(new Tool(
+export const runScreenTool = new Tool(
     "run_screen",
     `Execute stock screening, display results on the frontend, and auto-switch to results tab.
 
@@ -153,5 +152,4 @@ Never use list_strategies tools for execution — only for discovering strategy 
         return `Pushed ${normalized.length} strategies to frontend. Calculation detail: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
-  ));
-}
+  );

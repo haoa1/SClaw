@@ -284,7 +284,7 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
       try {
         let finalContent = "";
         for (let turn = 0; turn < maxTurns; turn++) {
-          const response = await this.llm.chat(subMessages, subAgentOpenAITools, "deepseek-chat");
+          const response = await this.llm.chat(subMessages, subAgentOpenAITools, "deepseek-v4-flash");
           const toolCalls = response.tool_calls;
 
           if (!toolCalls || toolCalls.length === 0) {

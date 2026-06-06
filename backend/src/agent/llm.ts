@@ -141,7 +141,8 @@ export class LLMClient {
   async chat(
     messages: LLMMessage[],
     tools: Record<string, unknown>[],
-    model?: string
+    model?: string,
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     const modelName = model || process.env["LLM_MODEL"] || this.getDefaultModel();
 
@@ -173,7 +174,8 @@ export class LLMClient {
       }
 
       const response = await this.client.chat.completions.create(
-        JSON.parse(JSON.stringify(body)) as any
+        JSON.parse(JSON.stringify(body)) as any,
+        signal ? { signal } : undefined
       );
 
       const choice = response.choices[0];

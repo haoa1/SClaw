@@ -3,7 +3,7 @@
  * Dynamically creates plugin files and hot-reloads them.
  */
 
-import { Tool, ToolParamDef, ToolRegistry } from "./registry";
+import { Tool, ToolParamDef } from "./registry";
 import { reloadPlugins } from "./strategy-validator";
 import * as path from "path";
 import * as fs from "fs";
@@ -337,9 +337,4 @@ export const reloadPluginsTool = new Tool(
   reloadPluginsFn
 );
 
-// ===== Register All =====
 
-export function registerStrategyGeneratorTools(registry: ToolRegistry): void {
-  registry.register(generateStrategyTool);
-  registry.register(reloadPluginsTool);
-}

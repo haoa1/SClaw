@@ -52,6 +52,9 @@ export class ToolRegistry {
   private tools = new Map<string, Tool>();
 
   register(tool: Tool): void {
+    if (this.tools.has(tool.name)) {
+      console.warn(`[TOOL] Overwriting existing tool: "${tool.name}" \u2014 ensure this is intentional`);
+    }
     this.tools.set(tool.name, tool);
   }
 

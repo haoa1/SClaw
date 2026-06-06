@@ -49,18 +49,27 @@ function runScript(
  */
 function resolveScriptPath(skillName: string, scriptName: string): { ok: true; fullPath: string } | { ok: false; error: string } {
   // Prevent path traversal in both params
-  const cleanedSkill = path.normalize(skillName).replace(/^(\.\.(\/|\\|$))+/, "");
-  const cleanedScript = path.normalize(scriptName).replace(/^(\.\.(\/|\\|$))+/, "");
-  if (cleanedSkill.includes("..") || cleanedScript.includes("..")) {
-    return { ok: false, error: "Path traversal detected: skill/script name must not contain '..'" };
+  if (skillName.includes("..") || scriptName.includes("..") || skillName.includes("~") || scriptName.includes("~")) {
+    return { ok: false, error: "Path traversal detected: skill/script name must not contain '..' or '~'" };
   }
 
-  const scriptsDir = path.resolve(SKILLS_DIR, cleanedSkill, "scripts");
-  const fullPath = path.resolve(scriptsDir, cleanedScript);
+  // Validate script name: must end with .js
+  if (!/\.js$/i.test(scriptName)) {
+    return { ok: false, error: "Script name must end with .js: " + scriptName };
+  }
 
-  // Must be within the skill's scripts directory
-  if (!fullPath.startsWith(scriptsDir + path.sep)) {
-    return { ok: false, error: "Script must be inside ~/.sclaw/skills/" + cleanedSkill + "/scripts/" };
+  // Validate skill and script names: only allow safe characters
+  if (!/^[\w\-.\\/]+$/.test(skillName) || !/^[\w\-.\\/]+$/.test(scriptName)) {
+    return { ok: false, error: "Invalid characters in skill or script name (only alphanumeric, hyphens, underscores, dots, slashes)" };
+  }
+
+  const scriptsDir = path.resolve(SKILLS_DIR, skillName, "scripts");
+  const fullPath = path.resolve(scriptsDir, scriptName);
+
+  // Use path.relative for robust path containment check (beats startsWith for symlinks)
+  const relative = path.relative(scriptsDir, fullPath);
+  if (relative.startsWith("..")) {
+    return { ok: false, error: "Script must be inside ~/.sclaw/skills/" + skillName + "/scripts/" };
   }
 
   // Must exist and be a file
@@ -69,7 +78,7 @@ function resolveScriptPath(skillName: string, scriptName: string): { ok: true; f
     if (!stat.isFile()) {
       return { ok: false, error: "Not a file: " + fullPath };
     }
-  } catch (err) {
+  } catch (err: any) {
     if (err.code === "ENOENT") {
       return { ok: false, error: "Script not found: " + fullPath };
     }
@@ -107,7 +116,7 @@ export function registerSandboxTools(registry: ToolRegistry): void {
           name: "args",
           type: "string",
           description:
-            'Arguments to pass to the script, as a JSON array of strings. Example: ["search", "\\u6613\\u65b9\\u8fbe"]',
+            'Arguments to pass to the script, as a JSON array of strings. Example: ["search", "\u6613\u65b9\u8fbe"]',
           required: false,
         },
         {
@@ -128,14 +137,22 @@ export function registerSandboxTools(registry: ToolRegistry): void {
 
         const rawArgs = args["args"];
         let scriptArgs: string[] = [];
-        if (rawArgs) {
-          try {
-            scriptArgs =
-              typeof rawArgs === "string" ? JSON.parse(rawArgs) : (rawArgs as string[]);
-            if (!Array.isArray(scriptArgs)) {
+        if (rawArgs !== undefined && rawArgs !== null) {
+          if (typeof rawArgs === "string") {
+            try {
+              const parsed = JSON.parse(rawArgs);
+              scriptArgs = Array.isArray(parsed) ? parsed : [String(rawArgs)];
+            } catch {
               scriptArgs = [String(rawArgs)];
             }
-          } catch {
+          } else if (Array.isArray(rawArgs)) {
+            scriptArgs = rawArgs.map(String);
+          } else if (typeof rawArgs === "object") {
+            // Object args: convert to --key=value format
+            scriptArgs = Object.entries(rawArgs as Record<string, unknown>).map(
+              ([k, v]) => `--${k}=${String(v)}`
+            );
+          } else {
             scriptArgs = [String(rawArgs)];
           }
         }
@@ -172,7 +189,7 @@ export function registerSandboxTools(registry: ToolRegistry): void {
           }
 
           return JSON.stringify(output, null, 2);
-        } catch (err) {
+        } catch (err: any) {
           return JSON.stringify({
             error: "Script execution failed: " + err.message,
             skill: skillName,

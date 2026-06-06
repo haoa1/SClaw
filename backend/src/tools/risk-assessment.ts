@@ -2,7 +2,7 @@
  * Risk assessment tools — portfolio risk analysis based on market data.
  */
 
-import { Tool, ToolParamDef, ToolRegistry } from "./registry";
+import { Tool, ToolParamDef } from "./registry";
 import { getStocks } from "./stock-info";
 import { StockData } from "../types";
 
@@ -314,13 +314,6 @@ export const stockRiskTool = new Tool(
   stockRiskParams,
   stockRiskFn
 );
-
-// ===== Register =====
-
-export function registerRiskTools(registry: ToolRegistry): void {
-  registry.register(portfolioRiskTool);
-  registry.register(stockRiskTool);
-}
 
 // ===== Helpers =====
 

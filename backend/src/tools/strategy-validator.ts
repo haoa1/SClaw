@@ -4,7 +4,7 @@
  * Shares no backend dependency — loads plugins dynamically via require().
  */
 
-import { Tool, ToolParamDef, ToolRegistry } from "./registry";
+import { Tool, ToolParamDef } from "./registry";
 import { getStocks } from "./stock-info";
 import * as path from "path";
 import * as fs from "fs";
@@ -365,10 +365,3 @@ export const multiStrategyTool = new Tool(
   multiStrategyParams,
   multiStrategyFn
 );
-
-// ===== Register all =====
-
-export function registerStrategyTools(registry: ToolRegistry): void {
-  registry.register(listStrategiesTool);
-  registry.register(multiStrategyTool);
-}

@@ -1,4 +1,4 @@
-import { ToolRegistry, Tool, ToolParamDef } from "./registry";
+// stock-info.ts provides getStocks() — stock data loading from disk cache
 
 const EM_API = "https://push2.eastmoney.com/api/qt/ulist.np/get";
 const CACHE_TTL = 30000;
@@ -66,36 +66,6 @@ export async function getStocks(): Promise<any[]> {
     if (cache) return cache.data;
     return [];
   }
-}
-
-export function registerStockTools(registry: ToolRegistry): void {
-  const searchFn = async (a: any) => {
-    const q = (a.query || "").toLowerCase();
-    const stocks = await getStocks();
-    const results = stocks.filter((s: any) => s.code.includes(q) || s.name.includes(q)).slice(0, a.limit || 50);
-    return JSON.stringify(results);
-  };
-  registry.register(new Tool("search_stocks", "Search stocks by code or name", [
-    { name: "query", type: "string", description: "Search query (code or name)" },
-    { name: "limit", type: "number", description: "Max results", required: false },
-  ], searchFn));
-
-  const detailFn = async (a: any) => {
-    const stocks = await getStocks();
-    const found = stocks.find((s: any) => s.code === a.code);
-    return JSON.stringify(found || { error: "Not found" });
-  };
-  registry.register(new Tool("get_stock_detail", "Get detailed info for a stock by code", [
-    { name: "code", type: "string", description: "Stock code" },
-  ], detailFn));
-
-  const overviewFn = async () => {
-    const stocks = await getStocks();
-    const up = stocks.filter((s: any) => s.changePct > 0).length;
-    const down = stocks.filter((s: any) => s.changePct < 0).length;
-    return JSON.stringify({ total: stocks.length, up, down, flat: stocks.length - up - down, time: new Date().toISOString() });
-  };
-  registry.register(new Tool("market_overview", "Get market overview (up/down counts)", [], overviewFn));
 }
 
 const ALL_CODES = [
