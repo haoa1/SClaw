@@ -1,12 +1,15 @@
 /**
  * Historical data tool — fetch K-line data for analysis and backtesting.
- * Wraps East Money HistoricalDataFetcher and exposes it as an AI tool.
+ * Wraps Tushare TushareHistoricalDataFetcher and exposes it as an AI tool.
+ * Fallback: tries Tushare first; if fails, attempts East Money.
  */
 
 import { Tool, ToolParamDef } from "./registry";
+import { TushareHistoricalDataFetcher } from "../data/tushare-historical";
 import { HistoricalDataFetcher } from "../data/eastmoney-historical";
 
-const fetcher = new HistoricalDataFetcher();
+const tushareFetcher = new TushareHistoricalDataFetcher();
+const eastMoneyFetcher = new HistoricalDataFetcher();
 
 // ===== Tool: fetch_historical_kline =====
 
@@ -37,7 +40,13 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
   const format = (args.format as string || 'table').toLowerCase();
 
   try {
-    const data = await fetcher.fetchDailyKLine(code, market, days);
+    // Try Tushare first, fallback to East Money (which may be deprecated)
+    let data = await tushareFetcher.fetchDailyKLine(code, market, days);
+
+    if (!data || data.length === 0) {
+      console.log(`[HistoricalData] Tushare returned empty for ${code}, trying East Money fallback...`);
+      data = await eastMoneyFetcher.fetchDailyKLine(code, market, days);
+    }
 
     if (!data || data.length === 0) {
       return `ℹ️ No historical data found for ${code} (${market})`;
@@ -95,7 +104,7 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
 
 export const fetchHistoricalKLineTool = new Tool(
   "fetch_historical_kline",
-  "Fetch historical daily K-line data for a stock. Returns OHLCV data with change %, turnover rate, and summary statistics. Data source: East Money. Cached to disk for performance.",
+  "Fetch historical daily K-line data for a stock. Returns OHLCV data with change %, turnover rate, and summary statistics. Data source: Tushare Pro (primary) + East Money (fallback). Cached to disk for performance.",
   fetchKLineParams,
   fetchKLineFn
 );

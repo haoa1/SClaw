@@ -183,6 +183,72 @@ export class TushareHistoricalDataFetcher {
   }
 
   /**
+   * Fetch daily K-line data for a single stock.
+   * Uses Tushare `daily` API with ts_code filter for efficiency.
+   * Returns array sorted by date (oldest first).
+   */
+  async fetchDailyKLine(
+    code: string,
+    market: 'SH' | 'SZ' | 'BJ',
+    days: number = 120
+  ): Promise<TSKLineItem[]> {
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - (days + 10) * 24 * 60 * 60 * 1000);
+    const tsCode = toTsCode(code, market);
+    const startStr = startDate.toISOString().slice(0, 10).replace(/-/g, '');
+    const endStr = endDate.toISOString().slice(0, 10).replace(/-/g, '');
+
+    try {
+      // Tushare daily API supports ts_code + start_date/end_date filter
+      const result = await tushareCall('daily', {
+        ts_code: tsCode,
+        start_date: startStr,
+        end_date: endStr,
+      });
+
+      const items: TSKLineItem[] = [];
+      if (result?.items) {
+        const fields = result.fields as string[];
+        const fTradeDate = fields.indexOf('trade_date');
+        const fOpen = fields.indexOf('open');
+        const fHigh = fields.indexOf('high');
+        const fLow = fields.indexOf('low');
+        const fClose = fields.indexOf('close');
+        const fVol = fields.indexOf('vol');
+        const fAmount = fields.indexOf('amount');
+        const fPctChg = fields.indexOf('pct_chg');
+
+        for (const item of result.items) {
+          const dateRaw: string = item[fTradeDate] || '';
+          // Format: YYYYMMDD -> YYYY-MM-DD
+          const date = `${dateRaw.slice(0, 4)}-${dateRaw.slice(4, 6)}-${dateRaw.slice(6, 8)}`;
+          const pctChg = parseFloat(item[fPctChg]) || 0;
+          items.push({
+            date,
+            open: parseFloat(item[fOpen]) || 0,
+            close: parseFloat(item[fClose]) || 0,
+            high: parseFloat(item[fHigh]) || 0,
+            low: parseFloat(item[fLow]) || 0,
+            volume: parseFloat(item[fVol]) || 0,
+            amount: parseFloat(item[fAmount]) || 0,
+            turnoverRate: 0,
+            changePct: pctChg,
+          });
+        }
+
+        console.log(`[TushareHistorical] Fetched ${items.length} days for ${tsCode}`);
+      }
+
+      // Sort by date ascending
+      items.sort((a, b) => a.date.localeCompare(b.date));
+      return items.slice(-days);
+    } catch (err) {
+      console.error(`[TushareHistorical] Error fetching ${tsCode}:`, err);
+      return [];
+    }
+  }
+
+  /**
    * Fetch K-line data for multiple stocks.
    * Uses per-trading-day strategy internally.
    * Returns Map<code, TSKLineItem[]>
