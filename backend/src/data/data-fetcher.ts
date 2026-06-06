@@ -6,9 +6,10 @@ const SINA_API = {
   stockList: 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData',
 };
 
-// 东方财富 API — 用于补充新浪不提供的字段（如量比 f37）
-const EM_API = "https://push2.eastmoney.com/api/qt/ulist.np/get";
-const EM_FIELDS = "f12,f37,f71"; // code, 量比, 均价
+// 腾讯行情 API — 用于补充新浪不提供的字段（如量比）
+// 格式: qt.gtimg.cn/q=sh600000,sz000001,... → v_CODE="field1~field2~...~fieldN";
+// 量比在 field index 51（0-based）
+const TENCENT_QUOTE_API = "http://qt.gtimg.cn/q";
 
 // 持久化缓存路径
 const CACHE_FILE = path.resolve(__dirname, '../../data/stock_cache.json');
@@ -125,8 +126,8 @@ export class DataFetcher {
       }
     }
 
-    // Step 2: Supplement with EastMoney fields (volumeRatio f37, avgPrice f71)
-    await this.supplementEMFields(allStocks);
+    // Step 2: Supplement with Tencent fields (volumeRatio)
+    await this.supplementTencentFields(allStocks);
 
     this.memoryCache = { stocks: allStocks, timestamp: Date.now() };
     this.saveToDisk(allStocks);
@@ -135,11 +136,12 @@ export class DataFetcher {
   }
 
   /**
-   * Supplement stock data with EastMoney-only fields (volumeRatio, avgPrice).
-   * Sina API doesn't provide 量比 (f37) or 均价 (f71).
+   * Supplement stock data with Tencent quote API for fields Sina doesn't provide (volumeRatio).
+   * Tencent API: http://qt.gtimg.cn/q=sh600000,sz000001,... (batch query)
+   * Response: v_CODE="f1~f2~...~fN";  volumeRatio at field index 51 (0-based)
    */
-  private async supplementEMFields(stocks: StockData[]): Promise<void> {
-    const CHUNK_SIZE = 800;
+  private async supplementTencentFields(stocks: StockData[]): Promise<void> {
+    const CHUNK_SIZE = 200; // Tencent batch limit ~200 per request
     const codeIndex = new Map<string, StockData>();
     for (const s of stocks) codeIndex.set(s.code, s);
 
@@ -149,34 +151,42 @@ export class DataFetcher {
       chunks.push(codes.slice(i, i + CHUNK_SIZE));
     }
 
-    const emPromises = chunks.map(async (chunk) => {
-      const secids = chunk.map(c => {
-        const prefix = (c.startsWith('6') || c.startsWith('9')) ? '1.' : '0.';
-        return prefix + c;
-      }).join(',');
-
+    const promises = chunks.map(async (chunk) => {
       try {
-        const url = `${EM_API}?fltt=2&fields=${EM_FIELDS}&secids=${secids}`;
-        const res = await fetch(url, {
-          headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://quote.eastmoney.com/' }
-        });
-        const json = await res.json() as any;
-        const items: any[] = json?.data?.diff || [];
-        for (const item of items) {
-          const code = String(item.f12 || '');
+        // Build Tencent-style query params: sh600000,sz000001,...
+        const tencentCodes = chunk.map(c => {
+          if (c.startsWith('6') || c.startsWith('9')) return 'sh' + c;
+          return 'sz' + c; // 0,3xx
+        }).join(',');
+        const url = `${TENCENT_QUOTE_API}=${tencentCodes}`;
+        const res = await fetch(url);
+        // Tencent returns GBK-encoded text, convert to UTF-8
+        const buf = await res.arrayBuffer();
+        const decoder = new TextDecoder('gbk');
+        const text = decoder.decode(buf);
+
+        // Parse each line: v_SH600000="fields...";
+        const lines = text.split(';').filter(l => l.trim());
+        for (const line of lines) {
+          const match = line.match(/v_\w+="(.+)"/);
+          if (!match) continue;
+          const fields = match[1].split('~');
+          const code = fields[2]; // field index 2 = stock code
           const stock = codeIndex.get(code);
           if (!stock) continue;
-          if (item.f37 != null) (stock as any).volumeRatio = parseFloat(item.f37);
-          if (item.f71 != null && item.f71 > 0) (stock as any).priceAboveVwap = stock.price > parseFloat(item.f71);
+          const volRatio = parseFloat(fields[51]); // volumeRatio at index 51
+          if (!isNaN(volRatio) && volRatio > 0) {
+            (stock as any).volumeRatio = volRatio;
+          }
         }
       } catch (err) {
-        console.warn(`[DataFetcher] EM supplement chunk failed (${chunk.length} codes):`, err);
+        console.warn(`[DataFetcher] Tencent supplement chunk failed (${chunk.length} codes):`, err);
       }
     });
 
-    await Promise.all(emPromises);
+    await Promise.all(promises);
     const filled = stocks.filter(s => (s as any).volumeRatio != null).length;
-    console.log(`[DataFetcher] EM supplement: ${filled}/${stocks.length} stocks have volumeRatio`);
+    console.log(`[DataFetcher] Tencent supplement: ${filled}/${stocks.length} stocks have volumeRatio`);
   }
 
   /** 从磁盘加载缓存 */
