@@ -6,6 +6,10 @@ const SINA_API = {
   stockList: 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData',
 };
 
+// 东方财富 API — 用于补充新浪不提供的字段（如量比 f37）
+const EM_API = "https://push2.eastmoney.com/api/qt/ulist.np/get";
+const EM_FIELDS = "f12,f37,f71"; // code, 量比, 均价
+
 // 持久化缓存路径
 const CACHE_FILE = path.resolve(__dirname, '../../data/stock_cache.json');
 
@@ -121,10 +125,58 @@ export class DataFetcher {
       }
     }
 
+    // Step 2: Supplement with EastMoney fields (volumeRatio f37, avgPrice f71)
+    await this.supplementEMFields(allStocks);
+
     this.memoryCache = { stocks: allStocks, timestamp: Date.now() };
     this.saveToDisk(allStocks);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[DataFetcher] Total: ${allStocks.length} stocks (fetched in ${elapsed}s)`);
+  }
+
+  /**
+   * Supplement stock data with EastMoney-only fields (volumeRatio, avgPrice).
+   * Sina API doesn't provide 量比 (f37) or 均价 (f71).
+   */
+  private async supplementEMFields(stocks: StockData[]): Promise<void> {
+    const CHUNK_SIZE = 800;
+    const codeIndex = new Map<string, StockData>();
+    for (const s of stocks) codeIndex.set(s.code, s);
+
+    const codes = stocks.map(s => s.code);
+    const chunks: string[][] = [];
+    for (let i = 0; i < codes.length; i += CHUNK_SIZE) {
+      chunks.push(codes.slice(i, i + CHUNK_SIZE));
+    }
+
+    const emPromises = chunks.map(async (chunk) => {
+      const secids = chunk.map(c => {
+        const prefix = (c.startsWith('6') || c.startsWith('9')) ? '1.' : '0.';
+        return prefix + c;
+      }).join(',');
+
+      try {
+        const url = `${EM_API}?fltt=2&fields=${EM_FIELDS}&secids=${secids}`;
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://quote.eastmoney.com/' }
+        });
+        const json = await res.json() as any;
+        const items: any[] = json?.data?.diff || [];
+        for (const item of items) {
+          const code = String(item.f12 || '');
+          const stock = codeIndex.get(code);
+          if (!stock) continue;
+          if (item.f37 != null) (stock as any).volumeRatio = parseFloat(item.f37);
+          if (item.f71 != null && item.f71 > 0) (stock as any).priceAboveVwap = stock.price > parseFloat(item.f71);
+        }
+      } catch (err) {
+        console.warn(`[DataFetcher] EM supplement chunk failed (${chunk.length} codes):`, err);
+      }
+    });
+
+    await Promise.all(emPromises);
+    const filled = stocks.filter(s => (s as any).volumeRatio != null).length;
+    console.log(`[DataFetcher] EM supplement: ${filled}/${stocks.length} stocks have volumeRatio`);
   }
 
   /** 从磁盘加载缓存 */
