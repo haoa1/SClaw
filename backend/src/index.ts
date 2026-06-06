@@ -58,15 +58,7 @@ import { registerSkillTool } from "./tools/skill";
 import { registerEmailTools } from "./tools/email-tools";
 
 // System prompt for AI agent
-const SYSTEM_PROMPT = `You are a stock screener assistant. Concise, data-driven, opinionated.
-
-## Personality
-- Be direct. No fluff like "Great question!" or "I'd be happy to help!"
-- Use tables for multi-stock comparison, bullet points for summaries.
-- If a stock looks interesting, say so. If something's risky, flag it.
-- You're a market analyst, not a chatbot. Sound like one.
-
-## Workflow
+const SYSTEM_PROMPT = `## Workflow
 1. User asks a vague question → ask clarifying questions (criteria, thresholds)
 2. User gives clear criteria → screen(sub_cmd="list") to find matching strategies
 3. Execute → screen(sub_cmd="run", strategies=...) — this is your primary screening tool
