@@ -8,8 +8,9 @@ import LoadingSpinner from './components/LoadingSpinner'
 import ChatPanel from './components/ChatPanel'
 import ResultsModal from './components/ResultsModal'
 import BacktestPanel from './components/BacktestPanel'
+import DebugPanel from './components/DebugPanel'
 
-type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest'
+type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'debug'
 
 const RESULTS_KEY = 'stock-screen-results'
 const TAB_KEY = 'stock-screen-tab'
@@ -375,6 +376,10 @@ export default function App() {
                 className={`px-3 py-2 text-sm font-medium transition ${tab === 'backtest' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}`}>
                 📊 Backtest
               </button>
+              <button onClick={() => setTab('debug')}
+                className={`px-3 py-2 text-sm font-medium transition ${tab === 'debug' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                🐛 Debug
+              </button>
             </div>
 
             {/* User info */}
@@ -406,6 +411,11 @@ export default function App() {
       </header>
 
       {/* Main content */}
+      {tab === 'debug' ? (
+        <div className="h-[calc(100vh-73px)] overflow-y-auto">
+          <DebugPanel onBack={() => setTab('config')} />
+        </div>
+      ) : (
       <div className="flex h-[calc(100vh-73px)] overflow-hidden">
         <div className={`flex-1 overflow-y-auto p-6 transition-all duration-300 ${agentHighlight ? 'ring-2 ring-green-500/40 ring-inset' : ''}`}>
           {error && (
@@ -539,6 +549,7 @@ export default function App() {
           />
         </div>
       </div>
+      )}
 
       {/* AI Results Popup Modal */}
       {modalData && (

@@ -9,6 +9,7 @@
 import { Router, Request, Response } from "express";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { validateSession } from "../auth";
 import { PerUserAgentManager } from "../agent/manager";
 import { LLMClient } from "../agent/llm";
@@ -118,6 +119,9 @@ export function createChatRoutes(
     try {
       const agent = agentManager.getAgent(userId);
 
+      // Debug mode: always dump prompt to file for the Debug panel
+      agent.setDebug(true);
+
       // Load past messages into agent context
       let history = loadMessages(userId);
 
@@ -212,6 +216,12 @@ export function createChatRoutes(
           // onToolResult
           (name: string, content: string) => {
             try { res.write(`data: ${JSON.stringify({ type: "tool_result", name, content })}\n\n`); } catch(e) {}
+          },
+          // onDebugPrompt
+          (dump: { filePath: string; messageCount: number; totalTokens: number }) => {
+            try {
+              res.write(`data: ${JSON.stringify({ type: "debug_prompt", ...dump })}\n\n`);
+            } catch(e) {}
           },
         );
       });
@@ -310,6 +320,51 @@ export function createChatRoutes(
     agentManager.removeAgent(userId);
     console.log(`[CLEAR] Removed agent for user ${userId}`);
     res.json({ status: "ok", message: "All user data cleared" });
+  });
+
+  /** GET /api/debug/prompts — list all prompt dump files with content */
+  router.get("/api/debug/prompts", (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Not logged in" });
+      return;
+    }
+    const debugDir = path.join(os.homedir(), ".sclaw", "debug");
+    if (!fs.existsSync(debugDir)) {
+      res.json({ prompts: [] });
+      return;
+    }
+    try {
+      const files = fs.readdirSync(debugDir)
+        .filter(f => f.endsWith(".json"))
+        .sort()
+        .reverse(); // newest first
+      const prompts = files.map(file => {
+        const filePath = path.join(debugDir, file);
+        let content: Record<string, unknown> = {};
+        try {
+          content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        } catch {}
+        const stat = fs.statSync(filePath);
+        return {
+          fileName: file,
+          filePath,
+          size: stat.size,
+          modifiedAt: stat.mtime.toISOString(),
+          timestamp: (content.timestamp as string) || stat.mtime.toISOString(),
+          turn: content.turn as number ?? 0,
+          model: content.model as string || "unknown",
+          messageCount: content.messageCount as number ?? 0,
+          totalTokens: content.totalTokens as number ?? 0,
+          // Full content for display
+          messages: content.messages || [],
+          tools: content.tools || [],
+        };
+      });
+      res.json({ prompts });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
   });
 
   return router;

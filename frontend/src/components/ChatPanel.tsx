@@ -126,6 +126,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   const streamingSegments = useRef<Segment[]>([])
   const segmentAccum = useRef<{ type: 'reasoning' | 'content'; data: string } | null>(null)
 
+  // Debug prompt state
+  const debugPrompts = useRef<Array<{filePath: string; messageCount: number; totalTokens: number; timestamp: string}>>([])
+  const [debugOpen, setDebugOpen] = useState(false)
+  const [debugCount, setDebugCount] = useState(0)
+
   function flushSegment() {
     if (segmentAccum.current) {
       streamingSegments.current.push({ ...segmentAccum.current })
@@ -280,6 +285,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
                 updatePending()
               } else if (parsed.type === 'action') {
                 if (onAction) onAction(parsed.action, parsed.payload)
+              } else if (parsed.type === 'debug_prompt') {
+                // Store last 5 prompt dumps for debug panel
+                const entry = { filePath: parsed.filePath, messageCount: parsed.messageCount, totalTokens: parsed.totalTokens, timestamp: new Date().toLocaleTimeString() }
+                debugPrompts.current = [...debugPrompts.current.slice(-4), entry]
+                setDebugCount(prev => prev + 1)
               } else if (parsed.type === 'error') {
                 setMessages(prev => prev.map((m, i) =>
                   i === prev.length - 1
@@ -482,95 +492,113 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         const toolColors: Record<string, string> = {
           assess_stock_risk: 'bg-red-900/40 text-red-300 border-red-700',
           assess_portfolio_risk: 'bg-red-900/40 text-red-300 border-red-700',
-          get_stock_info: 'bg-blue-900/40 text-blue-300 border-blue-700',
-          frontend_execute: 'bg-purple-900/40 text-purple-300 border-purple-700',
-          generate_strategies: 'bg-green-900/40 text-green-300 border-green-700',
-          read_file: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
-          write_file: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
+          get_stock_recommendations: 'bg-purple-900/40 text-purple-300 border-purple-700',
+          get_strategy: 'bg-blue-900/40 text-blue-300 border-blue-700',
+          get_stock: 'bg-green-900/40 text-green-300 border-green-700',
+          screen_stocks: 'bg-cyan-900/40 text-cyan-300 border-cyan-700',
+          query_historical_data: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
         }
-        const colorClass = toolColors[tc.name] || 'bg-gray-800 text-gray-300 border-gray-600'
+        const colorClass = toolColors[tc.name] || 'bg-gray-900/40 text-gray-300 border-gray-700'
         return (
-          <div key={idx} className="flex items-center gap-2 py-0.5">
-            <span className={`inline-block px-2 py-0.5 rounded text-xs font-mono font-semibold border ${colorClass}`}>
-              ⚡ {tc.name}
-            </span>
-            <span className="text-gray-600 text-xs font-mono truncate max-w-[60%]">
-              {tc.arguments?.slice(0, 80)}{tc.arguments?.length > 80 ? '...' : ''}
-            </span>
+          <div key={idx} className="my-1">
+            <div className={`inline-block ${colorClass} text-[10px] font-mono px-1.5 py-0.5 rounded border`}>
+              <span className="opacity-60 mr-1">🔧</span>{tc.name}
+            </div>
+            <div className="text-gray-600 text-[10px] font-mono mt-0.5 truncate max-w-full">{tc.arguments || tc.id}</div>
           </div>
         )
       }
-      case 'tool_result':
+      case 'tool_result': {
+        let display = seg.data
+        let isJson = false
+        try {
+          const parsed = JSON.parse(seg.data)
+          if (parsed && typeof parsed === 'object') {
+            // Format nicely for display
+            display = JSON.stringify(parsed, null, 2)
+            isJson = true
+          }
+        } catch {}
+        const isLong = display.length > 200
         return (
-          <div key={idx} className="text-xs text-gray-500 font-mono border-l-2 border-gray-800 pl-2 py-0.5 truncate leading-relaxed">
-            {seg.data.slice(0, 200)}{seg.data.length > 200 ? '...' : ''}
+          <div key={idx} className="my-1">
+            <details>
+              <summary className="text-green-700/80 text-[10px] font-mono cursor-pointer hover:text-green-600">
+                ✅ Result ({isLong ? `${display.length} chars` : 'short'})
+              </summary>
+              <pre className={`text-gray-600 text-[10px] font-mono mt-0.5 whitespace-pre-wrap break-all ${isJson ? 'bg-gray-950/30 p-1 rounded' : ''}`}>
+                {isLong ? display.slice(0, 500) + (display.length > 500 ? '\n...' : '') : display}
+              </pre>
+            </details>
           </div>
         )
+      }
       default:
         return null
     }
   }
 
-  /* ===== Content Block: prominent display for final answer ===== */
-  function ContentBlock({ data }: { data: string }) {
-    return (
-      <div className="text-gray-100 text-sm bg-gray-900/20 rounded px-3 py-2 my-1.5 border-l border-gray-600">
-        <MarkdownContent data={data} />
-      </div>
-    )
-  }
+  /* ===== Render the assistant message: process block + final answer ===== */
+  function renderAssistantMessage(segs: Segment[], isStreaming: boolean) {
+    // Process steps: reasonings + tool_calls + tool_results (everything before final content)
+    const processSegments: Segment[] = []
+    // Final content segments (everything after last tool_result)
+    const contentSegments: Segment[] = []
 
-  /* ===== Render assistant message: process vs content split ===== */
-  function renderAssistantMessage(segments: Segment[], isStreaming: boolean) {
-    // Everything before the last content segment is "process" (hidden in collapsible)
-    const lastContentIdx = [...segments].reverse().findIndex(s => s.type === 'content')
-    const splitIdx = lastContentIdx >= 0 ? segments.length - lastContentIdx - 1 : segments.length
-    const processSegs = segments.slice(0, splitIdx)
-    const finalSegs = segments.slice(splitIdx).filter(s => s.type === 'content')
-
-    return (
-      <div className="bg-gray-900/15 rounded px-3 py-2 border-l-2 border-gray-500">
-        {processSegs.length > 0 && (
-          <ProcessBlock segments={processSegs} isStreaming={isStreaming} />
-        )}
-        {finalSegs.map((seg, i) => (
-          <ContentBlock key={i} data={seg.data} />
-        ))}
-      </div>
-    )
-  }
-
-  /* ===== User Message Block: compact summary auto-collapsed, normal messages clean ===== */
-  function UserMessageBlock({ content }: { content: string }) {
-    const [collapsed, setCollapsed] = useState(content.startsWith('Compacted Conversation'))
-    const lines = content.split('\n')
-
-    if (!collapsed) {
-      return (
-        <div className="bg-gray-800/30 rounded px-3 py-2.5 border-l-2 border-blue-600">
-          <div className="flex gap-2 items-start">
-            <span className="text-yellow-500 flex-shrink-0 text-sm font-bold">&gt;&gt;</span>
-            <div className="text-blue-200 text-sm whitespace-pre-wrap break-words leading-relaxed">
-              {content}
-            </div>
-          </div>
-        </div>
-      )
+    let foundContent = false
+    for (let i = 0; i < segs.length; i++) {
+      const seg = segs[i]
+      if (seg.type === 'content' && !isStreaming) {
+        // Check if there are no more tool segments after this
+        const remaining = segs.slice(i + 1)
+        const hasMoreTools = remaining.some(s => s.type === 'tool_call' || s.type === 'tool_result')
+        if (!hasMoreTools) {
+          contentSegments.push(seg)
+          continue
+        }
+      }
+      processSegments.push(seg)
     }
 
+    // If no process segments, everything is content
+    const finalContent = contentSegments.length > 0
+      ? contentSegments
+      : processSegments.length === 0
+        ? segs
+        : []
+
+    const processBlock = processSegments.length > 0 ? processSegments : null
+
     return (
-      <div className="bg-gray-800/30 rounded px-3 py-2 border-l-2 border-gray-700/60">
-        <div className="flex items-center gap-2">
-          <span className="text-gray-500 flex-shrink-0 text-xs font-bold">&gt;&gt;</span>
-          <span className="text-gray-500 text-xs truncate">
-            {lines[0]}{lines.length > 1 ? ` (${lines.length} lines, ${content.length} chars)` : ''}
-          </span>
-          <button
-            onClick={() => setCollapsed(false)}
-            className="text-gray-600 hover:text-gray-400 text-xs ml-auto outline-none cursor-pointer flex-shrink-0"
-          >
-            ▶ Expand
-          </button>
+      <div>
+        {/* Process block (reasoning + tools) */}
+        {processBlock && (
+          <div className="mb-2">
+            <ProcessBlock segments={processBlock} isStreaming={isStreaming} />
+          </div>
+        )}
+
+        {/* Final answer */}
+        {finalContent.length > 0 && (
+          <div className="mb-1">
+            {finalContent.map((seg, j) => (
+              <div key={j} className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-relaxed">
+                {seg.type === 'content' ? <MarkdownContent data={seg.data} /> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  /* ===== User message block ===== */
+  function UserMessageBlock({ content }: { content: string }) {
+    return (
+      <div className="flex items-start gap-2">
+        <span className="text-cyan-500 text-xs font-mono mt-1 flex-shrink-0">❯</span>
+        <div className="text-gray-300 text-sm whitespace-pre-wrap break-words leading-relaxed">
+          {content}
         </div>
       </div>
     )
@@ -605,6 +633,32 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
           </div>
         ))}
       </div>
+
+      {/* Debug panel — shows recent prompt dumps */}
+      {debugCount > 0 && (
+        <div className="border-t border-amber-900/40 bg-black px-4">
+          <button
+            onClick={() => setDebugOpen(!debugOpen)}
+            className="text-amber-600 hover:text-amber-400 text-xs font-mono py-1.5 cursor-pointer outline-none w-full text-left"
+          >
+            {debugOpen ? '▼' : '▶'} Prompt Debug ({debugCount} dumped)
+          </button>
+          {debugOpen && (
+            <div className="pb-2 space-y-1">
+              {debugPrompts.current.map((entry, i) => (
+                <div key={i} className="text-amber-700/80 text-[10px] font-mono leading-relaxed truncate">
+                  <span className="text-amber-500/60">[{entry.timestamp}]</span>{' '}
+                  <span className="text-amber-600/80">{entry.messageCount}msgs</span>
+                  {' | '}
+                  <span className="text-amber-600/80">{entry.totalTokens}tok</span>
+                  {' | '}
+                  <span className="text-amber-700/60">{entry.filePath}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Input bar — terminal style */}
       <div className="border-t border-gray-800 bg-black px-4 py-2.5">

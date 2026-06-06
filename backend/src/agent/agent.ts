@@ -12,6 +12,8 @@ export interface AgentConfig {
   maxTurns?: number;
   verbose?: boolean;
   soulPath?: string;
+  debug?: boolean;       // dump prompt to file before each LLM call
+  debugDir?: string;     // where to dump debug files
 }
 
 export class Agent {
@@ -24,6 +26,8 @@ export class Agent {
   private totalOutputTokens = 0;
   /** Loaded skills: name → markdown content */
   private loadedSkills = new Map<string, string>();
+  /** Callback to notify frontend of prompt dumps (debug mode) */
+  private onDebugPrompt?: (dump: {filePath: string; messageCount: number; totalTokens: number}) => void;
 
   constructor(
     tools: ToolRegistry,
@@ -44,6 +48,8 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       maxTurns: config.maxTurns ?? 1000,
       verbose: config.verbose ?? false,
       soulPath: config.soulPath ?? path.join(os.homedir(), '.sclaw', 'workspace', 'SOUL.md'),
+      debug: config.debug ?? false,
+      debugDir: config.debugDir ?? path.join(os.homedir(), '.sclaw', 'debug'),
     };
     // Inject system prompt as first message so the LLM actually receives it
     this.messages.push({ role: "system", content: this.config.systemPrompt });
@@ -51,13 +57,14 @@ Use tools when you need to perform actions. Be concise and helpful.`,
     this.rebuildSystemMessage();
   }
 
-  async run(userInput: string, onToken?: (token: string) => void, onReasoning?: (token: string) => void, onToolCall?: (tc: {id: string; name: string; arguments: string}) => void, onTurnStart?: (turn: number) => void, onToolResult?: (name: string, content: string) => void): Promise<{
+  async run(userInput: string, onToken?: (token: string) => void, onReasoning?: (token: string) => void, onToolCall?: (tc: {id: string; name: string; arguments: string}) => void, onTurnStart?: (turn: number) => void, onToolResult?: (name: string, content: string) => void, onDebugPrompt?: (dump: {filePath: string; messageCount: number; totalTokens: number}) => void): Promise<{
     response: string;
     toolCalls: number;
     inputTokens: number;
     outputTokens: number;
   }> {
     this.addUserMessage(userInput);
+    this.onDebugPrompt = onDebugPrompt;
     let turnCount = 0;
     let totalToolCalls = 0;
 
@@ -80,6 +87,9 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       }
 
       if (onTurnStart) onTurnStart(turnCount);
+
+      // Debug: dump full prompt before LLM call
+      this.dumpPrompt(turnCount);
 
       // Get LLM response (streaming or not)
       const llmResponse = onToken
@@ -201,6 +211,34 @@ Use tools when you need to perform actions. Be concise and helpful.`,
     }
   }
 
+  /** If debug mode, dump full prompt + tools to a timestamped JSON file. */
+  private dumpPrompt(turn: number): void {
+    if (!this.config.debug) return;
+    try {
+      const dir = this.config.debugDir;
+      fs.mkdirSync(dir, { recursive: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const filePath = path.join(dir, `prompt-turn${turn}-${ts}.json`);
+      const dump: Record<string, unknown> = {
+        timestamp: new Date().toISOString(),
+        turn,
+        model: this.config.model,
+        messageCount: this.messages.length,
+        totalTokens: estimateTotalTokens(this.messages),
+        tools: this.tools.toOpenAITools(),
+        messages: this.messages,
+      };
+      fs.writeFileSync(filePath, JSON.stringify(dump, null, 2), 'utf-8');
+      console.log(`  [DEBUG] Prompt dumped to ${filePath} (${this.messages.length} msgs, ${dump.totalTokens} tokens)`);
+      // Notify frontend via callback
+      if (this.onDebugPrompt) {
+        this.onDebugPrompt({ filePath, messageCount: this.messages.length, totalTokens: dump.totalTokens as number });
+      }
+    } catch (e) {
+      console.error(`  [DEBUG] Failed to dump prompt: ${e}`);
+    }
+  }
+
   /** Load a skill: reads SKILL.md from disk and injects it into the system prompt. */
   loadSkill(name: string, content: string): string {
     if (!name || !content) return "Skill name and content are required.";
@@ -222,6 +260,12 @@ Use tools when you need to perform actions. Be concise and helpful.`,
   /** Get list of currently loaded skill names. */
   getLoadedSkills(): string[] {
     return Array.from(this.loadedSkills.keys());
+  }
+
+  /** Enable/disable debug mode (dump prompt before each LLM call). */
+  setDebug(debug: boolean): void {
+    this.config.debug = debug;
+    if (debug) console.log(`  [DEBUG] Debug mode enabled, dumps to ${this.config.debugDir}`);
   }
 
   private async executeTool(tc: ToolCall): Promise<string> {
