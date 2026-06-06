@@ -4,7 +4,7 @@ const EM_API = "https://push2.eastmoney.com/api/qt/ulist.np/get";
 const CACHE_TTL = 30000;
 let cache: { data: any[]; time: number } | null = null;
 
-const FIELDS = "f2,f3,f5,f6,f8,f9,f12,f14,f15,f16,f17,f18";
+const FIELDS = "f2,f3,f5,f6,f8,f9,f12,f14,f15,f16,f17,f18,f20,f21,f23,f37,f71";
 
 function convertCode(code: string): string {
   if (code.startsWith("6") || code.startsWith("9")) return "1." + code;
@@ -29,16 +29,38 @@ function parseEMData(json: any): any[] {
       const volume = item.f5 || 0;
       const amount = item.f6 || 0;
       const pe = item.f9 || 0;
-      const turnover = item.f8 !== undefined ? item.f8 : 0;
+      const turnover = item.f8 !== undefined ? item.f8 : 0; // 换手率
+      const totalMcap = item.f20 || 0;   // 总市值 (元)
+      const circMcap = item.f21 || 0;    // 流通市值 (元)
+      const pbVal = item.f23 ?? 0;        // 市净率
+      const volumeRatio = item.f37 ?? 0;  // 量比
+
+      const avgPrice = (item.f71 != null && item.f71 > 0)
+        ? item.f71
+        : (volume > 0 ? amount / volume : 0);
+      const priceAboveVwap = price > avgPrice;
+
+      const changePctVal = parseFloat(changePct.toFixed(2));
+      const turnoverVal = parseFloat(turnover.toFixed(2));
 
       stocks.push({
         code, name,
         market: code.startsWith("6") ? "SH" : "SZ",
         price, open: openPrice, high, low, close,
-        changePct: parseFloat(changePct.toFixed(2)),
+        // Keep old field names for backward compatibility with existing plugins
+        changePct: changePctVal,
         volume, amount,
-        turnover: parseFloat(turnover.toFixed(2)),
-        pe: parseFloat(pe.toFixed(2)), pb: 0, marketCap: 0,
+        turnover: turnoverVal,
+        pe: parseFloat(pe.toFixed(2)),
+        // Correct field names matching StockData type
+        changePercent: changePctVal,
+        turnoverRate: turnoverVal,
+        pb: pbVal,
+        marketCap: totalMcap,
+        circulatingMarketCap: circMcap,
+        volumeRatio: volumeRatio,
+        avgPrice: avgPrice,
+        priceAboveVwap: priceAboveVwap,
       });
     } catch {}
   }

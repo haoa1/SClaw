@@ -6,8 +6,46 @@
 
 import { Tool, ToolParamDef } from "./registry";
 import { getStocks } from "./stock-info";
+import { HistoricalDataFetcher } from "../data/eastmoney-historical";
 import * as path from "path";
 import * as fs from "fs";
+
+// ===== Historical Enrichment =====
+
+const HISTORICAL_DIR = path.resolve(__dirname, '../../data/historical');
+const LIMIT_UP_THRESHOLD = 9.5; // 涨停阈值（A股主板10%, 创业板/科创板20%, 用9.5作为通用阈值）
+
+/**
+ * Check if a stock has had a limit-up (涨停) in the last N trading days.
+ * Uses disk-cached historical K-line data. If no cache exists, returns false.
+ */
+function checkLimitUpLastNDays(code: string, market: string, days: number = 20): boolean {
+  const marketKey = market === 'SH' ? 'SH' : (market === 'BJ' ? 'BJ' : 'SZ');
+  const cachePath = path.join(HISTORICAL_DIR, `${marketKey}_${code}.json`);
+  
+  if (!fs.existsSync(cachePath)) return false;
+  
+  try {
+    const items: any[] = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+    // Get last N entries
+    const recent = items.slice(-days);
+    return recent.some(item => (item.changePct ?? 0) >= LIMIT_UP_THRESHOLD);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Enrich stock data array with historical information (limit-up detection).
+ * Only affects stocks with existing disk cache — others are skipped silently.
+ */
+function enrichWithHistory(stocks: any[]): void {
+  for (const stock of stocks) {
+    if (stock.code) {
+      (stock as any).limitUpIn20Days = checkLimitUpLastNDays(stock.code, stock.market || 'SZ', 20);
+    }
+  }
+}
 
 // ===== Minimal types (mirrors backend types) =====
 
@@ -281,6 +319,9 @@ const multiStrategyFn = async (args: Record<string, unknown>): Promise<string> =
   try {
     const stocks = await getStocks();
     const totalStocks = stocks.length;
+
+    // Enrich with historical data (limit-up detection, etc.)
+    enrichWithHistory(stocks);
 
     // Run all strategies in parallel (they're pure functions)
     const allResults = resolved.map(({ strategy, params }) => ({
