@@ -32,7 +32,7 @@ function runScript(
         env: { ...process.env, NODE_NO_WARNINGS: "1" },
       },
       (error, stdout, stderr) => {
-        const exitCode = error?.code ?? 0;
+        const exitCode = typeof error?.code === 'number' ? error.code : (error?.code ? 1 : 0);
         resolve({
           stdout: stdout || "",
           stderr: stderr || "",

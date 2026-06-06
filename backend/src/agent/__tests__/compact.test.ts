@@ -4,7 +4,7 @@ import {
   compactContext,
   microCompactMessages,
   estimateTokens,
-  ChatMessage,
+  LLMMessage,
 } from "../compact";
 
 // ============================================================================
@@ -18,8 +18,8 @@ import {
  */
 const BIG_MSG_SIZE = 20_000;
 
-function makeMessages(n: number, contentSize: number = 50): ChatMessage[] {
-  const msgs: ChatMessage[] = [];
+function makeMessages(n: number, contentSize: number = 50): LLMMessage[] {
+  const msgs: LLMMessage[] = [];
   for (let i = 0; i < n; i++) {
     msgs.push({
       role: i % 2 === 0 ? "user" : "assistant",
@@ -29,7 +29,7 @@ function makeMessages(n: number, contentSize: number = 50): ChatMessage[] {
   return msgs;
 }
 
-function makeBigMessages(n: number): ChatMessage[] {
+function makeBigMessages(n: number): LLMMessage[] {
   return makeMessages(n, BIG_MSG_SIZE);
 }
 
@@ -97,7 +97,7 @@ describe("compactContext", () => {
 
 describe("microCompactMessages", () => {
   it("leaves small messages unchanged", () => {
-    const msgs: ChatMessage[] = [
+    const msgs: LLMMessage[] = [
       { role: "tool", content: "short result" },
       { role: "user", content: "hello" },
     ];
@@ -110,29 +110,29 @@ describe("microCompactMessages", () => {
       { length: 200 },
       (_, i) => `Line ${i}: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`,
     );
-    const msgs: ChatMessage[] = [
+    const msgs: LLMMessage[] = [
       { role: "tool", content: longLines.join("\n") },
     ];
     const result = microCompactMessages(msgs);
-    expect(result[0].content.length).toBeLessThan(longLines.join("\n").length);
+    expect(result[0].content!.length).toBeLessThan(longLines.join("\n").length);
     expect(result[0].content).toContain("lines compressed");
   });
 
   it("compresses very long tool results by chars", () => {
     const longContent = "x".repeat(10_000);
-    const msgs: ChatMessage[] = [{ role: "tool", content: longContent }];
+    const msgs: LLMMessage[] = [{ role: "tool", content: longContent }];
     const result = microCompactMessages(msgs);
-    expect(result[0].content.length).toBeLessThan(10_000);
+    expect(result[0].content!.length).toBeLessThan(10_000);
     expect(result[0].content).toContain("truncated by Micro-Compact");
   });
 
   it("does not touch non-tool messages", () => {
-    const msgs: ChatMessage[] = [
+    const msgs: LLMMessage[] = [
       { role: "user", content: "x".repeat(10_000) },
       { role: "assistant", content: "x".repeat(10_000) },
     ];
     const result = microCompactMessages(msgs);
-    expect(result[0].content.length).toBe(10_000);
-    expect(result[1].content.length).toBe(10_000);
+    expect(result[0].content!.length).toBe(10_000);
+    expect(result[1].content!.length).toBe(10_000);
   });
 });

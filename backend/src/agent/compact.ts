@@ -69,14 +69,11 @@ Analyze what happened in this conversation:
 </summary>`;
 
 // ============================================================================
-// Public API
+// Public API — all functions accept LLMMessage[] (canonical type from llm.ts)
 // ============================================================================
 
-export interface ChatMessage {
-  role: string;
-  content: string;
-  reasoning_content?: string;
-}
+// Re-export LLMMessage for external consumers
+export type { LLMMessage } from "./llm";
 
 // ============================================================================
 // Token Estimation
@@ -120,10 +117,10 @@ export function estimateTokens(text: string): number {
 /**
  * Estimate total tokens across a list of messages.
  */
-export function estimateTotalTokens(messages: ChatMessage[]): number {
+export function estimateTotalTokens(messages: LLMMessage[]): number {
   let total = 0;
   for (const msg of messages) {
-    total += estimateTokens(msg.content);
+    total += estimateTokens(msg.content || "");
     if (msg.reasoning_content) {
       total += estimateTokens(msg.reasoning_content);
     }
@@ -138,7 +135,7 @@ export function estimateTotalTokens(messages: ChatMessage[]): number {
 /**
  * Check if history needs compaction — based on estimated token count.
  */
-export function shouldCompact(messages: ChatMessage[]): boolean {
+export function shouldCompact(messages: LLMMessage[]): boolean {
   const totalTokens = estimateTotalTokens(messages);
   return totalTokens > COMPACT_TOKEN_THRESHOLD;
 }
@@ -152,9 +149,9 @@ export function shouldCompact(messages: ChatMessage[]): boolean {
  * Returns the compacted message array (new array, doesn't mutate input).
  */
 export async function compactContext(
-  messages: ChatMessage[],
+  messages: LLMMessage[],
   llmClient?: LLMClient,
-): Promise<ChatMessage[]> {
+): Promise<LLMMessage[]> {
   if (!shouldCompact(messages)) return messages;
 
   // Find split point by token count: accumulate from newest until we have
@@ -162,7 +159,7 @@ export async function compactContext(
   let recentTokens = 0;
   let splitIdx = messages.length;
   for (let i = messages.length - 1; i >= 0; i--) {
-    recentTokens += estimateTokens(messages[i].content);
+    recentTokens += estimateTokens(messages[i].content || "");
     if (recentTokens >= COMPACT_KEEP_RECENT_TOKENS) {
       splitIdx = i;
       break;
@@ -185,7 +182,7 @@ export async function compactContext(
   }
 
   // Build compacted history: summary as user message + recent messages
-  const compacted: ChatMessage[] = [
+  const compacted: LLMMessage[] = [
     {
       role: "assistant",
       content: `## Compacted Conversation Summary\n\n${summary}\n\n---\n*Previous conversation compressed. Recent messages preserved below.*`,
@@ -205,13 +202,13 @@ export async function compactContext(
  * Runs before each API call to shrink oversized content.
  */
 export function microCompactMessages(
-  messages: ChatMessage[],
-): ChatMessage[] {
+  messages: LLMMessage[],
+): LLMMessage[] {
   let freed = 0;
 
   for (const msg of messages) {
     if (msg.role !== "tool") continue;
-    const content = msg.content;
+    const content = msg.content || "";
     if (!content || content.length < 500) continue;
 
     const originalLen = content.length;
@@ -232,7 +229,7 @@ export function microCompactMessages(
         `\n\n[... truncated by Micro-Compact, original length: ${content.length} chars]`;
     }
 
-    freed += originalLen - msg.content.length;
+    freed += originalLen - (msg.content || "").length;
   }
 
   if (freed > 0) {
@@ -254,7 +251,7 @@ export function microCompactMessages(
  * Matches Garuda's _summarize_with_llm() + _summarize_with_timeout().
  */
 async function summarizeWithLLM(
-  messages: ChatMessage[],
+  messages: LLMMessage[],
   llmClient: LLMClient,
 ): Promise<string> {
   const formatted = formatForSummary(messages);
@@ -292,7 +289,7 @@ async function summarizeWithLLM(
  * Format messages for the summarization prompt, truncated to limit.
  */
 function formatForSummary(
-  messages: ChatMessage[],
+  messages: LLMMessage[],
   maxChars: number = SUMMARY_INPUT_MAX_CHARS,
 ): string {
   const parts: string[] = [];
@@ -320,10 +317,10 @@ function formatForSummary(
  * Fallback text summary when LLM summarization fails or times out.
  * Matches Garuda's _fallback_summary().
  */
-function fallbackSummary(messages: ChatMessage[]): string {
+function fallbackSummary(messages: LLMMessage[]): string {
   const userCount = messages.filter((m) => m.role === "user").length;
   const toolCalls = messages.filter(
-    (m) => m.role === "assistant" && m.content.includes("[Tool:"),
+    (m) => m.role === "assistant" && (m.content || "").includes("[Tool:"),
   ).length;
 
   return (

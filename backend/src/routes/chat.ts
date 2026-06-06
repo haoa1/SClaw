@@ -122,20 +122,20 @@ export function createChatRoutes(
       let history = loadMessages(userId);
 
       // Auto-compact if history is too large (token-based)
-      if (history.length > 0 && shouldCompact(history)) {
-        const totalTokens = estimateTotalTokens(history);
+      if (history.length > 0 && shouldCompact(history as any)) {
+        const totalTokens = estimateTotalTokens(history as any);
         console.log(
           `    [COMPACT] History too large (~${Math.round(totalTokens / 1000)}k tokens, ${history.length} msgs), auto-compacting...`,
         );
         try {
           const compactLLM = new LLMClient();
-          history = await compactContext(history, compactLLM);
+          history = await compactContext(history as any, compactLLM) as any;
           saveMessages(userId, history);
-          const afterTokens = estimateTotalTokens(history);
+          const afterTokens = estimateTotalTokens(history as any);
           console.log(`    [COMPACT] Compressed to ~${Math.round(afterTokens / 1000)}k tokens (${history.length} msgs)`);
         } catch (e) {
           // Fallback: compact without LLM
-          history = await compactContext(history);
+          history = await compactContext(history as any) as any;
           saveMessages(userId, history);
         }
       }
