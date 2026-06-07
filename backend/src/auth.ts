@@ -17,7 +17,7 @@ export interface AuthUser {
 
 const USERS: AuthUser[] = [
   { id: "1", username: "admin", password: "admin123", displayName: "Admin", role: "admin" },
-  { id: "2", username: "jack",  password: "123456",   displayName: "Jack", role: "user" },
+  { id: "2", username: "jack",  password: "123456",   displayName: "Jack", role: "admin" },
   { id: "3", username: "siwei", password: "siwei123", displayName: "Siwei", role: "user" },
   { id: "4", username: "yuwei", password: "yuwei123", displayName: "Yuwei", role: "user" },
   { id: "5", username: "testuser", password: "test123", displayName: "TestUser", role: "user" },

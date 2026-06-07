@@ -322,11 +322,18 @@ export function createChatRoutes(
     res.json({ status: "ok", message: "All user data cleared" });
   });
 
-  /** GET /api/debug/prompts — list all prompt dump files with content */
+  /** GET /api/debug/prompts — list all prompt dump files with content (jack only) */
   router.get("/api/debug/prompts", (req: Request, res: Response) => {
-    const userId = getUserId(req);
-    if (!userId) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+    const session = validateSession(token);
+    if (!session) {
       res.status(401).json({ error: "Not logged in" });
+      return;
+    }
+    // Only admins can view debug dumps
+    if (session.role !== "admin") {
+      res.status(403).json({ error: "Forbidden: only admins can access debug data" });
       return;
     }
     const debugDir = path.join(os.homedir(), ".sclaw", "debug");
