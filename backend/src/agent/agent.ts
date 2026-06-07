@@ -234,6 +234,22 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       if (this.onDebugPrompt) {
         this.onDebugPrompt({ filePath, messageCount: this.messages.length, totalTokens: dump.totalTokens as number });
       }
+      // Keep at most 100 debug dumps — delete oldest beyond that
+      try {
+        const files = fs.readdirSync(dir)
+          .filter(f => f.endsWith('.json'))
+          .map(f => ({ name: f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+          .sort((a, b) => a.mtime - b.mtime);
+        if (files.length > 100) {
+          const toDelete = files.slice(0, files.length - 100);
+          for (const f of toDelete) {
+            fs.unlinkSync(path.join(dir, f.name));
+          }
+          console.log(`  [DEBUG] Cleaned ${toDelete.length} old dumps, ${files.length - toDelete.length} remaining`);
+        }
+      } catch (cleanupErr) {
+        // Best-effort cleanup, don't fail if cleanup has issues
+      }
     } catch (e) {
       console.error(`  [DEBUG] Failed to dump prompt: ${e}`);
     }
