@@ -376,10 +376,12 @@ export default function App() {
                 className={`px-3 py-2 text-sm font-medium transition ${tab === 'backtest' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}`}>
                 📊 Backtest
               </button>
-              <button onClick={() => setTab('debug')}
-                className={`px-3 py-2 text-sm font-medium transition ${tab === 'debug' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                🐛 Debug
-              </button>
+              {user.role === 'admin' && (
+                <button onClick={() => setTab('debug')}
+                  className={`px-3 py-2 text-sm font-medium transition ${tab === 'debug' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  🐛 Debug
+                </button>
+              )}
             </div>
 
             {/* User info */}
@@ -411,7 +413,7 @@ export default function App() {
       </header>
 
       {/* Main content */}
-      {tab === 'debug' ? (
+      {tab === 'debug' && user.role === 'admin' ? (
         <div className="h-[calc(100vh-73px)] overflow-y-auto">
           <DebugPanel onBack={() => setTab('config')} />
         </div>
