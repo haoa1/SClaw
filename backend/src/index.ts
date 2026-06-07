@@ -56,6 +56,7 @@ import { registerSandboxTools } from "./tools/sandbox";
 import { SkillManager } from "./skill-manager";
 import { registerSkillTool } from "./tools/skill";
 import { registerEmailTools } from "./tools/email-tools";
+import { registerCompactTool } from "./tools/compact-tool";
 
 // System prompt for AI agent
 const SYSTEM_PROMPT = `## Tool Overview
@@ -119,6 +120,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     return getCurrentUserId();
   });
   registerEmailTools(toolRegistry);
+  registerCompactTool(toolRegistry);
 
   // ===== Initialize agent manager =====
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir);

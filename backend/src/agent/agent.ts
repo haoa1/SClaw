@@ -285,6 +285,25 @@ Use tools when you need to perform actions. Be concise and helpful.`,
   }
 
   private async executeTool(tc: ToolCall): Promise<string> {
+    // compact: manually trigger context compression
+    if (tc.name === "compact") {
+      const reason = (tc.arguments.reason as string) || "";
+      const beforeCount = this.messages.length;
+      const beforeTokens = estimateTotalTokens(this.messages);
+
+      this.messages = await compactContext(this.messages, this.llm);
+      // Re-inject system message after compact
+      this.rebuildSystemMessage();
+
+      const afterCount = this.messages.length;
+      const afterTokens = estimateTotalTokens(this.messages);
+      const savedTokens = beforeTokens - afterTokens;
+
+      let result = `✅ Compact completed: ${beforeCount} → ${afterCount} messages, saved ~${savedTokens} tokens.`;
+      if (reason) result += `\nReason: ${reason}`;
+      return result;
+    }
+
     // memory_recall: launches a sub-agent with file-reading tools to search memory
     if (tc.name === "memory_recall") {
       const query = (tc.arguments.query as string) || "";
@@ -394,8 +413,8 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
         // Sub-agent failed — fall through to keyword fallback
       }
 
-      // Fallback: simple keyword search
-      const results = this.memory.search(query, limit);
+    // Fallback: simple keyword search
+    const results = this.memory.search(query, limit);
       if (results.length === 0) return "No memories found matching your query.";
       return results
         .map((r, i) => {
