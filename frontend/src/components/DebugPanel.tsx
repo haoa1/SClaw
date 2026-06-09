@@ -84,7 +84,7 @@ function MsgView({ msg, index }: { msg: any; index: number }) {
         )}
         {/* Content */}
         {msg.content && (
-          <pre className="text-gray-300 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed">
+          <pre className="text-gray-300 text-xs font-mono whitespace-pre-wrap break-all leading-normal">
             {displayContent}
           </pre>
         )}

@@ -407,11 +407,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
   /* ===== Markdown renderer (OpenClaw terminal style) ===== */
   const mdComponents: any = {
-    h1: ({ children }: any) => <h1 className="text-yellow-400 text-base font-bold mt-3 mb-2 leading-relaxed">{children}</h1>,
-    h2: ({ children }: any) => <h2 className="text-yellow-400 text-sm font-bold mt-2 mb-1.5 leading-relaxed">{children}</h2>,
-    h3: ({ children }: any) => <h3 className="text-cyan-400 text-sm font-semibold mt-1.5 mb-1 leading-relaxed">{children}</h3>,
-    h4: ({ children }: any) => <h4 className="text-cyan-400 text-xs font-semibold mt-1 mb-0.5 leading-relaxed">{children}</h4>,
-    p: ({ children }: any) => <p className="text-gray-200 text-sm mb-1 leading-relaxed last:mb-0">{children}</p>,
+    h1: ({ children }: any) => <h1 className="text-yellow-400 text-base font-bold mt-2 mb-1 leading-normal">{children}</h1>,
+    h2: ({ children }: any) => <h2 className="text-yellow-400 text-sm font-bold mt-1.5 mb-1 leading-normal">{children}</h2>,
+    h3: ({ children }: any) => <h3 className="text-cyan-400 text-sm font-semibold mt-1 mb-0.5 leading-normal">{children}</h3>,
+    h4: ({ children }: any) => <h4 className="text-cyan-400 text-xs font-semibold mt-1 mb-0.5 leading-normal">{children}</h4>,
+    p: ({ children }: any) => <p className="text-gray-200 text-sm mb-0.5 leading-normal last:mb-0">{children}</p>,
     strong: ({ children }: any) => <strong className="text-gray-100 font-bold">{children}</strong>,
     em: ({ children }: any) => <em className="italic text-gray-300">{children}</em>,
     code: ({ children, className }: any) => {
@@ -419,7 +419,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
       if (isInline) {
         return <code className="bg-gray-800 text-yellow-200 text-xs px-1 py-0.5 rounded font-mono">{children}</code>
       }
-      return <code className="block bg-[#1a1a2e] text-gray-200 text-xs font-mono p-3 rounded border border-gray-700 overflow-x-auto leading-relaxed">{children}</code>
+      return <code className="block bg-[#1a1a2e] text-gray-200 text-xs font-mono p-3 rounded border border-gray-700 overflow-x-auto leading-normal">{children}</code>
     },
     pre: ({ children }: any) => <div className="mb-2">{children}</div>,
     table: ({ children }: any) => (
@@ -433,7 +433,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     tr: ({ children }: any) => <tr className="even:bg-gray-900/40">{children}</tr>,
     ul: ({ children }: any) => <ul className="list-disc pl-4 mb-1 text-gray-200 text-sm space-y-0.5">{children}</ul>,
     ol: ({ children }: any) => <ol className="list-decimal pl-4 mb-1 text-gray-200 text-sm space-y-0.5">{children}</ol>,
-    li: ({ children }: any) => <li className="leading-relaxed">{children}</li>,
+    li: ({ children }: any) => <li className="leading-normal">{children}</li>,
     blockquote: ({ children }: any) => (
       <blockquote className="border-l-2 border-cyan-800 pl-3 my-1.5 text-gray-400 text-sm italic">{children}</blockquote>
     ),
@@ -531,13 +531,13 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     switch (seg.type) {
       case 'reasoning':
         return (
-          <div key={idx} className="text-gray-500 text-xs italic leading-relaxed py-0.5">
+          <div key={idx} className="text-gray-500 text-xs italic leading-normal py-0.5">
             {seg.data}
           </div>
         )
       case 'content':
         return (
-          <div key={idx} className="text-gray-400 text-xs leading-relaxed py-0.5 border-l border-gray-800 pl-2">
+          <div key={idx} className="text-gray-400 text-xs leading-normal py-0.5 border-l border-gray-800 pl-2">
             {seg.data}
           </div>
         )
@@ -637,7 +637,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         {finalContent.length > 0 && (
           <div className="mb-1">
             {finalContent.map((seg, j) => (
-              <div key={j} className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-relaxed">
+              <div key={j} className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-normal">
                 {seg.type === 'content' ? <MarkdownContent data={seg.data} /> : null}
               </div>
             ))}
@@ -652,7 +652,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] bg-gray-900/80 border border-cyan-800/50 rounded-lg px-3 py-2">
-          <div className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-relaxed">
+          <div className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-normal">
             {content}
           </div>
         </div>
@@ -678,7 +678,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         const isEditing = editingIndex === i && msg.role === 'user'
         const msgContent = msg.segments?.find(s => s.type === 'content')?.data || msg.content || ''
         return (
-        <div key={i} className="group mb-2 leading-relaxed relative">
+        <div key={i} className="group mb-2 leading-normal relative">
           {/* Hover actions: recall + edit (not during streaming, not on last assistant msg) */}
           {!streaming && !isEditing && (
             <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">
@@ -729,11 +729,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
                   msg.content ? (
                     <div>
                       {msg.toolCalls?.map((tc, j) => (
-                        <div key={`tc-${j}`} className="text-xs font-mono text-gray-600 leading-relaxed py-1">
+                        <div key={`tc-${j}`} className="text-xs font-mono text-gray-600 leading-normal py-1">
                           ── Tool: {tc.name} ──
                         </div>
                       ))}
-                      <div className="text-gray-300 text-sm whitespace-pre-wrap break-words leading-relaxed">
+                      <div className="text-gray-300 text-sm whitespace-pre-wrap break-words leading-normal">
                         {msg.content}
                       </div>
                     </div>
@@ -761,7 +761,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
           {debugOpen && (
             <div className="pb-2 space-y-1">
               {debugPrompts.current.map((entry, i) => (
-                <div key={i} className="text-amber-700/80 text-[10px] font-mono leading-relaxed truncate">
+                <div key={i} className="text-amber-700/80 text-[10px] font-mono leading-normal truncate">
                   <span className="text-amber-500/60">[{entry.timestamp}]</span>{' '}
                   <span className="text-amber-600/80">{entry.messageCount}msgs</span>
                   {' | '}
