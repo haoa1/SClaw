@@ -21,7 +21,7 @@ export function registerScheduleTools(
       { name: 'action', type: 'string', description: '操作: create / list / delete / toggle / run / result' },
       { name: 'taskId', type: 'string', description: '任务ID（delete/toggle/run 需要）', required: false },
       { name: 'cronExpr', type: 'string', description: 'cron 表达式，例如 "0 9 * * 1-5" = 工作日9点（create 需要）', required: false },
-      { name: 'email', type: 'string', description: '接收报告的邮箱（create需要，回测任务可选）', required: false },
+      { name: 'email', type: 'string', description: '接收报告的邮箱，多个邮箱用逗号分隔（如 "a@b.com, c@d.com"），create需要，回测任务可选', required: false },
       { name: 'taskType', type: 'string', description: '任务类型: screen(默认,选股) / backtest(回测)', required: false },
       { name: 'backtestConfig', type: 'string', description: '回测配置JSON（taskType=backtest时需要）', required: false },
       { name: 'strategies', type: 'string', description: 'JSON 策略数组，例如 [{"pluginId":"volume","strategyId":"volume-surge","params":{"minChange":5}}]（create 需要）', required: false },
