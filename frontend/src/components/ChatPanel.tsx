@@ -452,7 +452,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     const displayData = isLong && !expanded ? data.slice(0, 5000) + '\n...' : data
     return (
       <div>
-        <div className="prose prose-invert max-w-none">
+        <div className="max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
             {displayData}
           </ReactMarkdown>
