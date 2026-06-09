@@ -38,6 +38,9 @@ import { LocalDBDataProvider } from "./backtest/data-provider";
 // Data sync
 import { createDataSyncRoutes } from "./routes/data-sync";
 
+// Garuda admin routes
+import { createGarudaRoutes } from "./routes/garuda";
+
 // Chat (for saving AI analysis results)
 import { saveMessages, loadMessages } from "./routes/chat";
 
@@ -222,6 +225,10 @@ Keep it concise — 3-5 sentences.`;
   const tushareToken = process.env.TUSHARE_TOKEN || '';
   const dataSyncRoutes = createDataSyncRoutes(localDb, dataDir, tushareToken);
   app.use('/api/data', dataSyncRoutes);
+
+  // Garuda admin routes (POST /api/admin/garuda/exec, GET /api/admin/garuda/health)
+  const garudaRoutes = createGarudaRoutes();
+  app.use(garudaRoutes);
 
   // Wire scheduler to run backtest tasks
   scheduler.runBacktest = async (config) => {

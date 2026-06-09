@@ -9,8 +9,9 @@ import ChatPanel from './components/ChatPanel'
 import ResultsModal from './components/ResultsModal'
 import BacktestPanel from './components/BacktestPanel'
 import DebugPanel from './components/DebugPanel'
+import GarudaTerminal from './components/GarudaTerminal'
 
-type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'debug'
+type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'debug' | 'garuda'
 
 const RESULTS_KEY = 'stock-screen-results'
 const TAB_KEY = 'stock-screen-tab'
@@ -382,6 +383,12 @@ export default function App() {
                   🐛 Debug
                 </button>
               )}
+              {user.role === 'admin' && (
+                <button onClick={() => setTab('garuda')}
+                  className={`px-3 py-2 text-sm font-medium transition ${tab === 'garuda' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  🔌 Garuda
+                </button>
+              )}
             </div>
 
             {/* User info */}
@@ -416,6 +423,10 @@ export default function App() {
       {tab === 'debug' && user.role === 'admin' ? (
         <div className="h-[calc(100vh-73px)] overflow-y-auto">
           <DebugPanel onBack={() => setTab('config')} />
+        </div>
+      ) : tab === 'garuda' && user.role === 'admin' ? (
+        <div className="h-[calc(100vh-73px)] overflow-hidden">
+          <GarudaTerminal onBack={() => setTab('config')} />
         </div>
       ) : (
       <div className="flex h-[calc(100vh-73px)] overflow-hidden">
