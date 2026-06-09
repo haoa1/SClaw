@@ -122,6 +122,10 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [loaded, setLoaded] = useState(false)
 
+  // Throttle auto-scrolls during streaming — avoid layout thrashing on every token
+  const lastScrollTime = useRef(0)
+  const SCROLL_THROTTLE_MS = 200
+
   // Streaming state: ordered segments list + accumulator for reasoning/content fragments
   const streamingSegments = useRef<Segment[]>([])
   const segmentAccum = useRef<{ type: 'reasoning' | 'content'; data: string } | null>(null)
@@ -172,15 +176,20 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     }
   }, [messages, loaded])
 
+  // Auto-scroll to bottom, throttled during streaming to avoid layout thrashing
   useEffect(() => {
-    if (chatRef.current) {
-      requestAnimationFrame(() => {
-        if (chatRef.current) {
-          chatRef.current.scrollTop = chatRef.current.scrollHeight
-        }
-      })
-    }
-  }, [messages])
+    if (!chatRef.current) return
+    const now = Date.now()
+    // Throttle: skip scroll if we just scrolled <200ms ago AND still streaming
+    if (streaming && now - lastScrollTime.current < SCROLL_THROTTLE_MS) return
+    lastScrollTime.current = now
+    requestAnimationFrame(() => {
+      if (chatRef.current) {
+        chatRef.current.scrollTop = chatRef.current.scrollHeight
+      }
+    })
+    // Also depend on streaming: when streaming ends (false), always scroll final content
+  }, [messages, streaming])
 
   useEffect(() => {
     if (!streaming && inputRef.current) {
