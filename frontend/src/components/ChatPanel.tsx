@@ -122,6 +122,10 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [loaded, setLoaded] = useState(false)
 
+  // Recall/Edit state
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editText, setEditText] = useState('')
+
   // Throttle auto-scrolls during streaming — avoid layout thrashing on every token
   const lastScrollTime = useRef(0)
   const SCROLL_THROTTLE_MS = 100
@@ -365,6 +369,33 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     el.addEventListener('keydown', nativeHandler)
     return () => el.removeEventListener('keydown', nativeHandler)
   }, [streaming]) // only re-attach on streaming change, NOT on input change
+
+  /** Recall a message: truncate from this index, reload from server */
+  const handleRecall = async (index: number) => {
+    const res = await authFetch('/api/chat/recall', {
+      method: 'POST',
+      body: JSON.stringify({ index }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setMessages((data.messages || []).map(convertToSegments))
+    }
+  }
+
+  /** Edit a message: replace content + truncate after, reload from server */
+  const handleEditSave = async (index: number, content: string) => {
+    if (!content.trim()) return
+    const res = await authFetch('/api/chat/edit', {
+      method: 'POST',
+      body: JSON.stringify({ index, content: content.trim() }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setMessages((data.messages || []).map(convertToSegments))
+      setEditingIndex(null)
+      setEditText('')
+    }
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -631,10 +662,53 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   // Memoize message rendering — typing in input should NOT re-render messages
   const messagesList = useMemo(() => (
     <div ref={chatRef} className="flex-1 overflow-y-auto px-4 py-3">
-      {messages.map((msg, i) => (
-        <div key={i} className="mb-2 leading-relaxed">
-          {msg.role === 'user' ? (
-            <UserMessageBlock content={msg.segments?.find(s => s.type === 'content')?.data || msg.content || ''} />
+      {messages.map((msg, i) => {
+        const isEditing = editingIndex === i && msg.role === 'user'
+        const msgContent = msg.segments?.find(s => s.type === 'content')?.data || msg.content || ''
+        return (
+        <div key={i} className="group mb-2 leading-relaxed relative">
+          {/* Hover actions: recall + edit (not during streaming, not on last assistant msg) */}
+          {!streaming && !isEditing && (
+            <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">
+              <button
+                onClick={() => handleRecall(i)}
+                className="text-gray-600 hover:text-amber-400 text-[10px] font-mono px-1 border border-gray-800 hover:border-amber-900 rounded cursor-pointer"
+                title="Recall (truncate from here)"
+              >↩</button>
+              <button
+                onClick={() => { setEditingIndex(i); setEditText(msgContent) }}
+                className="text-gray-600 hover:text-cyan-400 text-[10px] font-mono px-1 border border-gray-800 hover:border-cyan-900 rounded cursor-pointer"
+                title="Edit this message"
+              >✎</button>
+            </div>
+          )}
+
+          {isEditing ? (
+            /* Edit mode: textarea with save/cancel */
+            <div className="flex flex-col gap-1">
+              <textarea
+                value={editText}
+                onChange={e => setEditText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditSave(i, editText) }
+                  if (e.key === 'Escape') { setEditingIndex(null); setEditText('') }
+                }}
+                className="w-full bg-gray-900 text-gray-200 text-sm font-mono border border-gray-700 rounded px-2 py-1 resize-none outline-none min-h-[60px]"
+                autoFocus
+              />
+              <div className="flex gap-2 text-[10px] font-mono">
+                <button
+                  onClick={() => handleEditSave(i, editText)}
+                  className="text-green-500 hover:text-green-400 border border-green-900 hover:border-green-700 px-2 py-0.5 rounded cursor-pointer"
+                >Enter Save</button>
+                <button
+                  onClick={() => { setEditingIndex(null); setEditText('') }}
+                  className="text-gray-500 hover:text-gray-400 border border-gray-800 hover:border-gray-700 px-2 py-0.5 rounded cursor-pointer"
+                >Esc Cancel</button>
+              </div>
+            </div>
+          ) : msg.role === 'user' ? (
+            <UserMessageBlock content={msgContent} />
           ) : (
             <div>
               {msg.segments && msg.segments.length > 0
@@ -655,9 +729,9 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             </div>
           )}
         </div>
-      ))}
+      )})}
     </div>
-  ), [messages, streaming])
+  ), [messages, streaming, editingIndex, editText])
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-black font-mono">

@@ -322,6 +322,57 @@ export function createChatRoutes(
     res.json({ status: "ok", message: "All user data cleared" });
   });
 
+  /** POST /api/chat/recall — recall a message by index (truncate from that point) */
+  router.post("/api/chat/recall", (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Not logged in" });
+      return;
+    }
+    const { index } = req.body || {};
+    if (typeof index !== "number" || index < 0) {
+      res.status(400).json({ error: "Invalid index" });
+      return;
+    }
+    const messages = loadMessages(userId);
+    if (index >= messages.length) {
+      res.status(400).json({ error: "Index out of range" });
+      return;
+    }
+    // Truncate from index (remove this message and everything after)
+    const kept = messages.slice(0, index);
+    saveMessages(userId, kept);
+    res.json({ status: "ok", messages: kept });
+  });
+
+  /** POST /api/chat/edit — edit a message at index (replace + truncate after) */
+  router.post("/api/chat/edit", (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Not logged in" });
+      return;
+    }
+    const { index, content } = req.body || {};
+    if (typeof index !== "number" || index < 0) {
+      res.status(400).json({ error: "Invalid index" });
+      return;
+    }
+    if (!content || typeof content !== "string") {
+      res.status(400).json({ error: "Content is required" });
+      return;
+    }
+    const messages = loadMessages(userId);
+    if (index >= messages.length) {
+      res.status(400).json({ error: "Index out of range" });
+      return;
+    }
+    // Edit this message + truncate everything after
+    const kept = messages.slice(0, index);
+    kept.push({ role: messages[index].role, content });
+    saveMessages(userId, kept);
+    res.json({ status: "ok", messages: kept });
+  });
+
   /** GET /api/debug/prompts — list all prompt dump files with content (jack only) */
   router.get("/api/debug/prompts", (req: Request, res: Response) => {
     const authHeader = req.headers.authorization;
