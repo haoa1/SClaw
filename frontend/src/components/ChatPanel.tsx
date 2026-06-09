@@ -174,7 +174,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
   useEffect(() => {
     if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight
+      requestAnimationFrame(() => {
+        if (chatRef.current) {
+          chatRef.current.scrollTop = chatRef.current.scrollHeight
+        }
+      })
     }
   }, [messages])
 
