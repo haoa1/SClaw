@@ -124,7 +124,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
   // Throttle auto-scrolls during streaming — avoid layout thrashing on every token
   const lastScrollTime = useRef(0)
-  const SCROLL_THROTTLE_MS = 200
+  const SCROLL_THROTTLE_MS = 100
 
   // Streaming state: ordered segments list + accumulator for reasoning/content fragments
   const streamingSegments = useRef<Segment[]>([])
