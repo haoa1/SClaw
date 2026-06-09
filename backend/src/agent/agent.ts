@@ -445,7 +445,17 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
   }
 
   private addUserMessage(content: string): void {
-    this.messages.push({ role: "user", content });
+    // Attach current time as <attachment> tag so AI always knows when user spoke
+    const now = new Date();
+    const timeStr = now.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    });
+    const tz = 'CST (UTC+8)';
+    const attached = `${content.trim()}\n\n<attachment type="system">\n当前时间: ${timeStr} ${tz}\n</attachment>`;
+    this.messages.push({ role: "user", content: attached });
     this.memory.add({
       type: "observation",
       content: `User: ${content.slice(0, 200)}`,
