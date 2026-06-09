@@ -789,6 +789,14 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             className="flex-1 bg-transparent text-gray-200 border-0 px-0 py-2 text-sm font-mono resize-none outline-none disabled:opacity-50 min-h-[36px] max-h-[100px]"
           />
           <button
+            onClick={() => send()}
+            disabled={streaming || !input.trim()}
+            title="Send message (Enter)"
+            className="text-cyan-500 hover:text-cyan-400 disabled:opacity-30 text-xs font-mono px-3 py-1 border border-cyan-800/50 rounded hover:border-cyan-700 transition-colors cursor-pointer flex-shrink-0"
+          >
+            ▶ Send
+          </button>
+          <button
             onClick={handleClear}
             disabled={streaming}
             title="Clear chat history"
