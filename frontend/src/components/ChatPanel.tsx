@@ -418,7 +418,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
       if (inline) {
         return <code className="bg-gray-800 text-yellow-200 text-xs px-1 py-0.5 rounded font-mono">{children}</code>
       }
-      return <code className="block bg-[#1a1a2e] text-gray-200 text-xs font-mono p-3 rounded border border-gray-700 overflow-x-auto leading-normal whitespace-pre">{children}</code>
+      return <code className="block bg-[#1a1a2e] text-gray-200 text-xs font-mono p-3 rounded border border-gray-700 overflow-x-auto leading-[1.15] whitespace-pre">{children}</code>
     },
     pre: ({ children }: any) => <div className="mb-2">{children}</div>,
     table: ({ children }: any) => (
