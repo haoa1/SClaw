@@ -84,10 +84,13 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // ===== Initialize core components =====
-  const pluginsDir = options?.pluginsDir || path.resolve(__dirname, "../../plugins");
+  const pluginsDir = options?.pluginsDir || path.resolve(__dirname, "../../plugins/common");
+  const usersPluginsDir = options?.pluginsDir
+    ? path.resolve(options.pluginsDir, '..', 'users')
+    : path.resolve(__dirname, "../../plugins/users");
   const dataDir = options?.dataDir || path.resolve(process.cwd(), "data");
 
-  const pluginManager = new PluginManager(pluginsDir);
+  const pluginManager = new PluginManager(pluginsDir, usersPluginsDir);
   const dataFetcher = new DataFetcher();
   const strategyEngine = new StrategyEngine(() => pluginManager.getAll());
   const userStore = new UserStore(dataDir);
@@ -111,6 +114,10 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   registerStockTool(toolRegistry);
   registerScreenTool(toolRegistry);
   registerStrategyTool(toolRegistry);
+
+  // Wire PluginManager to strategy tools (for user-scoped plugin access)
+  const { setPluginManager } = require("./tools/strategy-validator");
+  setPluginManager(pluginManager);
   registerRiskTool(toolRegistry);
   registerMemoryTools(toolRegistry);
   registerSandboxTools(toolRegistry);

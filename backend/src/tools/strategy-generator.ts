@@ -1,46 +1,12 @@
 /**
  * Strategy Generator — AI generates new trading strategies as plugins.
- * Dynamically creates plugin files and hot-reloads them.
+ * Now writes to user-specific directory via PluginManager.
  */
 
 import { Tool, ToolParamDef } from "./registry";
-import { reloadPlugins } from "./strategy-validator";
+import { reloadPlugins, getPluginManager } from "./strategy-validator";
 import * as path from "path";
 import * as fs from "fs";
-
-// ===== Helpers =====
-
-let pluginsDirCache: string | null = null;
-
-function resolvePluginsDir(): string | null {
-  if (pluginsDirCache) return pluginsDirCache;
-
-  const candidates = [
-    path.resolve(__dirname, "..", "..", "..", "..", "plugins"),
-    path.resolve(process.cwd(), "..", "plugins"),
-    path.resolve(process.cwd(), "plugins"),
-    path.resolve(__dirname, "..", "..", "..", "plugins"),
-  ];
-
-  for (const dir of candidates) {
-    try {
-      if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
-        pluginsDirCache = dir;
-        return dir;
-      }
-    } catch { /* ignore */ }
-  }
-
-  // Fallback: create at project root
-  const fallback = path.resolve(__dirname, "..", "..", "..", "..", "plugins");
-  try {
-    fs.mkdirSync(fallback, { recursive: true });
-    pluginsDirCache = fallback;
-    return fallback;
-  } catch {
-    return null;
-  }
-}
 
 // ===== Security: execute_fn Sanitizer =====
 
@@ -79,7 +45,6 @@ function sanitizeExecuteFn(code: string): true | string {
       return `Code contains blocked pattern: ${pattern}`;
     }
   }
-  // Check for path traversal in string literals
   if (/['"][.][.]\/['"]/.test(code) || /['"][/]\s*etc\s*\//.test(code)) {
     return "Code contains suspicious path traversal";
   }
@@ -119,7 +84,6 @@ function buildPluginSource(
       .map((l, i) => (i === 0 ? l : "      " + l))
       .join("\n");
 
-    // Indent the execute_fn body
     const bodyLines = s.execute_fn.split("\n");
 
     return `    {
@@ -146,6 +110,42 @@ ${bodyLines.map((l) => "        " + l).join("\n")}
     `\n  ],\n};\n\n` +
     `export default plugin;\n`
   );
+}
+
+/**
+ * Get the target plugins directory for a given user (or the server default).
+ */
+function getTargetPluginsDir(userId?: string): string | null {
+  const pm = getPluginManager();
+  if (pm) {
+    if (userId) {
+      // Write to user-specific dir
+      return pm.getUserPluginsDir(userId);
+    }
+    // Default: common dir
+    return pm.getCommonPluginsDir();
+  }
+
+  // Fallback: resolve old plugins/ dir
+  const candidates = [
+    path.resolve(__dirname, "..", "..", "..", "plugins"),
+    path.resolve(process.cwd(), "..", "plugins"),
+    path.resolve(process.cwd(), "plugins"),
+  ];
+
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) return dir;
+    } catch { /* ignore */ }
+  }
+
+  const fallback = path.resolve(__dirname, "..", "..", "..", "plugins");
+  try {
+    fs.mkdirSync(fallback, { recursive: true });
+    return fallback;
+  } catch {
+    return null;
+  }
 }
 
 // ===== Tool: generate_strategy =====
@@ -198,13 +198,11 @@ const generateStrategyFn = (args: Record<string, unknown>): string => {
   const description = (args.description as string || `AI generated plugin: ${pluginName}`).trim();
   const strategiesJson = (args.strategies_json as string || "[]").trim();
 
-  // Validate plugin_id
   if (!pluginId) return "❌ Error: plugin_id is required";
   if (!/^[a-z0-9_-]+$/.test(pluginId)) {
     return "❌ Error: plugin_id must be lowercase alphanumeric with hyphens/underscores only";
   }
 
-  // Parse strategies
   let strategies: StrategyDef[];
   try {
     strategies = JSON.parse(strategiesJson);
@@ -216,7 +214,6 @@ const generateStrategyFn = (args: Record<string, unknown>): string => {
     return "❌ Error: strategies_json must be a non-empty array";
   }
 
-  // Validate each strategy
   for (let i = 0; i < strategies.length; i++) {
     const s = strategies[i];
     if (!s.id || typeof s.id !== "string") return `❌ Error: strategy[${i}] must have string 'id'`;
@@ -226,21 +223,31 @@ const generateStrategyFn = (args: Record<string, unknown>): string => {
     if (!s.category) s.category = "special";
     if (!Array.isArray(s.params)) s.params = [];
 
-    // Validate category
     const validCategories = ["long-term", "mid-term", "short-term", "day-trade", "special", "sector", "macro", "quant", "momentum", "income", "reversal"];
     if (!validCategories.includes(s.category)) {
       return `❌ Error: strategy[${i}] category '${s.category}' invalid. Must be one of: ${validCategories.join(", ")}`;
     }
 
-    // 🔒 Security: sanitize execute_fn — block dangerous Node.js APIs
     const sanitized = sanitizeExecuteFn(s.execute_fn);
     if (sanitized !== true) {
       return `❌ Error: strategy[${i}] execute_fn contains blocked code: ${sanitized}`;
     }
   }
 
-  // Find plugins directory
-  const pluginsDir = resolvePluginsDir();
+  // Determine user context — prefer explicit userId, fall back to request-context
+  let targetUserId: string | undefined;
+  const explicitUserId = args.user_id as string | undefined;
+  if (explicitUserId) {
+    targetUserId = explicitUserId;
+  } else {
+    try {
+      const { getCurrentUserId } = require("../request-context");
+      targetUserId = getCurrentUserId();
+    } catch { /* no request context */ }
+  }
+
+  // Get target plugins directory
+  const pluginsDir = getTargetPluginsDir(targetUserId);
   if (!pluginsDir) {
     return "❌ Error: Cannot find or create plugins directory";
   }
@@ -249,7 +256,7 @@ const generateStrategyFn = (args: Record<string, unknown>): string => {
   const pluginDir = path.join(pluginsDir, pluginId);
   try {
     if (fs.existsSync(pluginDir)) {
-      return `❌ Error: Plugin directory already exists: ${pluginDir}. Use a different plugin_id or delete the directory first.`;
+      return `❌ Error: Plugin directory already exists: ${pluginDir}. Use a different plugin_id or delete it first.`;
     }
     fs.mkdirSync(pluginDir, { recursive: true });
   } catch (e) {
@@ -266,7 +273,14 @@ const generateStrategyFn = (args: Record<string, unknown>): string => {
     return `❌ Error: Cannot write plugin file: ${e instanceof Error ? e.message : String(e)}`;
   }
 
-  // Reload plugins
+  // Reload plugins — use PluginManager if available for user-scoped reload
+  const pm = getPluginManager();
+  if (pm && targetUserId) {
+    pm.loadForUser(targetUserId).catch(err => {
+      console.error(`[StrategyGenerator] loadForUser(${targetUserId}) failed:`, err);
+    });
+  }
+
   try {
     const reloaded = reloadPlugins();
     const pluginFound = reloaded.find((p: any) => p.id === pluginId);
@@ -297,7 +311,7 @@ ${strategies.map((s, i) => `  ${i + 1}. [${s.id}] ${s.name} (${s.category})`).jo
 
 export const generateStrategyTool = new Tool(
   "generate_strategy",
-  "Generate a new trading strategy plugin from AI-designed logic and hot-reload it. Creates the plugin file, writes it to the plugins directory, and reloads all plugins automatically.",
+  "Generate a new trading strategy plugin from AI-designed logic and hot-reload it. Writes to user-specific plugins directory.",
   generateStrategyParams,
   generateStrategyFn
 );
@@ -336,5 +350,3 @@ export const reloadPluginsTool = new Tool(
   reloadPluginsParams,
   reloadPluginsFn
 );
-
-

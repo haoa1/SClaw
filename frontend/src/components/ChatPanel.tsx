@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -628,35 +628,40 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     )
   }
 
+  // Memoize message rendering — typing in input should NOT re-render messages
+  const messagesList = useMemo(() => (
+    <div ref={chatRef} className="flex-1 overflow-y-auto px-4 py-3">
+      {messages.map((msg, i) => (
+        <div key={i} className="mb-2 leading-relaxed">
+          {msg.role === 'user' ? (
+            <UserMessageBlock content={msg.segments?.find(s => s.type === 'content')?.data || msg.content || ''} />
+          ) : (
+            <div>
+              {msg.segments && msg.segments.length > 0
+                ? renderAssistantMessage(msg.segments, streaming && i === messages.length - 1)
+                : /* Backward compat: old messages without segments */
+                  msg.content ? (
+                    <div>
+                      {msg.toolCalls?.map((tc, j) => (
+                        <div key={`tc-${j}`} className="text-xs font-mono text-gray-600 leading-relaxed py-1">
+                          ── Tool: {tc.name} ──
+                        </div>
+                      ))}
+                      <div className="text-gray-300 text-sm whitespace-pre-wrap break-words leading-relaxed">
+                        {msg.content}
+                      </div>
+                    </div>
+                  ) : null}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  ), [messages, streaming])
+
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-black font-mono">
-      <div ref={chatRef} className="flex-1 overflow-y-auto px-4 py-3">
-        {messages.map((msg, i) => (
-          <div key={i} className="mb-2 leading-relaxed">
-            {msg.role === 'user' ? (
-              <UserMessageBlock content={msg.segments?.find(s => s.type === 'content')?.data || msg.content || ''} />
-            ) : (
-              <div>
-                {msg.segments && msg.segments.length > 0
-                  ? renderAssistantMessage(msg.segments, streaming && i === messages.length - 1)
-                  : /* Backward compat: old messages without segments */
-                    msg.content ? (
-                      <div>
-                        {msg.toolCalls?.map((tc, j) => (
-                          <div key={`tc-${j}`} className="text-xs font-mono text-gray-600 leading-relaxed py-1">
-                            ── Tool: {tc.name} ──
-                          </div>
-                        ))}
-                        <div className="text-gray-300 text-sm whitespace-pre-wrap break-words leading-relaxed">
-                          {msg.content}
-                        </div>
-                      </div>
-                    ) : null}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      {messagesList}
 
       {/* Debug panel — shows recent prompt dumps */}
       {debugCount > 0 && (

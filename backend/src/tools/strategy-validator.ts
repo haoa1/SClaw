@@ -1,7 +1,7 @@
 /**
  * Strategy validator — loads existing plugins and wraps execute() as Agent tools.
- * Strategy functions are pure: (StockData[], params) => FilterResult[].
- * Shares no backend dependency — loads plugins dynamically via require().
+ * Now uses PluginManager (injected via setPluginManager()) instead of independent loader.
+ * Falls back to independent loading if PluginManager is not set (for tests/backward compat).
  */
 
 import { Tool, ToolParamDef } from "./registry";
@@ -9,11 +9,24 @@ import { getStocks } from "./stock-info";
 import { HistoricalDataFetcher } from "../data/eastmoney-historical";
 import * as path from "path";
 import * as fs from "fs";
+import { PluginManager } from "../plugin-system/plugin-manager";
+
+// ===== PluginManager reference (wired from index.ts) =====
+
+let pluginManagerRef: PluginManager | null = null;
+
+export function setPluginManager(pm: PluginManager): void {
+  pluginManagerRef = pm;
+}
+
+export function getPluginManager(): PluginManager | null {
+  return pluginManagerRef;
+}
 
 // ===== Historical Enrichment =====
 
 const HISTORICAL_DIR = path.resolve(__dirname, '../../data/historical');
-const LIMIT_UP_THRESHOLD = 9.5; // 涨停阈值（A股主板10%, 创业板/科创板20%, 用9.5作为通用阈值）
+const LIMIT_UP_THRESHOLD = 9.5; //涨停阈值（A股主板10%, 创业板/科创板20%, 用9.5作为通用阈值）
 
 /**
  * Check if a stock has had a limit-up (涨停) in the last N trading days.
@@ -27,7 +40,6 @@ function checkLimitUpLastNDays(code: string, market: string, days: number = 20):
   
   try {
     const items: any[] = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-    // Get last N entries
     const recent = items.slice(-days);
     return recent.some(item => (item.changePct ?? 0) >= LIMIT_UP_THRESHOLD);
   } catch {
@@ -37,7 +49,6 @@ function checkLimitUpLastNDays(code: string, market: string, days: number = 20):
 
 /**
  * Enrich stock data array with historical information (limit-up detection).
- * Only affects stocks with existing disk cache — others are skipped silently.
  */
 function enrichWithHistory(stocks: any[]): void {
   for (const stock of stocks) {
@@ -47,7 +58,7 @@ function enrichWithHistory(stocks: any[]): void {
   }
 }
 
-// ===== Minimal types (mirrors backend types) =====
+// ===== Types =====
 
 interface StockData {
   code: string;
@@ -101,17 +112,14 @@ interface Plugin {
   strategies: Strategy[];
 }
 
-// ===== Plugin Loader =====
+// ===== Plugin Loader (fallback — used when PluginManager not available) =====
 
 let loadedPlugins: Plugin[] | null = null;
 let loadError: string | null = null;
 
-/**
- * Find the plugins directory by checking common locations.
- */
 function findPluginsDir(): string | null {
   const candidates = [
-    path.resolve(__dirname, "..", "..", "..", "plugins"),  // ai-agent/src/tools -> SClaw/plugins
+    path.resolve(__dirname, "..", "..", "..", "plugins"),
     path.resolve(process.cwd(), "..", "plugins"),
     path.resolve(process.cwd(), "plugins"),
     path.resolve(__dirname, "..", "..", "..", "..", "plugins"),
@@ -134,7 +142,8 @@ function findPluginsDir(): string | null {
 }
 
 /**
- * Load all plugins from the plugins directory.
+ * Fallback loader — used when PluginManager is not wired.
+ * Also used by reloadPlugins() which is called from strategy-generator.
  */
 function loadPlugins(): Plugin[] {
   if (loadedPlugins) return loadedPlugins;
@@ -183,10 +192,45 @@ function loadPlugins(): Plugin[] {
 }
 
 /**
- * Reload plugins (call when strategies change).
+ * Reload plugins — uses PluginManager if available, fallback otherwise.
  */
 export function reloadPlugins(): Plugin[] {
   loadedPlugins = null;
+  
+  if (pluginManagerRef) {
+    // Use PluginManager to reload
+    pluginManagerRef.reloadAll().catch(err => {
+      console.error("[StrategyValidator] PluginManager reloadAll failed:", err);
+    });
+    // Return whatever is currently loaded
+    const result: Plugin[] = pluginManagerRef.getAll() as Plugin[];
+    // Also try to get common plugins for the fallback format
+    return result;
+  }
+  
+  return loadPlugins();
+}
+
+/**
+ * Get plugins appropriate for the current user.
+ * Uses PluginManager if available, falls back to old loader.
+ */
+function getPluginsForCurrentUser(): Plugin[] {
+  if (pluginManagerRef) {
+    try {
+      const { getCurrentUserId } = require("../request-context");
+      const userId = getCurrentUserId();
+      if (userId) {
+        // Load user plugins if not already loaded
+        pluginManagerRef.loadForUser(userId).catch(() => {});
+        return pluginManagerRef.getAllForUser(userId) as unknown as Plugin[];
+      }
+    } catch {
+      // request-context might not be available
+    }
+    return pluginManagerRef.getAll() as unknown as Plugin[];
+  }
+  
   return loadPlugins();
 }
 
@@ -207,7 +251,7 @@ function formatResults(
     `「${strategyName}」匹配 ${results.length}/${totalStocks} 只股票 (显示前${top.length}名)`,
     ``,
     `  ${"排名".padEnd(4)} ${"代码".padEnd(8)} ${"名称".padEnd(10)} ${"评分".padEnd(4)} ${"信号".padEnd(40)}`,
-    `  ${"─".repeat(4)} ${"─".repeat(8)} ${"─".repeat(10)} ${"─".repeat(4)} ${"─".repeat(40)}`,
+    `  ${"────".padEnd(4)} ${"────────".padEnd(8)} ${"──────────".padEnd(10)} ${"────".padEnd(4)} ${"────────────────────────────────────────".padEnd(40)}`,
   ];
 
   for (let i = 0; i < top.length; i++) {
@@ -232,7 +276,7 @@ const listStrategiesParams: ToolParamDef[] = [
 
 const listStrategiesFn = (args: Record<string, unknown>): string => {
   const category = (args.category as string || "").toLowerCase().trim();
-  const plugins = loadPlugins();
+  const plugins = getPluginsForCurrentUser();
   
   if (plugins.length === 0) {
     const err = loadError || "Unknown error";
@@ -292,8 +336,8 @@ const multiStrategyFn = async (args: Record<string, unknown>): Promise<string> =
     return "Error: strategies_json 必须是包含至少一个策略的数组";
   }
 
-  // Load plugins
-  const plugins = loadPlugins();
+  // Load plugins for current user
+  const plugins = getPluginsForCurrentUser();
   if (plugins.length === 0) return `无法加载策略：${loadError || "未找到插件"}`;
 
   // Resolve strategies
@@ -387,7 +431,7 @@ const multiStrategyFn = async (args: Record<string, unknown>): Promise<string> =
         `扫描 ${totalStocks} 只股票, ${scored.length} 只满足条件`,
         ``,
         `  ${"排名".padEnd(4)} ${"代码".padEnd(8)} ${"名称".padEnd(10)} ${"评分".padEnd(4)} ${"命中".padEnd(4)} 策略`,
-        `  ${"─".repeat(4)} ${"─".repeat(8)} ${"─".repeat(10)} ${"─".repeat(4)} ${"─".repeat(4)} ${"─".repeat(30)}`,
+        `  ${"────".padEnd(4)} ${"────────".padEnd(8)} ${"──────────".padEnd(10)} ${"────".padEnd(4)} ${"────".padEnd(4)} ${"──────────────────────────────".padEnd(30)}`,
         ...top.map((r, i) =>
           `  ${(i + 1).toString().padEnd(4)} ${r.code.padEnd(8)} ${r.name.padEnd(10)} ${r.score.toString().padEnd(4)} ${r.hitCount.toString().padEnd(4)} ${r.hitStr.slice(0, 30)}`
         ),
