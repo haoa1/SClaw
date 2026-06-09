@@ -197,7 +197,18 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     }
   }, [streaming])
 
+  // Throttle setMessages during streaming — avoid layout thrashing on every token
+  const lastRenderTime = useRef(0)
+  const RENDER_THROTTLE_MS = 50  // 20fps max update rate
+
   const updatePending = () => {
+    // During streaming, throttle React re-renders to 20fps
+    // Accumulation in refs (segmentAccum/streamingSegments) is always instant — only the React paint is throttled
+    if (streaming) {
+      const now = Date.now()
+      if (now - lastRenderTime.current < RENDER_THROTTLE_MS) return
+      lastRenderTime.current = now
+    }
     setMessages(prev => {
       const idx = prev.length - 1
       if (idx < 0) return prev
