@@ -414,12 +414,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     p: ({ children }: any) => <p className="text-gray-200 text-sm mb-0.5 leading-normal last:mb-0">{children}</p>,
     strong: ({ children }: any) => <strong className="text-gray-100 font-bold">{children}</strong>,
     em: ({ children }: any) => <em className="italic text-gray-300">{children}</em>,
-    code: ({ children, className }: any) => {
-      const isInline = !className
-      if (isInline) {
+    code: ({ children, className, inline }: any) => {
+      if (inline) {
         return <code className="bg-gray-800 text-yellow-200 text-xs px-1 py-0.5 rounded font-mono">{children}</code>
       }
-      return <code className="block bg-[#1a1a2e] text-gray-200 text-xs font-mono p-3 rounded border border-gray-700 overflow-x-auto leading-normal">{children}</code>
+      return <code className="block bg-[#1a1a2e] text-gray-200 text-xs font-mono p-3 rounded border border-gray-700 overflow-x-auto leading-normal whitespace-pre">{children}</code>
     },
     pre: ({ children }: any) => <div className="mb-2">{children}</div>,
     table: ({ children }: any) => (
