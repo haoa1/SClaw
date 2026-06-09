@@ -647,13 +647,25 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     )
   }
 
-  /* ===== User message block ===== */
+  /* ===== User message bubble ===== */
   function UserMessageBlock({ content }: { content: string }) {
     return (
-      <div className="flex items-start gap-2">
-        <span className="text-cyan-500 text-xs font-mono mt-1 flex-shrink-0">❯</span>
-        <div className="text-gray-300 text-sm whitespace-pre-wrap break-words leading-relaxed">
-          {content}
+      <div className="flex justify-end">
+        <div className="max-w-[85%] bg-gray-900/80 border border-cyan-800/50 rounded-lg px-3 py-2">
+          <div className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-relaxed">
+            {content}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  /* ===== Assistant message bubble ===== */
+  function AssistantBubble({ children }: { children: React.ReactNode }) {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[92%] bg-gray-900/40 border border-gray-800 rounded-lg px-3 py-2">
+          {children}
         </div>
       </div>
     )
@@ -710,7 +722,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
           ) : msg.role === 'user' ? (
             <UserMessageBlock content={msgContent} />
           ) : (
-            <div>
+            <AssistantBubble>
               {msg.segments && msg.segments.length > 0
                 ? renderAssistantMessage(msg.segments, streaming && i === messages.length - 1)
                 : /* Backward compat: old messages without segments */
@@ -726,7 +738,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
                       </div>
                     </div>
                   ) : null}
-            </div>
+            </AssistantBubble>
           )}
         </div>
       )})}
