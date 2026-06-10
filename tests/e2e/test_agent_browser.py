@@ -1,21 +1,26 @@
 """
-Agent-Browser Integration Tests — Garuda Terminal via SClaw Web UI + TCP tunnel.
+Agent-Browser Integration Tests — Garuda UDS Server via SClaw Web UI + TCP tunnel.
 
-These tests verify that the full chain works:
-  Browser → SClaw Frontend (Garuda tab) → SClaw Backend API
-    → TCP tunnel (port 19998) → Garuda CLI → response back
+Protocol (JSON-lines over TCP):
+  Client → Server:  {"type":"ping"} | {"type":"msg","content":"..."}
+  Server → Client:  {"type":"pong"} | {"type":"done","response":"..."}
+
+Architecture:
+  Browser → SClaw Frontend (Garuda tab) → SClaw Backend API (REST)
+    → TCP socket (localhost:19998, SSH tunnel) → localhost socat
+    → UDS (/tmp/garuda.sock) → Garuda --serve (UDS server)
 
 Prerequisites:
-  - SClaw backend running (port 3001)
-  - garuda-tunnel.py running (ports 19999 WS + 19998 TCP)
-  - Garuda CLI available at ~/workspace/venv/bin/garuda
+  - SClaw backend running (port 3001, PM2)
+  - SSH tunnel active (port 19998 → localhost socat → UDS)
+  - Garuda --serve listening on /tmp/garuda.sock
 
 Run:
-  cd /path/to/sclaw
-  python3 -m pytest tests/e2e/test_agent_browser.py --headed --slowmo 300 -v
-
-  Headless mode:
+  cd /root/sclaw
   python3 -m pytest tests/e2e/test_agent_browser.py -v
+
+  With browser:
+  python3 -m pytest tests/e2e/test_agent_browser.py --headed --slowmo 300 -v
 """
 
 import pytest
@@ -23,302 +28,299 @@ import socket
 import json
 import time
 import re
+import urllib.request
+import urllib.error
 
 
 # =============================================================================
-# Test: TCP Tunnel Direct (no browser needed)
+# Helpers
 # =============================================================================
 
-def test_tunnel_direct_ping():
-    """
-    Verify the TCP tunnel (port 19998) is reachable and responds to commands.
+TUNNEL_HOST = "127.0.0.1"
+TUNNEL_PORT = 19998
+BACKEND_URL = "http://127.0.0.1:3001"
+JSON_TIMEOUT = 15  # SSH tunnel adds ~5.5s latency per connection
 
-    Sends a simple "echo" command and verifies we get a response.
-    This tests the lowest layer: SClaw backend → TCP tunnel → Garuda CLI.
-    """
+
+def _send_json(host, port, obj, timeout=JSON_TIMEOUT):
+    """Send a JSON-lines message and read one JSON response line."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(15)
+    sock.settimeout(timeout)
     try:
-        sock.connect(("127.0.0.1", 19998))
-        # Send a simple command — Garuda CLI doesn't do shell echo,
-        # so "ping" is a valid no-op that returns without error
-        sock.sendall(b"ping\n")
-
-        response = b""
+        sock.connect((host, port))
+        sock.sendall((json.dumps(obj) + "\n").encode("utf-8"))
+        # Read until newline
+        buf = b""
         while True:
-            try:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                response += chunk
-            except socket.timeout:
+            chunk = sock.recv(4096)
+            if not chunk:
                 break
-
-        decoded = response.decode("utf-8", errors="replace")
-        # The tunnel is alive if we got any response (not empty)
-        assert len(decoded) > 0, "Expected non-empty response from TCP tunnel"
-        # Verify the tunnel forwarded to Garuda (should see Garuda startup messages)
-        assert "Garuda" in decoded or "session" in decoded.lower(), \
-            f"Expected Garuda-related response, got: {decoded[:200]}"
-    except ConnectionRefusedError:
-        pytest.fail("TCP tunnel on port 19998 is not running. Start garuda-tunnel.py first.")
+            buf += chunk
+            if b"\n" in buf:
+                line, _ = buf.split(b"\n", 1)
+                return json.loads(line.decode("utf-8"))
+        return None
     finally:
         sock.close()
 
 
-def test_tunnel_direct_list_tasks():
-    """
-    Verify we can list Garuda tasks via the TCP tunnel.
+def _http_get(path, timeout=15):
+    """Simple HTTP GET returning parsed JSON."""
+    req = urllib.request.Request(f"{BACKEND_URL}{path}")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode())
 
-    Sends "list tasks" and verifies we get a session listing back.
+
+def _http_post(path, body, timeout=30):
+    """Simple HTTP POST returning parsed JSON."""
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(
+        f"{BACKEND_URL}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _admin_login():
+    """Login as jack, return auth token. Skips test if unavailable."""
+    try:
+        return _http_post("/api/auth/login", {"username": "jack", "password": "jack123"})
+    except urllib.error.HTTPError as e:
+        pytest.skip(f"Admin login failed (HTTP {e.code})")
+    except urllib.error.URLError:
+        pytest.skip("Backend not reachable")
+
+
+# =============================================================================
+# Layer 1: TCP Tunnel (JSON-lines protocol, lowest layer)
+# =============================================================================
+
+def test_tunnel_ping():
+    """
+    Verify TCP tunnel responds to JSON-lines ping.
+    Send {"type":"ping"} → expect {"type":"pong"}.
+    Tests: TCP socket → SSH tunnel → socat → UDS → garuda --serve
+    """
+    resp = _send_json(TUNNEL_HOST, TUNNEL_PORT, {"type": "ping"}, timeout=15)
+    assert resp is not None, "No response from tunnel (port 19998)"
+    assert resp.get("type") == "pong", f"Expected 'pong', got: {resp}"
+
+
+def test_tunnel_msg_simple():
+    """
+    Verify TCP tunnel can send a simple message and get AI reply.
+    Send {"type":"msg","content":"Say hi in 3 words"} → expect {"type":"done","response":"..."}
+    Tests: full JSON-lines protocol through tunnel.
+    """
+    resp = _send_json(TUNNEL_HOST, TUNNEL_PORT,
+                      {"type": "msg", "content": "Say hi in 3 words"},
+                      timeout=90)
+    assert resp is not None, "No response from tunnel for msg"
+    assert resp.get("type") == "done", f"Expected 'done', got: {resp}"
+    assert resp.get("response"), f"Missing 'response' field: {resp}"
+    assert len(resp["response"]) > 0, f"Empty response: {resp}"
+
+
+def test_tunnel_hello_world():
+    """
+    Verify Garuda can write Hello World code.
+    Tests: AI coding capability through JSON-lines protocol.
+    """
+    resp = _send_json(TUNNEL_HOST, TUNNEL_PORT,
+                      {"type": "msg", "content": "Write a Hello World program in Python"},
+                      timeout=120)
+    assert resp is not None, "No response from tunnel"
+    assert resp.get("type") == "done", f"Expected 'done', got: {resp}"
+    resp_text = resp.get("response", "")
+    assert "print" in resp_text.lower() or "hello" in resp_text.lower(), \
+        f"Response should contain Hello World code: {resp_text[:200]}"
+
+
+def test_tunnel_conversation():
+    """
+    Verify Garuda can hold a short multi-turn conversation.
+    Two messages in sequence on the same connection.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(30)
+    sock.settimeout(60)
     try:
-        sock.connect(("127.0.0.1", 19998))
-        sock.sendall(b"list tasks\n")
+        sock.connect((TUNNEL_HOST, TUNNEL_PORT))
 
-        response = b""
-        while True:
-            try:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                response += chunk
-            except socket.timeout:
+        # Turn 1: greeting
+        sock.sendall((json.dumps({"type": "msg", "content": "Say hello"}) + "\n").encode())
+        buf = b""
+        while b"\n" not in buf:
+            chunk = sock.recv(4096)
+            if not chunk:
                 break
+            buf += chunk
+        line1, rest = buf.split(b"\n", 1)
+        resp1 = json.loads(line1.decode())
+        assert resp1.get("type") == "done", f"Turn 1 expected done: {resp1}"
+        assert resp1.get("response"), f"Turn 1 missing response: {resp1}"
 
-        decoded = response.decode("utf-8", errors="replace")
-
-        # Should contain session info or task list
-        assert len(decoded) > 50, f"Response too short: {decoded[:100]}"
-        # Should mention sessions
-        assert any(word in decoded.lower() for word in
-                   ["session", "task", "available", "garuda"]), \
-            f"Expected session/task info, got: {decoded[:200]}"
-    except ConnectionRefusedError:
-        pytest.fail("TCP tunnel on port 19998 is not running.")
+        # Turn 2: follow-up on same connection
+        sock.sendall((json.dumps({"type": "msg", "content": "What is 2+2?"}) + "\n").encode())
+        buf2 = rest
+        while b"\n" not in buf2:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            buf2 += chunk
+        line2 = buf2.split(b"\n", 1)[0]
+        resp2 = json.loads(line2.decode())
+        assert resp2.get("type") == "done", f"Turn 2 expected done: {resp2}"
+        assert "4" in resp2.get("response", ""), \
+            f"2+2 should be 4: {resp2['response'][:100]}"
     finally:
         sock.close()
 
 
-def test_tunnel_direct_garuda_command():
+def test_tunnel_error_on_bad_json():
     """
-    Verify we can run arbitrary Garuda commands via TCP tunnel.
-
-    Sends a status check command and verifies Garuda responds.
+    Verify tunnel returns error on invalid JSON.
+    Send garbage → expect {"type":"error","content":"..."}
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(30)
+    sock.settimeout(10)
     try:
-        sock.connect(("127.0.0.1", 19998))
-        # Query memory stats
-        sock.sendall(b"check status\n")
-
-        response = b""
-        while True:
-            try:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                response += chunk
-            except socket.timeout:
+        sock.connect((TUNNEL_HOST, TUNNEL_PORT))
+        sock.sendall(b"this is not json\n")
+        buf = b""
+        while b"\n" not in buf:
+            chunk = sock.recv(4096)
+            if not chunk:
                 break
-
-        decoded = response.decode("utf-8", errors="replace")
-        # Should have SOME output from Garuda
-        assert len(decoded) > 20, f"Response too short: {decoded[:100]}"
-    except ConnectionRefusedError:
-        pytest.fail("TCP tunnel on port 19998 is not running.")
+            buf += chunk
+        line = buf.split(b"\n", 1)[0]
+        resp = json.loads(line.decode())
+        assert resp.get("type") == "error", f"Expected error: {resp}"
     finally:
         sock.close()
 
 
 # =============================================================================
-# Test: SClaw Backend API (no browser needed)
+# Layer 2: SClaw Backend API (HTTP + net.Socket)
 # =============================================================================
 
-def test_backend_garuda_health():
+def test_backend_health():
     """
-    Verify the SClaw backend Garuda health endpoint works.
-
-    Calls GET /api/admin/garuda/health and checks response.
-    This tests the middle layer: HTTP API → TCP tunnel → Garuda CLI.
+    Verify SClaw backend Garuda health endpoint.
+    GET /api/admin/garuda/health → {"ok":true,"status":"connected"}
+    Tests: HTTP API → net.Socket → TCP tunnel → UDS → Garuda ping
     """
-    import urllib.request
-    import json as json_lib
-
-    base_url = "http://127.0.0.1:3001"
-    try:
-        req = urllib.request.Request(f"{base_url}/api/admin/garuda/health")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json_lib.loads(resp.read().decode())
-            assert data.get("ok") is not None, f"Missing 'ok' field: {data}"
-    except urllib.error.URLError as e:
-        pytest.skip(f"SClaw backend not reachable at {base_url}: {e}")
+    data = _http_get("/api/admin/garuda/health", timeout=15)
+    assert data.get("ok") is True, f"Expected ok=true, got: {data}"
+    assert data.get("status") == "connected", f"Expected connected: {data}"
 
 
-def test_backend_garuda_exec():
+def test_backend_exec_say_hi():
     """
-    Verify we can execute commands via the SClaw backend API.
-
-    Calls POST /api/admin/garuda/exec with a simple command and checks response.
-    This tests: HTTP API → net.Socket → TCP tunnel → Garuda CLI.
+    Verify exec endpoint with simple command.
+    POST /api/admin/garuda/exec {"command":"Say hi"}
+    Tests: HTTP API → net.Socket → JSON-lines tunnel → response
     """
-    import urllib.request
-    import json as json_lib
+    result = _http_post("/api/admin/garuda/exec", {"command": "Say hi in 5 words"}, timeout=90)
+    assert result.get("ok") is True, f"Expected ok=true, got: {result}"
+    assert result.get("output"), f"Missing output: {result}"
+    assert len(result["output"]) > 3, f"Output too short: {result['output'][:100]}"
 
-    base_url = "http://127.0.0.1:3001"
-    try:
-        data = json_lib.dumps({"command": "list tasks"}).encode()
-        req = urllib.request.Request(
-            f"{base_url}/api/admin/garuda/exec",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json_lib.loads(resp.read().decode())
-            assert result.get("ok") is True, f"Expected ok=true, got: {result}"
-            assert "output" in result, f"Missing 'output' field: {result}"
-            assert len(result["output"]) > 20, f"Output too short: {result['output'][:100]}"
-    except urllib.error.URLError as e:
-        pytest.skip(f"SClaw backend not reachable at {base_url}: {e}")
+
+def test_backend_exec_hello_world():
+    """
+    Verify exec endpoint with Hello World request.
+    POST /api/admin/garuda/exec {"command":"Write Hello World in Python"}
+    """
+    result = _http_post("/api/admin/garuda/exec",
+                        {"command": "Write Hello World in Python"},
+                        timeout=120)
+    assert result.get("ok") is True, f"Expected ok=true, got: {result}"
+    assert "print" in result.get("output", "").lower(), \
+        f"Expected print() in output: {result['output'][:200]}"
+
+
+def test_backend_tasks():
+    """
+    Verify tasks endpoint returns Garuda status.
+    GET /api/admin/garuda/tasks
+    """
+    result = _http_get("/api/admin/garuda/tasks", timeout=60)
+    assert result.get("ok") is True, f"Expected ok=true, got: {result}"
+    output = result.get("output", "")
+    assert len(output) > 20, f"Tasks output too short: {output[:100]}"
 
 
 # =============================================================================
-# Test: Browser UI — Garuda Terminal Tab
+# Layer 3: Browser UI — Garuda Terminal Tab (admin-only)
 # =============================================================================
 
-@pytest.mark.skip(reason="Requires admin user logged in; testuser may not be admin")
-def test_browser_garuda_tab_visible(login, page):
+def test_browser_garuda_tab_visible(page, base_url):
     """
-    Verify the Garuda Terminal tab is visible for admin users.
+    Verify Garuda Terminal tab is visible for admin (jack) users.
 
-    This tests the top layer: Browser UI → React component.
-    Requires admin login; testuser is not admin by default.
+    Logs in as jack via API, sets token in localStorage, navigates,
+    clicks Garuda tab, verifies component renders.
     """
-    page = login
-
-    # Look for the Garuda tab button in the nav
-    garuda_tab = page.locator('button:has-text("Garuda")')
-    assert garuda_tab.is_visible(timeout=10000), \
-        "Garuda tab should be visible for admin users"
-
-    # Check it has the plug emoji
-    tab_html = garuda_tab.inner_html()
-    assert "🔌" in tab_html, f"Garuda tab should have plug emoji: {tab_html}"
-
-
-def test_browser_garuda_tab_click_and_load(page, base_url):
-    """
-    Login as admin (jack), click Garuda tab, verify terminal loads.
-
-    Tests: Login → Navigate → Garuda tab → Component render.
-    """
-    import urllib.parse
-
-    # Login via API to get token
-    import urllib.request
-    import json as json_lib
-
-    try:
-        login_data = json_lib.dumps({"username": "jack", "password": "jack123"}).encode()
-        req = urllib.request.Request(
-            f"{base_url}/api/auth/login",
-            data=login_data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            auth = json_lib.loads(resp.read().decode())
-            token = auth.get("token", "")
-    except Exception:
-        pytest.skip("Cannot login as jack — admin credentials may not exist")
-
+    auth = _admin_login()
+    token = auth.get("token", "")
     if not token:
-        pytest.skip("No auth token received")
+        pytest.skip("No auth token from admin login")
 
-    # Navigate to app
+    # Navigate and inject auth
     page.goto(base_url)
     page.wait_for_load_state("networkidle")
-
-    # Set auth token and reload
-    page.evaluate(f"localStorage.setItem('auth-token', '{token}')")
+    page.evaluate(f"window.localStorage.setItem('auth-token', '{token}')")
     page.reload()
     page.wait_for_load_state("networkidle")
 
-    # Wait for the header to load
-    try:
-        page.wait_for_selector('header:has-text("SClaw")', timeout=15000)
-    except Exception:
-        pytest.skip("Could not login as admin")
+    # Wait for header
+    page.wait_for_selector('header:has-text("SClaw")', timeout=15000)
 
-    # Click the Garuda tab
+    # Click Garuda tab
     garuda_tab = page.locator('button:has-text("Garuda")')
-    if not garuda_tab.is_visible(timeout=5000):
-        pytest.skip("Garuda tab not visible — user may not be admin")
+    assert garuda_tab.is_visible(timeout=5000), \
+        "Garuda tab should be visible for admin users"
+
+    # Check plug emoji
+    tab_html = garuda_tab.inner_html()
+    assert "🔌" in tab_html, f"Expected 🔌 emoji in tab: {tab_html}"
 
     garuda_tab.click()
     page.wait_for_timeout(2000)
 
-    # Verify terminal component loaded
+    # Verify terminal heading
     terminal = page.locator("text=Garuda Terminal")
     assert terminal.is_visible(timeout=10000), \
-        "Garuda Terminal component should be visible after clicking tab"
+        "Garuda Terminal heading should be visible"
 
-    # Verify input field exists
-    cmd_input = page.locator('input[placeholder*="Type a command"]')
-    assert cmd_input.is_visible(timeout=5000), \
-        "Command input field should be visible in terminal"
+    # Verify connection status indicator
+    status_dot = page.locator('[class*="status"], .text-green-500, [class*="connected"]')
+    if status_dot.is_visible(timeout=3000):
+        pass  # Nice to have but not critical
 
 
-# =============================================================================
-# Test: End-to-End — Browser → Garuda command execution
-# =============================================================================
-
-@pytest.mark.skip(reason="Requires admin login; end-to-end test")
-def test_browser_send_command_to_garuda(page, base_url):
+def test_browser_send_hi_command(page, base_url):
     """
-    Full end-to-end test: Log in as admin → Click Garuda tab → Type command
-    → Send → Verify response appears.
+    Full E2E: Browser → Garuda tab → type "Say Hi" → send → verify response.
 
     Tests the complete chain:
-      Browser UI → fetch() → HTTP API → net.Socket → TCP tunnel(19998)
-      → Garuda CLI → response → browser display
+      Browser UI → fetch() → HTTP API → net.Socket → TCP tunnel
+      → socat → UDS → Garuda LLM → response → browser display
     """
-    # Login as jack
-    import urllib.request
-    import json as json_lib
-
-    try:
-        login_data = json_lib.dumps({"username": "jack", "password": "jack123"}).encode()
-        req = urllib.request.Request(
-            f"{base_url}/api/auth/login",
-            data=login_data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            auth = json_lib.loads(resp.read().decode())
-            token = auth.get("token", "")
-    except Exception:
-        pytest.skip("Cannot login as jack")
-
+    auth = _admin_login()
+    token = auth.get("token", "")
     if not token:
         pytest.skip("No auth token")
 
-    # Navigate and set token
     page.goto(base_url)
     page.wait_for_load_state("networkidle")
-    page.evaluate(f"localStorage.setItem('auth-token', '{token}')")
+    page.evaluate(f"window.localStorage.setItem('auth-token', '{token}')")
     page.reload()
     page.wait_for_load_state("networkidle")
-
-    try:
-        page.wait_for_selector('header:has-text("SClaw")', timeout=15000)
-    except Exception:
-        pytest.skip("Could not log in")
+    page.wait_for_selector('header:has-text("SClaw")', timeout=15000)
 
     # Click Garuda tab
     garuda_tab = page.locator('button:has-text("Garuda")')
@@ -327,14 +329,14 @@ def test_browser_send_command_to_garuda(page, base_url):
     garuda_tab.click()
     page.wait_for_timeout(2000)
 
-    # Wait for connection status (may need to wait for health check)
-    page.wait_for_timeout(3000)
+    # Wait for terminal to load and health check
+    page.wait_for_selector("text=Garuda Terminal", timeout=10000)
+    page.wait_for_timeout(3000)  # Let health check complete
 
     # Type command
     cmd_input = page.locator('input[placeholder*="Type a command"]')
     assert cmd_input.is_visible(timeout=5000), "Command input not visible"
-
-    cmd_input.fill("list tasks")
+    cmd_input.fill("Say hi")
     page.wait_for_timeout(500)
 
     # Click Send
@@ -342,19 +344,72 @@ def test_browser_send_command_to_garuda(page, base_url):
     assert send_button.is_visible(), "Send button not visible"
     send_button.click()
 
-    # Wait for response to appear in terminal
-    page.wait_for_timeout(5000)
+    # Wait for response
+    page.wait_for_timeout(15000)
 
-    # Verify response content appeared (check terminal output area)
-    terminal_output = page.locator('text=Sessions')
-    if not terminal_output.is_visible(timeout=3000):
-        # Fallback: check if any new text appeared
-        output_area = page.locator('[class*="overflow-y-auto"]')
-        text = output_area.text_content()
-        assert text and len(text) > 100, \
-            f"Expected substantial terminal output, got: {text[:100] if text else 'empty'}"
+    # Verify terminal output area has content
+    output_area = page.locator('[class*="overflow-y-auto"], [class*="terminal-output"], pre')
+    text = output_area.text_content()
+    assert text, "Terminal output should have content"
+    assert len(text) > 10, f"Output too short: {text[:100]}"
 
-    # Verify connection indicator
-    status_indicator = page.locator('text=Connected')
-    # May be connected or disconnected depending on tunnel state
-    # Just verify it rendered something
+
+def test_browser_hello_world(page, base_url):
+    """
+    Full E2E: Send "write a Hello World program" and verify code output.
+
+    Tests AI coding capability through the full browser→backend→tunnel→Garuda chain.
+    """
+    auth = _admin_login()
+    token = auth.get("token", "")
+    if not token:
+        pytest.skip("No auth token")
+
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
+    page.evaluate(f"window.localStorage.setItem('auth-token', '{token}')")
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    page.wait_for_selector('header:has-text("SClaw")', timeout=15000)
+
+    garuda_tab = page.locator('button:has-text("Garuda")')
+    if not garuda_tab.is_visible(timeout=5000):
+        pytest.skip("Garuda tab not visible")
+    garuda_tab.click()
+    page.wait_for_timeout(2000)
+    page.wait_for_selector("text=Garuda Terminal", timeout=10000)
+    page.wait_for_timeout(3000)
+
+    cmd_input = page.locator('input[placeholder*="Type a command"]')
+    cmd_input.fill("Write a Hello World program in Python")
+    page.wait_for_timeout(500)
+
+    send_button = page.locator('button:has-text("Send")')
+    send_button.click()
+
+    # Wait for AI response to render
+    page.wait_for_timeout(20000)
+
+    output_area = page.locator('[class*="overflow-y-auto"], [class*="terminal-output"], pre')
+    text = output_area.text_content()
+    assert text, "Terminal output should have content"
+
+    # Should contain some code-like output
+    assert "print" in text.lower() or "def " in text or "hello" in text.lower(), \
+        f"Expected Hello World code in output: {text[:200]}"
+
+
+def test_browser_garuda_tab_not_visible_for_testuser(login, page):
+    """
+    Verify testuser (non-admin) cannot see the Garuda tab.
+    Tests admin-only access control in the UI.
+    """
+    page = login
+
+    # Verify the standard user is logged in
+    page.wait_for_selector('header:has-text("SClaw")', timeout=15000)
+
+    # The Garuda tab should NOT be visible for testuser
+    garuda_tab = page.locator('button:has-text("Garuda")')
+    assert not garuda_tab.is_visible(timeout=3000), \
+        "Garuda tab should NOT be visible for non-admin users"
