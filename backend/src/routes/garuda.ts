@@ -48,10 +48,12 @@ function execOnGaruda(command: string): Promise<string> {
       if (timedOut) return;
       buffer += data.toString("utf-8");
 
-      const newlineIdx = buffer.indexOf("\n");
-      if (newlineIdx >= 0) {
+      // Process ALL complete lines in buffer (streaming events prefix "done")
+      let newlineIdx: number;
+      while ((newlineIdx = buffer.indexOf("\n")) >= 0) {
         const line = buffer.substring(0, newlineIdx).trim();
         buffer = buffer.substring(newlineIdx + 1);
+        if (!line) continue;
 
         try {
           const resp = JSON.parse(line);
@@ -59,13 +61,16 @@ function execOnGaruda(command: string): Promise<string> {
             clearTimeout(timer);
             socket.end();
             resolve(resp.response || "");
+            return; // stop processing — socket closed
           } else if (resp.type === "error") {
             clearTimeout(timer);
             socket.end();
             reject(new Error(resp.content || "Unknown error from Garuda"));
+            return;
           }
+          // Other events (reasoning, tool_call, tool_result) — skip, keep waiting for "done"
         } catch {
-          // Not valid JSON yet - keep reading
+          // Not valid JSON yet — keep reading
         }
       }
     });
