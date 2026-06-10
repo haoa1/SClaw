@@ -1,12 +1,19 @@
 /**
- * Garuda admin routes — send commands to Garuda via SSH reverse tunnel.
+ * Garuda admin routes - send commands to Garuda via JSON-lines over TCP.
  *
- * Architecture:
- *   Browser → POST /api/admin/garuda/exec → SClaw backend
- *     → net.Socket → localhost:19999 (SSH reverse tunnel)
- *     → Mac tunnel → Garuda
+ * Architecture (new - UDS + socat bridge):
+ *   Browser -> POST /api/admin/garuda/exec -> SClaw backend
+ *     -> net.Socket -> localhost:19998 (SSH reverse tunnel)
+ *     -> Mac socat -> UNIX-CONNECT:/tmp/garuda.sock
+ *     -> Garuda UDS server (JSON-lines protocol)
  *
- * The tunnel (port 19999) must be maintained by autossh on the server.
+ * Protocol (JSON-lines, one JSON per line):
+ *   -> {"type":"msg","content":"..."}        send user message
+ *   <- {"type":"done","response":"..."}      AI reply
+ *   -> {"type":"ping"}
+ *   <- {"type":"pong"}
+ *
+ * The tunnel (port 19998) must be maintained by autossh on the server.
  * If tunnel is down, the request will fail with a clear error.
  */
 
@@ -15,12 +22,10 @@ import * as net from "net";
 
 const GARUDA_TUNNEL_HOST = process.env.GARUDA_TUNNEL_HOST || "127.0.0.1";
 const GARUDA_TUNNEL_PORT = parseInt(process.env.GARUDA_TUNNEL_PORT || "19998", 10);
-const GARUDA_TIMEOUT = parseInt(process.env.GARUDA_TIMEOUT || "30000", 10); // 30s default
+const GARUDA_TIMEOUT = parseInt(process.env.GARUDA_TIMEOUT || "60000", 10);
 
 /**
- * Send a command to Garuda via the tunnel and wait for the response.
- * Uses a simple line-based protocol: send the command, read until the
- * command echo + response lines appear, or until a timeout.
+ * Send a JSON-lines message to Garuda via the tunnel and wait for a response.
  */
 function execOnGaruda(command: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -31,35 +36,44 @@ function execOnGaruda(command: string): Promise<string> {
     const timer = setTimeout(() => {
       timedOut = true;
       socket.destroy();
-      reject(new Error(`Garuda exec timed out after ${GARUDA_TIMEOUT}ms`));
+      reject(new Error("Garuda exec timed out after " + GARUDA_TIMEOUT + "ms"));
     }, GARUDA_TIMEOUT);
 
     socket.connect(GARUDA_TUNNEL_PORT, GARUDA_TUNNEL_HOST, () => {
-      // Send the command
-      socket.write(command + "\n");
+      const msg = JSON.stringify({ type: "msg", content: command });
+      socket.write(msg + "\n");
     });
 
     socket.on("data", (data: Buffer) => {
       if (timedOut) return;
       buffer += data.toString("utf-8");
 
-      // Check if response is complete — look for common prompt patterns
-      // Garuda's prompt could be "> ", "$ ", "garuda> " etc.
-      // Also stop after a reasonable amount of data
-      const promptPatterns = [/>\s*$/, /\$\s*$/, /garuda[>#]\s*$/i];
-      const hasPrompt = promptPatterns.some(p => p.test(buffer));
+      const newlineIdx = buffer.indexOf("\n");
+      if (newlineIdx >= 0) {
+        const line = buffer.substring(0, newlineIdx).trim();
+        buffer = buffer.substring(newlineIdx + 1);
 
-      if (hasPrompt || buffer.length > 65536) {
-        clearTimeout(timer);
-        socket.end();
-        resolve(buffer);
+        try {
+          const resp = JSON.parse(line);
+          if (resp.type === "done") {
+            clearTimeout(timer);
+            socket.end();
+            resolve(resp.response || "");
+          } else if (resp.type === "error") {
+            clearTimeout(timer);
+            socket.end();
+            reject(new Error(resp.content || "Unknown error from Garuda"));
+          }
+        } catch {
+          // Not valid JSON yet - keep reading
+        }
       }
     });
 
     socket.on("error", (err) => {
       clearTimeout(timer);
       if (!timedOut) {
-        reject(new Error(`Garuda tunnel connection failed: ${err.message}. Is autossh running?`));
+        reject(new Error("Garuda tunnel connection failed: " + err.message + ". Is autossh running?"));
       }
     });
 
@@ -68,8 +82,58 @@ function execOnGaruda(command: string): Promise<string> {
       if (!timedOut && !buffer) {
         reject(new Error("Garuda tunnel closed without data"));
       } else if (!timedOut) {
-        resolve(buffer);
+        reject(new Error("Garuda closed unexpectedly. Raw: " + buffer.substring(0, 200)));
       }
+    });
+  });
+}
+
+/**
+ * Ping Garuda via JSON-lines protocol.
+ */
+function pingGaruda(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      socket.destroy();
+      resolve(false);
+    }, 5000);
+
+    socket.connect(GARUDA_TUNNEL_PORT, GARUDA_TUNNEL_HOST, () => {
+      socket.write(JSON.stringify({ type: "ping" }) + "\n");
+    });
+
+    let buffer = "";
+    socket.on("data", (data: Buffer) => {
+      if (timedOut) return;
+      buffer += data.toString("utf-8");
+      const newlineIdx = buffer.indexOf("\n");
+      if (newlineIdx >= 0) {
+        const line = buffer.substring(0, newlineIdx).trim();
+        try {
+          const resp = JSON.parse(line);
+          if (resp.type === "pong") {
+            clearTimeout(timer);
+            socket.end();
+            resolve(true);
+          }
+        } catch {
+          // keep waiting
+        }
+      }
+    });
+
+    socket.on("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+
+    socket.on("close", () => {
+      clearTimeout(timer);
+      if (!timedOut) resolve(false);
     });
   });
 }
@@ -81,9 +145,6 @@ export function createGarudaRoutes(): Router {
    * POST /api/admin/garuda/exec
    * Body: { command: string }
    * Response: { ok: true, output: string }
-   *
-   * Sends a command to Garuda and returns the output.
-   * The command is executed by sending it as a line of text via the TCP tunnel.
    */
   router.post("/api/admin/garuda/exec", async (req: Request, res: Response) => {
     try {
@@ -101,12 +162,15 @@ export function createGarudaRoutes(): Router {
 
   /**
    * GET /api/admin/garuda/health
-   * Quick check if the tunnel is alive by sending a simple command.
    */
   router.get("/api/admin/garuda/health", async (_req: Request, res: Response) => {
     try {
-      await execOnGaruda("echo GARUDA_ALIVE");
-      res.json({ ok: true, status: "connected" });
+      const alive = await pingGaruda();
+      if (alive) {
+        res.json({ ok: true, status: "connected" });
+      } else {
+        res.json({ ok: false, status: "disconnected", error: "No pong response" });
+      }
     } catch (err: any) {
       res.json({ ok: false, status: "disconnected", error: err.message });
     }
@@ -114,8 +178,6 @@ export function createGarudaRoutes(): Router {
 
   /**
    * GET /api/admin/garuda/tasks
-   * Convenience: list current tasks from Garuda.
-   * Sends "list tasks" and returns the output.
    */
   router.get("/api/admin/garuda/tasks", async (_req: Request, res: Response) => {
     try {
