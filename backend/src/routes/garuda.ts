@@ -100,7 +100,7 @@ function pingGaruda(): Promise<boolean> {
       timedOut = true;
       socket.destroy();
       resolve(false);
-    }, 5000);
+    }, 10000);
 
     socket.connect(GARUDA_TUNNEL_PORT, GARUDA_TUNNEL_HOST, () => {
       socket.write(JSON.stringify({ type: "ping" }) + "\n");
