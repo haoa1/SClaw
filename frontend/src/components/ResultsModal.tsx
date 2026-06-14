@@ -35,7 +35,7 @@ export default function ResultsModal({ results, stats, strategyLabels, onClose }
               <span>{strategyLabels}</span>
               <span className="w-px h-3 bg-gray-700" />
               <span>Scanned {stats.totalStocks.toLocaleString()} stocks</span>
-              <span className="text-blue-400">Matched {stats.matchedStocks} stocks</span>
+              <span className="text-bronze">Matched {stats.matchedStocks} stocks</span>
             </div>
           </div>
           <button
@@ -67,7 +67,7 @@ export default function ResultsModal({ results, stats, strategyLabels, onClose }
                       href={getEastMoneyUrl(r.code)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-mono text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 transition"
+                      className="font-mono text-xs text-bronze hover:text-bronze-light underline underline-offset-2 transition"
                     >
                       {r.code} ↗
                     </a>
@@ -109,7 +109,7 @@ export default function ResultsModal({ results, stats, strategyLabels, onClose }
                 href={getEastMoneyUrl(r.code)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded hover:bg-blue-800/40 transition"
+                className="text-xs bg-bronze-glow text-bronze-light px-2 py-0.5 rounded hover:bg-bronze/20 transition"
               >
                 {r.code} ↗
               </a>

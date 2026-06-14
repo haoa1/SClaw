@@ -10,6 +10,10 @@ import ResultsModal from './components/ResultsModal'
 import BacktestPanel from './components/BacktestPanel'
 import DebugPanel from './components/DebugPanel'
 import GarudaTerminal from './components/GarudaTerminal'
+import { useWatchAlertSSE } from './hooks/useWatchAlertSSE'
+import WatchAlertToast from './components/WatchAlertToast'
+import WatchAlertPanel from './components/WatchAlertPanel'
+import { WatchAlert } from './types'
 
 type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'debug' | 'garuda'
 
@@ -42,6 +46,29 @@ export default function App() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [agentHighlight, setAgentHighlight] = useState<string | null>(null)
   const highlightTimeout = useRef<ReturnType<typeof setTimeout>>()
+
+  // Watch alerts
+  const {
+    alerts: watchAlerts,
+    unread: watchUnread,
+    connected: watchConnected,
+    error: watchError,
+    clearAlerts,
+    markAllRead,
+    dismissAlert,
+  } = useWatchAlertSSE()
+  const [showWatchPanel, setShowWatchPanel] = useState(false)
+  const [toastAlert, setToastAlert] = useState<WatchAlert | null>(null)
+  const prevAlertCountRef = useRef(0)
+
+  // When a new alert arrives, show toast
+  useEffect(() => {
+    if (watchAlerts.length > prevAlertCountRef.current) {
+      const latest = watchAlerts[watchAlerts.length - 1]
+      setToastAlert(latest)
+    }
+    prevAlertCountRef.current = watchAlerts.length
+  }, [watchAlerts.length])
 
   // Modal for AI screen results
   const [modalData, setModalData] = useState<{
@@ -280,11 +307,11 @@ export default function App() {
   // ===== Login / Offline / Checking screens =====
   if (backendStatus === 'offline') {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center text-gray-400">
-          <div className="text-6xl mb-4">🔌</div>
+      <div className="flex items-center justify-center min-h-screen bg-stock-bg">
+        <div className="text-center text-stock-text-secondary">
+          <div className="font-display text-6xl mb-4 text-bronze">SClaw</div>
           <div className="text-xl font-semibold mb-2">Backend Offline</div>
-          <div className="text-sm">Please check if backend service is running</div>
+          <div className="text-sm">鹰爪待机 · 后端未连接</div>
         </div>
       </div>
     )
@@ -297,41 +324,40 @@ export default function App() {
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-stock-bg">
-        <form onSubmit={handleLogin} className="bg-stock-card border border-gray-800 rounded-xl p-8 w-full max-w-md">
+        <form onSubmit={handleLogin} className="bg-stock-card border border-stock-border rounded-xl p-8 w-full max-w-md shadow-bronze-sm">
           <div className="text-center mb-6">
-            <span className="text-5xl block mb-2">📈</span>
-            <h1 className="text-2xl font-bold text-white">Stock Navigator</h1>
-            <p className="text-gray-500 text-sm mt-1">Login to continue</p>
+            <span className="font-display text-4xl block mb-2 text-bronze">SClaw</span>
+            <p className="text-stock-text-secondary text-sm mt-1">鹰爪 · 市场猎手</p>
           </div>
           {loginError && (
             <div className="bg-red-900/50 border border-red-800 text-red-200 text-sm px-4 py-2 rounded-lg mb-4">{loginError}</div>
           )}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Username</label>
+              <label className="block text-sm text-stock-text-secondary mb-1">Username</label>
               <input
                 type="text"
                 value={loginForm.username}
                 onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-200 text-sm outline-none focus:border-blue-500"
+                className="w-full bg-stock-hover border border-stock-border rounded-lg px-4 py-2.5 text-stock-text text-sm outline-none focus-bronze"
                 placeholder="Enter username"
                 autoFocus
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Password</label>
+              <label className="block text-sm text-stock-text-secondary mb-1">Password</label>
               <input
                 type="password"
                 value={loginForm.password}
                 onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-200 text-sm outline-none focus:border-blue-500"
+                className="w-full bg-stock-hover border border-stock-border rounded-lg px-4 py-2.5 text-stock-text text-sm outline-none focus-bronze"
                 placeholder="Enter password"
               />
             </div>
             <button
               type="submit"
               disabled={!loginForm.username || !loginForm.password}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white py-2.5 rounded-lg font-medium text-sm transition"
+              className="w-full btn-bronze py-2.5 rounded-lg text-sm"
             >
               Login
             </button>
@@ -345,47 +371,44 @@ export default function App() {
   return (
     <div className="min-h-screen bg-stock-bg">
       {/* Header */}
-      <header className="border-b border-gray-800 bg-stock-card px-6 py-4">
+      <header className="border-b border-stock-border bg-stock-card px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-3xl">📈</span>
-            <h1 className="text-xl font-bold text-white">SClaw</h1>
-            <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
-              Plugin · {plugins.length} plugins
+            <span className="font-display text-2xl tracking-wide text-stock-text">
+              <span className="text-bronze">S</span>Claw
+            </span>
+            <span className="text-xs text-stock-text-secondary bg-stock-hover px-2 py-0.5 rounded">
+              {plugins.length} plugins
             </span>
           </div>
           <div className="flex items-center gap-4">
-            {/* Tabs */}
-            <div className="flex bg-gray-800 rounded-lg overflow-hidden">
-              <button onClick={() => setTab('config')}
-                className={`px-3 py-2 text-sm font-medium transition ${tab === 'config' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                Strategy
-              </button>
-              <button onClick={() => setTab('results')}
-                className={`px-3 py-2 text-sm font-medium transition ${tab === 'results' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                Results{results.length > 0 && <span className="ml-1.5 text-xs bg-gray-700 px-1.5 py-0.5 rounded">{results.length}</span>}
-              </button>
-              <button onClick={() => setTab('history')}
-                className={`px-3 py-2 text-sm font-medium transition ${tab === 'history' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                History
-              </button>
-              <button onClick={() => setTab('logs')}
-                className={`px-3 py-2 text-sm font-medium transition ${tab === 'logs' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                Logs
-              </button>
-              <button onClick={() => setTab('backtest')}
-                className={`px-3 py-2 text-sm font-medium transition ${tab === 'backtest' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                📊 Backtest
-              </button>
+            {/* Tabs — bronze active diamond */}
+            <div className="flex items-center gap-0.5">
+              {(['config', 'results', 'history', 'logs', 'backtest'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
+                    tab === t
+                      ? 'tab-active text-bronze'
+                      : 'text-stock-text-secondary hover:text-stock-text'
+                  }`}>
+                  {t === 'backtest' && '📊 '}
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {t === 'results' && results.length > 0 && <span className="ml-1.5 text-xs bg-stock-hover text-bronze px-1.5 py-0.5 rounded">{results.length}</span>}
+                </button>
+              ))}
               {user.role === 'admin' && (
                 <button onClick={() => setTab('debug')}
-                  className={`px-3 py-2 text-sm font-medium transition ${tab === 'debug' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
+                    tab === 'debug' ? 'tab-active text-bronze' : 'text-stock-text-secondary hover:text-stock-text'
+                  }`}>
                   🐛 Debug
                 </button>
               )}
               {user.role === 'admin' && (
                 <button onClick={() => setTab('garuda')}
-                  className={`px-3 py-2 text-sm font-medium transition ${tab === 'garuda' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
+                    tab === 'garuda' ? 'tab-active text-bronze' : 'text-stock-text-secondary hover:text-stock-text'
+                  }`}>
                   🔌 Garuda
                 </button>
               )}
@@ -393,27 +416,41 @@ export default function App() {
 
             {/* User info */}
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-400">{user.displayName}</span>
-              <span className="text-xs text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">{user.role}</span>
-              <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-400 transition">Logout</button>
+              <span className="text-stock-text-secondary">{user.displayName}</span>
+              <span className="text-xs text-stock-text-secondary/60 bg-stock-hover px-1.5 py-0.5 rounded">{user.role}</span>
+              <button onClick={handleLogout} className="text-xs text-stock-text-secondary hover:text-red-400 transition">Logout</button>
             </div>
 
-            {/* AI indicator */}
+            {/* Watch alert bell */}
+            <button
+              onClick={() => setShowWatchPanel(p => !p)}
+              className="relative text-lg hover:opacity-80 transition"
+              title={watchConnected ? 'Watch alerts' : 'Watch alerts (disconnected)'}
+            >
+              <span className={watchConnected ? '' : 'opacity-40'}>🔔</span>
+              {watchUnread > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-0.5 font-bold leading-none">
+                  {watchUnread > 99 ? '99+' : watchUnread}
+                </span>
+              )}
+            </button>
+
+            {/* AI indicator — bronze */}
             <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-all duration-500 ${
               agentHighlight
-                ? 'bg-green-600/30 text-green-300 border border-green-500/50'
-                : 'bg-gray-800 text-gray-400 border border-gray-700'
+                ? 'bg-bronze-glow text-bronze-light border border-bronze/50 shadow-bronze-sm'
+                : 'bg-stock-hover text-stock-text-secondary border border-stock-border'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${agentHighlight ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
-              <span>🧠 AI Assistant</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${agentHighlight ? 'bg-bronze animate-pulse' : 'bg-stock-text-secondary/40'}`} />
+              <span>🧠 AI</span>
             </div>
 
             <button
               onClick={runScreen}
               disabled={loading || selected.length === 0}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white px-6 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2"
+              className="btn-bronze px-5 py-1.5 rounded-lg text-sm flex items-center gap-2"
             >
-              {loading ? <><span className="loading-dot">●</span><span className="loading-dot">●</span><span className="loading-dot">●</span></> : '🚀 Run Screening'}
+              {loading ? <><span className="loading-dot">●</span><span className="loading-dot">●</span><span className="loading-dot">●</span></> : '🚀 Run'}
             </button>
           </div>
         </div>
@@ -430,7 +467,7 @@ export default function App() {
         </div>
       ) : (
       <div className="flex h-[calc(100vh-73px)] overflow-hidden">
-        <div className={`flex-1 overflow-y-auto p-6 transition-all duration-300 ${agentHighlight ? 'ring-2 ring-green-500/40 ring-inset' : ''}`}>
+        <div className={`flex-1 overflow-y-auto p-6 transition-all duration-300 ${agentHighlight ? 'ring-2 ring-bronze/40 ring-inset' : ''}`}>
           {error && (
             <div className="bg-red-900/50 border border-red-800 px-4 py-3 text-sm text-red-200 text-center rounded-lg mb-4 flex items-center justify-center gap-2">
               <span>{error}</span>
@@ -455,17 +492,18 @@ export default function App() {
 
           {tab === 'history' && (
             <div className="max-w-4xl mx-auto space-y-3">
-              <h2 className="text-lg font-semibold text-white mb-4">Screening History</h2>
+              <h2 className="text-lg font-semibold text-stock-text mb-4">Screening History</h2>
+              <div className="bronze-divider mb-4"><span>◇</span></div>
               {screens.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">No screening history yet</div>
+                <div className="text-center text-stock-text-secondary py-12">No screening history yet</div>
               ) : (
                 screens.map(s => (
-                  <div key={s.id} className="bg-stock-card border border-gray-800 rounded-lg p-4">
+                  <div key={s.id} className="bg-stock-card border border-stock-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm text-gray-300">
+                      <div className="text-sm text-stock-text">
                         <span className="font-medium">{new Date(s.timestamp).toLocaleString('en-US')}</span>
                       </div>
-                      <div className="flex gap-3 text-xs text-gray-500">
+                      <div className="flex gap-3 text-xs text-stock-text-secondary">
                         <span>{s.strategies.length} strategies</span>
                         <span>Matched {s.stats.matchedStocks}</span>
                         <span>{s.stats.executionTime}ms</span>
@@ -473,31 +511,31 @@ export default function App() {
                     </div>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {s.strategies.map((st, i) => (
-                        <span key={i} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">{st.strategyId}</span>
+                        <span key={i} className="text-xs bg-stock-hover text-stock-text-secondary px-2 py-0.5 rounded">{st.strategyId}</span>
                       ))}
                     </div>
                     {s.topResults.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {s.topResults.slice(0, 5).map(r => (
-                          <span key={r.code} className="text-xs bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded">{r.code} {r.name}</span>
+                          <span key={r.code} className="text-xs bg-bronze-glow text-bronze-light px-2 py-0.5 rounded">{r.code} {r.name}</span>
                         ))}
-                        {s.resultCount > 5 && <span className="text-xs text-gray-600 px-1 py-0.5">+{s.resultCount - 5}</span>}
+                        {s.resultCount > 5 && <span className="text-xs text-stock-text-secondary px-1 py-0.5">+{s.resultCount - 5}</span>}
                       </div>
                     )}
                     <button
                       onClick={() => setExpandedScreen(expandedScreen === s.id ? null : s.id)}
-                      className="text-xs text-blue-400 hover:text-blue-300 mt-2"
+                      className="text-xs text-bronze hover:text-bronze-light mt-2"
                     >
                       {expandedScreen === s.id ? 'Collapse' : 'Show all results'}
                     </button>
                     {expandedScreen === s.id && s.topResults.length > 0 && (
-                      <div className="mt-2 space-y-1 border-t border-gray-800 pt-2">
+                      <div className="mt-2 space-y-1 border-t border-stock-border pt-2">
                         {s.topResults.map(r => (
-                          <div key={r.code} className="text-xs text-gray-400 flex gap-2">
-                            <span className="text-blue-300 w-20">{r.code}</span>
+                          <div key={r.code} className="text-xs text-stock-text-secondary flex gap-2">
+                            <span className="text-bronze w-20">{r.code}</span>
                             <span className="w-20">{r.name}</span>
-                            <span className="text-yellow-400 w-10">Score:{r.score}</span>
-                            <span className="text-gray-500">{r.signals.slice(0, 3).join(', ')}</span>
+                            <span className="text-bronze-dim w-10">Score:{r.score}</span>
+                            <span className="text-stock-text-secondary">{r.signals.slice(0, 3).join(', ')}</span>
                           </div>
                         ))}
                       </div>
@@ -510,24 +548,25 @@ export default function App() {
 
           {tab === 'logs' && (
             <div className="max-w-4xl mx-auto">
-              <h2 className="text-lg font-semibold text-white mb-4">Activity Logs</h2>
+              <h2 className="text-lg font-semibold text-stock-text mb-4">Activity Logs</h2>
+              <div className="bronze-divider mb-4"><span>◇</span></div>
               {logs.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">No activity logs yet</div>
+                <div className="text-center text-stock-text-secondary py-12">No activity logs yet</div>
               ) : (
                 <div className="space-y-1">
                   {logs.map(l => (
-                    <div key={l.id} className="flex items-start gap-3 text-sm px-3 py-2 hover:bg-gray-800/50 rounded">
-                      <span className="text-xs text-gray-600 w-16 shrink-0 pt-0.5">
+                    <div key={l.id} className="flex items-start gap-3 text-sm px-3 py-2 hover:bg-stock-hover/50 rounded">
+                      <span className="text-xs text-stock-text-secondary/50 w-16 shrink-0 pt-0.5">
                         {new Date(l.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span className={`text-xs w-10 shrink-0 pt-0.5 ${
                         l.type === 'screen' ? 'text-green-400' :
-                        l.type === 'chat' ? 'text-blue-400' :
-                        l.type === 'strategy' ? 'text-yellow-400' :
-                        l.type === 'auth' ? 'text-purple-400' : 'text-gray-500'
+                        l.type === 'chat' ? 'text-bronze' :
+                        l.type === 'strategy' ? 'text-bronze-dim' :
+                        l.type === 'auth' ? 'text-stock-text-secondary' : 'text-stock-text-secondary'
                       }`}>{l.type}</span>
-                      <span className="text-gray-300 w-20 shrink-0">{l.action}</span>
-                      <span className="text-gray-500 truncate">{l.detail}</span>
+                      <span className="text-stock-text-secondary w-20 shrink-0">{l.action}</span>
+                      <span className="text-stock-text-secondary/70 truncate">{l.detail}</span>
                     </div>
                   ))}
                 </div>
@@ -543,7 +582,7 @@ export default function App() {
         </div>
 
         {/* Right: AI Chat */}
-        <div className="w-[420px] min-w-[350px] border-l border-gray-800 flex flex-col min-h-0">
+        <div className="w-[420px] min-w-[350px] border-l border-stock-border flex flex-col min-h-0">
           <ChatPanel
             onHighlight={setAgentHighlight}
             highlightTimeout={highlightTimeout}
@@ -561,6 +600,20 @@ export default function App() {
             }}
           />
         </div>
+
+        {/* Right: Watch Alert Panel (overlays ChatPanel when open) */}
+        {showWatchPanel && watchAlerts.length > 0 && (
+          <WatchAlertPanel
+            alerts={watchAlerts}
+            unread={watchUnread}
+            connected={watchConnected}
+            error={watchError}
+            onClearAlerts={clearAlerts}
+            onMarkAllRead={markAllRead}
+            onDismissAlert={dismissAlert}
+            onClose={() => setShowWatchPanel(false)}
+          />
+        )}
       </div>
       )}
 
@@ -571,6 +624,18 @@ export default function App() {
           stats={modalData.stats}
           strategyLabels={modalData.strategyLabels}
           onClose={() => setModalData(null)}
+        />
+      )}
+
+      {/* Watch Alert Toast */}
+      {toastAlert && (
+        <WatchAlertToast
+          alert={toastAlert}
+          onDismiss={() => setToastAlert(null)}
+          onClick={(alert) => {
+            setToastAlert(null)
+            setShowWatchPanel(true)
+          }}
         />
       )}
     </div>

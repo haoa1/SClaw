@@ -547,7 +547,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
           assess_stock_risk: 'bg-red-900/40 text-red-300 border-red-700',
           assess_portfolio_risk: 'bg-red-900/40 text-red-300 border-red-700',
           get_stock_recommendations: 'bg-purple-900/40 text-purple-300 border-purple-700',
-          get_strategy: 'bg-blue-900/40 text-blue-300 border-blue-700',
+          get_strategy: 'bg-bronze-glow text-bronze-light border-bronze',
           get_stock: 'bg-green-900/40 text-green-300 border-green-700',
           screen_stocks: 'bg-cyan-900/40 text-cyan-300 border-cyan-700',
           query_historical_data: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',

@@ -243,3 +243,94 @@ export interface TechTreeAnalysis {
   regimeHeatmap: RegimeHeatmap;
   monthlySeasonality: MonthlySeasonality[];
 }
+
+// ========== Watch (盯盘) Types ==========
+
+export type PriceChangeDirection = 'up' | 'down' | 'either';
+
+export interface PriceChangeCondition {
+  type: 'price_change';
+  direction: PriceChangeDirection;
+  thresholdPercent: number;  // e.g., 5 means >5% change
+}
+
+export interface VolumeSpikeCondition {
+  type: 'volume_spike';
+  ratio: number;            // e.g., 3 means volume > 3x average
+  lookbackMinutes?: number;
+}
+
+export interface PriceLevelCrossCondition {
+  type: 'price_cross';
+  cross: 'above' | 'below';
+  price: number;           // absolute price level
+}
+
+export interface NewHighLowCondition {
+  type: 'new_high_low';
+  period: '52week' | 'alltime';
+  direction: 'high' | 'low';
+}
+
+export interface CombinedCondition {
+  type: 'combined';
+  operator: 'AND' | 'OR';
+  conditions: WatchCondition[];
+}
+
+export type WatchCondition =
+  | PriceChangeCondition
+  | VolumeSpikeCondition
+  | PriceLevelCrossCondition
+  | NewHighLowCondition
+  | CombinedCondition;
+
+export interface WatchTask {
+  id: string;
+  userId: string;
+  label?: string;
+  enabled: boolean;
+  interval: number;         // seconds between checks (>= 30)
+
+  watchTargets: string[];   // stock codes, e.g., ['000001', '300750']
+  conditions: WatchCondition[];
+
+  alertChannels: {
+    frontend: boolean;      // push to browser (default true)
+    email: boolean;
+    agent: boolean;         // send to AI agent notification queue
+  };
+
+  cooldownSeconds: number;  // cooldown between alerts per stock (default 300)
+
+  // Runtime state (persisted)
+  _state: Record<string, {
+    lastPrice: number;
+    lastVolume: number;
+    lastAlerted: number;    // timestamp of last alert
+    prevClose?: number;     // previous day close (from API)
+  }>;
+
+  createdAt: number;
+  lastRun?: number;
+  lastAlert?: {
+    timestamp: number;
+    stock: string;
+    conditionType: string;
+    message: string;
+  };
+}
+
+export interface WatchAlert {
+  userId: string;
+  taskId: string;
+  taskLabel?: string;
+  stock: string;
+  stockName: string;
+  conditionType: string;
+  price: number;
+  changePercent: number;
+  volume: number;
+  message: string;
+  timestamp: number;
+}

@@ -26,7 +26,7 @@ export default function StrategyParamInput({ strategyIndex, selected, onUpdatePa
               onClick={() => updateParam(param.key, !selected.params[param.key])}
               className={`px-3 py-1 rounded text-xs font-medium transition ${
                 selected.params[param.key]
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-bronze text-white'
                   : 'bg-gray-700 text-gray-400'
               }`}
             >
@@ -36,7 +36,7 @@ export default function StrategyParamInput({ strategyIndex, selected, onUpdatePa
             <select
               value={selected.params[param.key]}
               onChange={e => updateParam(param.key, e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500 w-40"
+              className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus-bronze w-40"
             >
               {param.options?.map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
@@ -49,7 +49,7 @@ export default function StrategyParamInput({ strategyIndex, selected, onUpdatePa
               onChange={e => updateParam(param.key, parseFloat(e.target.value) || 0)}
               min={param.min}
               max={param.max}
-              className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500 w-32"
+              className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus-bronze w-32"
             />
           )}
 

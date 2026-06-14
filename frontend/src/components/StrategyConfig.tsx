@@ -29,7 +29,7 @@ export default function StrategyConfig({ selected, onUpdateParams, onRemove, onR
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gray-800/50 border-b border-gray-800">
             <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-medium">
+              <span className="w-6 h-6 rounded-full bg-bronze text-white text-xs flex items-center justify-center font-medium">
                 {idx + 1}
               </span>
               <div>
@@ -62,7 +62,7 @@ export default function StrategyConfig({ selected, onUpdateParams, onRemove, onR
       <button
         onClick={onRun}
         disabled={loading}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white py-3 rounded-xl font-medium transition flex items-center justify-center gap-2"
+        className="w-full btn-bronze disabled:bg-gray-700 disabled:text-gray-500 text-white py-3 rounded-xl font-medium transition flex items-center justify-center gap-2"
       >
         {loading ? (
           <><span className="loading-dot">●</span><span className="loading-dot">●</span><span className="loading-dot">●</span> Running...</>

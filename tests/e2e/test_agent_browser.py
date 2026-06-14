@@ -42,23 +42,35 @@ BACKEND_URL = "http://127.0.0.1:3001"
 JSON_TIMEOUT = 15  # SSH tunnel adds ~5.5s latency per connection
 
 
+STREAMING_TYPES = {"reasoning", "tool_call", "tool_result", "bash_stream"}
+
 def _send_json(host, port, obj, timeout=JSON_TIMEOUT):
-    """Send a JSON-lines message and read one JSON response line."""
+    """Send a JSON-lines message and read streaming events until terminal event.
+    
+    Garuda streams: reasoning → tool_call → tool_result → ... → done
+    Ping responses: pong (terminal)
+    Error responses: error (terminal)
+    This reads all events and returns the terminal event (not reasoning/tool_call/tool_result).
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
         sock.connect((host, port))
         sock.sendall((json.dumps(obj) + "\n").encode("utf-8"))
-        # Read until newline
         buf = b""
         while True:
             chunk = sock.recv(4096)
             if not chunk:
                 break
             buf += chunk
-            if b"\n" in buf:
-                line, _ = buf.split(b"\n", 1)
-                return json.loads(line.decode("utf-8"))
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    event = json.loads(line.decode("utf-8"))
+                    if event.get("type") not in STREAMING_TYPES:
+                        return event
+                except json.JSONDecodeError:
+                    continue
         return None
     finally:
         sock.close()
@@ -139,6 +151,26 @@ def test_tunnel_hello_world():
         f"Response should contain Hello World code: {resp_text[:200]}"
 
 
+def _read_until_done(sock, timeout=60):
+    """Read from socket until we get a terminal event (done/pong/error), return it."""
+    sock.settimeout(timeout)
+    buf = b""
+    while True:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            try:
+                event = json.loads(line.decode("utf-8"))
+                if event.get("type") not in STREAMING_TYPES:
+                    return event
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
 def test_tunnel_conversation():
     """
     Verify Garuda can hold a short multi-turn conversation.
@@ -151,27 +183,15 @@ def test_tunnel_conversation():
 
         # Turn 1: greeting
         sock.sendall((json.dumps({"type": "msg", "content": "Say hello"}) + "\n").encode())
-        buf = b""
-        while b"\n" not in buf:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            buf += chunk
-        line1, rest = buf.split(b"\n", 1)
-        resp1 = json.loads(line1.decode())
+        resp1 = _read_until_done(sock, timeout=60)
+        assert resp1 is not None, "Turn 1: No response from tunnel"
         assert resp1.get("type") == "done", f"Turn 1 expected done: {resp1}"
         assert resp1.get("response"), f"Turn 1 missing response: {resp1}"
 
         # Turn 2: follow-up on same connection
         sock.sendall((json.dumps({"type": "msg", "content": "What is 2+2?"}) + "\n").encode())
-        buf2 = rest
-        while b"\n" not in buf2:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            buf2 += chunk
-        line2 = buf2.split(b"\n", 1)[0]
-        resp2 = json.loads(line2.decode())
+        resp2 = _read_until_done(sock, timeout=60)
+        assert resp2 is not None, "Turn 2: No response from tunnel"
         assert resp2.get("type") == "done", f"Turn 2 expected done: {resp2}"
         assert "4" in resp2.get("response", ""), \
             f"2+2 should be 4: {resp2['response'][:100]}"

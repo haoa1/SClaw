@@ -55,7 +55,7 @@ export default function ResultsTable({ results, stats, loading }: Props) {
         <div className="w-px h-6 bg-gray-800" />
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">Matched</span>
-          <span className="text-sm font-semibold text-blue-400">{stats.matchedStocks.toLocaleString()}</span>
+          <span className="text-sm font-semibold text-bronze">{stats.matchedStocks.toLocaleString()}</span>
         </div>
         <div className="w-px h-6 bg-gray-800" />
         <div className="flex items-center gap-2">
@@ -85,7 +85,7 @@ export default function ResultsTable({ results, stats, loading }: Props) {
             a.click()
             URL.revokeObjectURL(url)
           }}
-          className="text-xs text-gray-500 hover:text-blue-400 transition"
+          className="text-xs text-gray-500 hover:text-bronze transition"
         >
           📥 Export CSV
         </button>

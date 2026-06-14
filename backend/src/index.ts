@@ -60,10 +60,25 @@ import { SkillManager } from "./skill-manager";
 import { registerSkillTool } from "./tools/skill";
 import { registerEmailTools } from "./tools/email-tools";
 import { registerCompactTool } from "./tools/compact-tool";
+import { registerGoalTool } from "./tools/goal-tools";
+
+// Watch engine (盯盘)
+import { WatchEngine } from "./watch-engine";
+import { registerManageWatchTool } from "./tools/manage-watch-tool";
+import { createWatchStreamRoutes } from "./routes/watch-stream";
 
 // System prompt for AI agent
 const SYSTEM_PROMPT = `## Tool Overview
-You have data, screen, strategy, risk, schedule, memory, file, skill, script, and fund tools. Rely on the actual function definitions (below) for parameters and details.
+You have data, screen, strategy, risk, schedule, memory, file, skill, script, fund, goal, and watch tools. Rely on the actual function definitions (below) for parameters and details.
+
+## Watch Tools (盯盘)
+- watch(sub_cmd="add") — Create a watch task with conditions (price_change %, volume_spike ratio, price_cross levels, new_high_low)
+- watch(sub_cmd="list") — View active watch tasks
+- watch(sub_cmd="remove") — Delete a watch task
+- watch(sub_cmd="toggle") — Enable/disable a task
+- watch(sub_cmd="update") — Modify interval, conditions, or targets
+- watch(sub_cmd="stream") — Subscribe to real-time SSE alerts
+Supports cooldown dedup, per-stock state tracking, multi-condition (AND/OR) logic.
 
 ## Safety
 - Never give financial advice ("buy this", "sell that"). This includes any statement that could be interpreted as a recommendation to buy, sell, or predict performance. Present data, let the user decide.
@@ -111,6 +126,14 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     () => pluginManager.getAll(),
   );
 
+  // ===== Initialize watch engine (盯盘) =====
+  const watchEngine = new WatchEngine(
+    path.resolve(dataDir, 'watch-tasks.json'),
+    {
+      fetchQuotes: (codes) => dataFetcher.fetchQuotes(codes),
+    },
+  );
+
   // ===== Initialize tool registry =====
   const toolRegistry = new ToolRegistry();
   registerFileTools(toolRegistry);
@@ -131,6 +154,11 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   });
   registerEmailTools(toolRegistry);
   registerCompactTool(toolRegistry);
+  registerGoalTool(toolRegistry);
+  registerManageWatchTool(toolRegistry, watchEngine, () => {
+    const { getCurrentUserId } = require("./request-context");
+    return getCurrentUserId();
+  });
 
   // ===== Initialize agent manager =====
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir);
@@ -147,6 +175,14 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   // Wire scheduler to push notifications to agent manager
   scheduler.pushNotification = (userId, notification) => {
     agentManager.pushNotification(userId, notification);
+  };
+
+  // Wire watch engine to push notifications to agent manager
+  watchEngine.deps = {
+    ...watchEngine.deps,
+    pushNotification: (userId, notification) => {
+      agentManager.pushNotification(userId, notification);
+    },
   };
 
   // Wire scheduler to run AI analysis on screening results (aiMode=agent/both)
@@ -194,6 +230,9 @@ Keep it concise — 3-5 sentences.`;
 
   await scheduler.initialize();
 
+  // Start the watch engine polling loop
+  watchEngine.start();
+
   // ===== Register routes =====
   // API routes (plugins, strategies, screen, data, health, kline)
   const apiRoutes = createRoutes(pluginManager, strategyEngine, dataFetcher);
@@ -229,6 +268,10 @@ Keep it concise — 3-5 sentences.`;
   // Garuda admin routes (POST /api/admin/garuda/exec, GET /api/admin/garuda/health)
   const garudaRoutes = createGarudaRoutes();
   app.use(garudaRoutes);
+
+  // Watch stream SSE route (GET /api/watch/stream)
+  const watchStreamRoutes = createWatchStreamRoutes(watchEngine);
+  app.use(watchStreamRoutes);
 
   // Wire scheduler to run backtest tasks
   scheduler.runBacktest = async (config) => {
@@ -314,7 +357,7 @@ Keep it concise — 3-5 sentences.`;
     }
   });
 
-  return { app, pluginManager, dataFetcher, strategyEngine, userStore, agentManager, toolRegistry, scheduler };
+  return { app, pluginManager, dataFetcher, strategyEngine, userStore, agentManager, toolRegistry, scheduler, watchEngine };
 }
 
 async function main() {

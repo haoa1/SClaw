@@ -44,7 +44,7 @@ function formatTime(iso: string): string {
 
 function roleBadge(role: string): { bg: string; text: string; label: string } {
   switch (role) {
-    case 'user': return { bg: 'bg-blue-900/50', text: 'text-blue-200', label: 'User' }
+    case 'user': return { bg: 'bg-bronze-glow', text: 'text-bronze-light', label: 'User' }
     case 'assistant': return { bg: 'bg-green-900/50', text: 'text-green-200', label: 'AI' }
     case 'system': return { bg: 'bg-purple-900/50', text: 'text-purple-200', label: 'System' }
     case 'tool': return { bg: 'bg-yellow-900/50', text: 'text-yellow-200', label: 'Tool' }

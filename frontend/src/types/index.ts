@@ -62,3 +62,28 @@ export interface SelectedStrategy {
   params: Record<string, any>;
   paramsDef: StrategyParam[];
 }
+
+// Watch alert types
+export interface WatchAlert {
+  id: string;
+  userId: string;
+  taskId: string;
+  taskLabel?: string;
+  stock: string;
+  stockName: string;
+  conditionType: string;
+  price: number;
+  changePercent: number;
+  volume: number;
+  volumeRatio?: number;
+  message: string;
+  timestamp: number;
+  /** UI-only: whether this alert has been seen */
+  read?: boolean;
+}
+
+export interface WatchSSEStatus {
+  type: 'status';
+  activeTasks: number;
+  totalTasks: number;
+}

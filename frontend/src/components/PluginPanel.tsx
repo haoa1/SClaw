@@ -83,7 +83,7 @@ export default function PluginPanel({ plugins, selected, onAdd, onRemove }: Prop
                 </div>
                 <div className="flex items-center gap-2">
                   {catSelected > 0 && (
-                    <span className="text-[10px] text-blue-400 bg-blue-900/30 px-1.5 py-0.5 rounded">{catSelected}</span>
+                    <span className="text-[10px] text-bronze bg-bronze-glow px-1.5 py-0.5 rounded">{catSelected}</span>
                   )}
                   <span className="text-[10px] text-gray-600">{items.length}</span>
                 </div>
@@ -106,7 +106,7 @@ export default function PluginPanel({ plugins, selected, onAdd, onRemove }: Prop
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-200">{strategy.name}</span>
                             {selected_item && (
-                              <span className="text-[10px] text-blue-400 bg-blue-900/30 px-1.5 py-0.5 rounded">Active</span>
+                              <span className="text-[10px] text-bronze bg-bronze-glow px-1.5 py-0.5 rounded">Active</span>
                             )}
                           </div>
                           <p className="text-xs text-gray-500 truncate mt-0.5">{strategy.description}</p>
@@ -131,7 +131,7 @@ export default function PluginPanel({ plugins, selected, onAdd, onRemove }: Prop
                           className={`ml-2 px-3 py-1 rounded text-xs font-medium transition whitespace-nowrap ${
                             selected_item
                               ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50'
-                              : 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/40'
+                              : 'bg-bronze-glow text-bronze hover:bg-bronze/20'
                           }`}
                         >
                           {selected_item ? 'Remove' : 'Add'}

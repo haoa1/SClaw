@@ -568,7 +568,7 @@ export default function BacktestPanel({ plugins }: { plugins: PluginInfo[] }) {
       <button
        onClick={addStrategyToConfig}
        disabled={!selectedPlugin || !selectedStrategy}
-       className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white px-4 py-1.5 rounded-lg text-sm transition"
+       className="btn-bronze disabled:bg-gray-700 disabled:text-gray-500 text-white px-4 py-1.5 rounded-lg text-sm transition"
       >
        + Add to Strategy List
       </button>
@@ -688,9 +688,9 @@ export default function BacktestPanel({ plugins }: { plugins: PluginInfo[] }) {
       <div className="text-xs text-gray-500 mb-2">Selected Strategies ({config.strategies.length})</div>
       <div className="flex flex-wrap gap-2">
        {config.strategies.map((s, i) => (
-        <span key={i} className="inline-flex items-center gap-1.5 bg-blue-900/30 border border-blue-700/50 px-2.5 py-1 rounded-full text-xs text-blue-300">
+        <span key={i} className="inline-flex items-center gap-1.5 bg-bronze-glow border border-bronze/50 px-2.5 py-1 rounded-full text-xs text-bronze-light">
          {getPluginName(s.pluginId)}/{s.strategyId}
-         <button onClick={() => removeStrategyFromConfig(i)} className="text-blue-400 hover:text-red-400 ml-1">&times;</button>
+         <button onClick={() => removeStrategyFromConfig(i)} className="text-bronze hover:text-red-400 ml-1">&times;</button>
         </span>
        ))}
       </div>
@@ -751,7 +751,7 @@ export default function BacktestPanel({ plugins }: { plugins: PluginInfo[] }) {
           key={v}
           onClick={() => setChartView(v)}
           className={`text-xs px-2.5 py-1 rounded-full transition ${
-           chartView === v ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+           chartView === v ? 'bg-bronze text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
           }`}
          >
           {v === 'both' ? 'All' : v === 'strategy' ? 'Strategy' : 'Benchmark'}
@@ -900,7 +900,7 @@ export default function BacktestPanel({ plugins }: { plugins: PluginInfo[] }) {
            onClick={() => setTradeFilter(f)}
            className={`px-3 py-1 text-xs rounded-md transition ${
             tradeFilter === f
-             ? 'bg-blue-600 text-white'
+             ? 'bg-bronze text-white'
              : 'text-gray-400 hover:text-gray-200'
            }`}
           >
@@ -915,7 +915,7 @@ export default function BacktestPanel({ plugins }: { plugins: PluginInfo[] }) {
            onClick={() => setTradeSort(s)}
            className={`px-3 py-1 text-xs rounded-md transition ${
             tradeSort === s
-             ? 'bg-blue-600 text-white'
+             ? 'bg-bronze text-white'
              : 'text-gray-400 hover:text-gray-200'
            }`}
           >
