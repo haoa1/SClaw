@@ -83,7 +83,7 @@ async function loadMessagesFromServer(): Promise<Message[]> {
         return data.messages.map(convertToSegments)
     }
   } catch {}
-  return [{ role: 'assistant' as const, segments: [{ type: 'content' as const, data: 'Connected, enter command to start analysis' }] }]
+  return [{ role: 'assistant' as const, segments: [{ type: 'content' as const, data: '🦀 SClaw ready — fire a command to hunt' }] }]
 }
 
 async function saveMessagesToServer(messages: Message[]) {
@@ -104,7 +104,7 @@ function loadMessages(): Message[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed.map(convertToSegments)
     }
   } catch {}
-  return [{ role: 'assistant', segments: [{ type: 'content', data: 'Connected, enter command to start analysis' }] }]
+  return [{ role: 'assistant', segments: [{ type: 'content', data: '🦀 SClaw ready — fire a command to hunt' }] }]
 }
 
 function saveMessages(messages: Message[]) {
@@ -158,7 +158,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   useEffect(() => {
     loadMessagesFromServer().then(serverMessages => {
       if (serverMessages.length > 1 ||
-          (serverMessages.length === 1 && serverMessages[0].segments?.[0]?.data !== 'Connected, enter command to start analysis')) {
+          (serverMessages.length === 1 && serverMessages[0].segments?.[0]?.data !== '🦀 SClaw ready — fire a command to hunt')) {
         // Server has data — use it and sync to localStorage
         setMessages(serverMessages)
         saveMessages(serverMessages)
@@ -232,7 +232,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
       await authFetch('/api/clear', { method: 'POST' })
     } catch { /* ignore */ }
     localStorage.removeItem(STORAGE_KEY)
-    setMessages([{ role: 'assistant', segments: [{ type: 'content', data: 'Connected, enter command to start analysis' }] }])
+    setMessages([{ role: 'assistant', segments: [{ type: 'content', data: '🦀 SClaw ready — fire a command to hunt' }] }])
   }
 
   const send = async (overrideText?: string) => {
@@ -494,7 +494,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         <div className="mb-1">
           <button
             onClick={() => setCollapsed(false)}
-            className="text-gray-600 hover:text-gray-400 text-xs outline-none cursor-pointer"
+            className="text-bronze/60 hover:text-bronze text-xs outline-none cursor-pointer"
           >
             ▶ Show reasoning ({segments.length} steps)
           </button>
@@ -530,7 +530,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     switch (seg.type) {
       case 'reasoning':
         return (
-          <div key={idx} className="text-gray-500 text-xs italic leading-normal py-0.5">
+          <div key={idx} className="text-amber-700/80 text-xs italic leading-normal py-0.5">
             {seg.data}
           </div>
         )
@@ -646,6 +646,21 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     )
   }
 
+  /* ===== Agent header: SClaw identity strip ===== */
+  function AgentHeader() {
+    return (
+      <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-bronze/20">
+        <span className="text-lg leading-none">🦀</span>
+        <span className="text-bronze font-bold text-xs tracking-wider uppercase">SClaw</span>
+        <span className="text-gray-600 text-[10px] font-mono hidden sm:inline">· market hunter</span>
+        <span className="ml-auto flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.5)]" />
+          <span className="text-gray-600 text-[9px] font-mono">online</span>
+        </span>
+      </div>
+    )
+  }
+
   /* ===== User message bubble ===== */
   function UserMessageBlock({ content }: { content: string }) {
     return (
@@ -663,7 +678,8 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   function AssistantBubble({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex justify-start">
-        <div className="max-w-[92%] bg-gray-900/40 border border-gray-800 rounded-lg px-3 py-2">
+        <div className="max-w-[92%] bg-[rgba(196,154,108,0.04)] border border-bronze/20 rounded-lg px-3 py-2.5">
+          <AgentHeader />
           {children}
         </div>
       </div>
@@ -791,7 +807,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
             onClick={() => send()}
             disabled={streaming || !input.trim()}
             title="Send message (Enter)"
-            className="text-cyan-500 hover:text-cyan-400 disabled:opacity-30 text-xs font-mono px-3 py-1 border border-cyan-800/50 rounded hover:border-cyan-700 transition-colors cursor-pointer flex-shrink-0"
+            className="text-bronze hover:text-bronze-light disabled:opacity-30 text-xs font-mono px-3 py-1 border border-bronze/40 rounded hover:border-bronze transition-colors cursor-pointer flex-shrink-0"
           >
             ▶ Send
           </button>
