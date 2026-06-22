@@ -126,6 +126,10 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
 
+  // Input history (up/down arrow)
+  const inputHistory = useRef<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+
   // Throttle auto-scrolls during streaming — avoid layout thrashing on every token
   const lastScrollTime = useRef(0)
   const SCROLL_THROTTLE_MS = 100
@@ -238,6 +242,13 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   const send = async (overrideText?: string) => {
     const text = (overrideText !== undefined ? overrideText : input).trim()
     if (!text || streaming) return
+
+    // Save to input history (avoid dupes, cap at 50)
+    inputHistory.current = inputHistory.current.filter(h => h !== text)
+    inputHistory.current.push(text)
+    if (inputHistory.current.length > 50) inputHistory.current.shift()
+    setHistoryIndex(-1)
+
     setInput('')
     setStreaming(true)
 
@@ -402,6 +413,31 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
       e.preventDefault()
       console.log('[ChatPanel] React Enter pressed, input:', input, 'streaming:', streaming)
       send()
+      return
+    }
+
+    // Input history navigation (up/down arrow)
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      const hist = inputHistory.current
+      if (hist.length === 0) return
+      const newIdx = historyIndex === -1 ? hist.length - 1 : Math.max(0, historyIndex - 1)
+      setHistoryIndex(newIdx)
+      setInput(hist[newIdx])
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      const hist = inputHistory.current
+      if (hist.length === 0 || historyIndex === -1) return
+      const newIdx = historyIndex + 1
+      if (newIdx >= hist.length) {
+        setHistoryIndex(-1)
+        setInput('')
+      } else {
+        setHistoryIndex(newIdx)
+        setInput(hist[newIdx])
+      }
     }
   }
 
@@ -417,6 +453,42 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     code: ({ children, className, inline }: any) => {
       if (inline) {
         return <code className="bg-gray-800 text-yellow-200 text-xs px-1 py-0.5 rounded font-mono">{children}</code>
+      }
+      const lang = className?.replace('language-', '') || ''
+      if (lang === 'diff') {
+        // Render diff lines with color coding
+        const text = String(children).replace(/\n$/, '')
+        const lines = text.split('\n')
+        return (
+          <pre className="bg-[#0d1117] text-[13px] font-['JetBrains_Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] p-3 rounded border border-gray-700 overflow-auto leading-snug whitespace-pre-wrap">
+            {lines.map((line, i) => {
+              const trimmed = line
+              let bgClass = ''
+              let prefix = ''
+              let colorClass = 'text-gray-300'
+              if (trimmed.startsWith('+') && !trimmed.startsWith('+++')) {
+                bgClass = 'bg-green-900/30'
+                colorClass = 'text-green-300'
+                prefix = '+'
+              } else if (trimmed.startsWith('-') && !trimmed.startsWith('---')) {
+                bgClass = 'bg-red-900/30'
+                colorClass = 'text-red-300'
+                prefix = '-'
+              } else if (trimmed.startsWith('@@')) {
+                bgClass = 'bg-cyan-900/20'
+                colorClass = 'text-cyan-400'
+                prefix = '  '
+              } else {
+                prefix = '  '
+              }
+              return (
+                <div key={i} className={`${bgClass} px-1 -mx-3`}>
+                  <span className={`${colorClass}`}>{prefix}{trimmed.slice(prefix.length)}</span>
+                </div>
+              )
+            })}
+          </pre>
+        )
       }
       return <pre className="bg-[#1a1a2e] text-gray-200 text-[13px] font-['JetBrains_Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] p-3 rounded border border-gray-700 overflow-auto leading-snug whitespace-pre">{children}</pre>
     },
