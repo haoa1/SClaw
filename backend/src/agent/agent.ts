@@ -26,6 +26,13 @@ export class Agent {
   private totalOutputTokens = 0;
   /** Loaded skills: name → markdown content */
   private loadedSkills = new Map<string, string>();
+  /** Abort flag: set to true to stop the agent on next loop check */
+  public aborted = false;
+
+  /** Signal the agent to stop. Next loop iteration will exit early. */
+  public abort(): void {
+    this.aborted = true;
+  }
   /** Callback to notify frontend of prompt dumps (debug mode) */
   private onDebugPrompt?: (dump: {filePath: string; messageCount: number; totalTokens: number}) => void;
 
@@ -74,6 +81,18 @@ Use tools when you need to perform actions. Be concise and helpful.`,
     while (turnCount < this.config.maxTurns) {
       turnCount++;
 
+      // Check abort flag
+      if (this.aborted) {
+        console.log("  [AGENT] Aborted after turn " + turnCount);
+        this.aborted = false;
+        return {
+          response: "",
+          toolCalls: totalToolCalls,
+          inputTokens: this.totalInputTokens,
+          outputTokens: this.totalOutputTokens,
+        };
+      }
+
       // Auto-compact when context is too large instead of aborting
       if (this.messages.length > MAX_MESSAGES_BEFORE_COMPACT) {
         console.log(`  [AGENT] Messages exceeded ${MAX_MESSAGES_BEFORE_COMPACT} (${this.messages.length}), triggering compact...`);
@@ -87,6 +106,9 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       }
 
       if (onTurnStart) onTurnStart(turnCount);
+
+      // Safety: validate message array integrity before LLM call
+      this.validateMessages();
 
       // Debug: dump full prompt before LLM call
       this.dumpPrompt(turnCount);
@@ -114,9 +136,12 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       if (llmResponse.tool_calls && llmResponse.tool_calls.length > 0) {
         // Save full assistant message including tool_calls (OpenAI format)
         // DeepSeek: content MUST be null (not empty string "") when tool_calls present
+        // DeepSeek thinking mode: content MUST be null when tool_calls is present.
+        // Some APIs return both content + tool_calls, but re-sending non-null content
+        // with tool_calls can cause "must be followed by tool messages" errors.
         const assistantMsg: LLMMessage = {
           role: "assistant",
-          content: llmResponse.content ?? null,
+          content: null,
           tool_calls: llmResponse.tool_calls.map((tc) => ({
             id: tc.id,
             type: "function" as const,
@@ -126,10 +151,10 @@ Use tools when you need to perform actions. Be concise and helpful.`,
             },
           })),
         };
-        // DeepSeek thinking mode: must save and pass back reasoning_content
-        if (llmResponse.reasoning_content) {
-          (assistantMsg as any).reasoning_content = llmResponse.reasoning_content;
-        }
+        // DeepSeek thinking mode: ALWAYS set reasoning_content for tool_calls messages.
+        // The API requires reasoning_content to be passed back when in thinking mode,
+        // even if the response for this specific turn didn't include it.
+        (assistantMsg as any).reasoning_content = llmResponse.reasoning_content || "";
         this.messages.push(assistantMsg);
       } else {
         // Plain text response — no tool calls
@@ -138,7 +163,7 @@ Use tools when you need to perform actions. Be concise and helpful.`,
             role: "assistant",
             content: llmResponse.content,
           };
-          // DeepSeek thinking mode: must save and pass back reasoning_content
+          // DeepSeek thinking mode: also preserve reasoning_content for plain text
           if (llmResponse.reasoning_content) {
             (assistantMsg as any).reasoning_content = llmResponse.reasoning_content;
           }
@@ -371,16 +396,19 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
             break;
           }
 
-          // Add assistant message with tool_calls
-          subMessages.push({
+          // Add assistant message with tool_calls (content MUST be null per DeepSeek spec)
+          const subAssistantMsg: LLMMessage = {
             role: "assistant",
-            content: response.content ?? null,
+            content: null,
             tool_calls: toolCalls.map(tc => ({
               id: tc.id,
               type: "function" as const,
               function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
             })),
-          });
+          };
+          // DeepSeek thinking mode: must pass back reasoning_content
+          (subAssistantMsg as any).reasoning_content = response.reasoning_content || "";
+          subMessages.push(subAssistantMsg);
 
           // Execute tool calls
           for (const tc of toolCalls) {
@@ -469,6 +497,104 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
     } else {
       this.messages.push(msg);
     }
+  }
+
+  /**
+   * Validate message array integrity before sending to LLM.
+   * Fixes broken tool_calls cycles that would cause 400 errors:
+   * "An assistant message with 'tool_calls' must be followed by tool messages"
+   */
+  private validateMessages(): void {
+    // Remove any orphaned tool messages (tool messages whose tool_call_id
+    // doesn't match any assistant tool_calls message before them)
+    const valid: LLMMessage[] = [];
+    const openToolCallIds = new Set<string>(); // tool_call_ids waiting for tool responses
+    const toolCallIdToParentIdx = new Map<string, number>(); // tool_call_id -> index in valid
+
+    for (let i = 0; i < this.messages.length; i++) {
+      const msg = this.messages[i];
+
+      if (msg.role === "tool" && msg.tool_call_id) {
+        if (openToolCallIds.has(msg.tool_call_id)) {
+          // Valid: this tool message has a matching assistant tool_calls parent
+          openToolCallIds.delete(msg.tool_call_id);
+          valid.push(msg);
+        } else {
+          // Orphaned tool message - no matching tool_calls found. Drop it.
+          console.log(`  [AGENT] Dropped orphaned tool message (tool_call_id=${msg.tool_call_id})`);
+        }
+        continue;
+      }
+
+      if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+        // Track all tool_call_ids from this assistant message
+        for (const tc of msg.tool_calls) {
+          openToolCallIds.add(tc.id);
+          toolCallIdToParentIdx.set(tc.id, valid.length);
+        }
+        valid.push(msg);
+        continue;
+      }
+
+      // Regular message (system, user, assistant with no tool_calls, or tool with no id)
+      valid.push(msg);
+    }
+
+    // Check for dangling tool_calls with no tool responses ANYWHERE in the array.
+    // On error in a previous run, some tool_calls may be left unresolved,
+    // and a subsequent run adds user messages that "mask" the dangling block
+    // from a simple end-of-array scan. We must remove ALL assistant messages
+    // (and their orphaned tool responses) that have unresolved tool_call_ids.
+    if (openToolCallIds.size > 0) {
+      // Collect all assistant message indices that have unresolved tool_calls
+      const indicesToRemove = new Set<number>();
+      for (let i = valid.length - 1; i >= 0; i--) {
+        const msg = valid[i];
+        if (msg.role === "assistant" && msg.tool_calls) {
+          const unresolved = msg.tool_calls.filter(tc => openToolCallIds.has(tc.id));
+          if (unresolved.length > 0) {
+            indicesToRemove.add(i);
+            for (const tc of unresolved) {
+              openToolCallIds.delete(tc.id);
+            }
+          }
+        }
+        // Also remove orphaned tool messages whose parent was removed
+        if (msg.role === "tool" && msg.tool_call_id && !openToolCallIds.has(msg.tool_call_id)) {
+          // This tool message belongs to a tool_call_id that's already been resolved.
+          // But if its parent assistant was removed, we need to check:
+          // toolCallIdToParentIdx tells us which assistant message this tool belongs to
+        }
+      }
+
+      if (indicesToRemove.size > 0) {
+        console.log(`  [AGENT] Removing ${indicesToRemove.size} assistant message(s) with unresolved tool_calls`);
+        // Also find and remove tool messages that belong to removed assistants
+        const removedToolCallIds = new Set<string>();
+        for (const idx of indicesToRemove) {
+          const msg = valid[idx];
+          if (msg.tool_calls) {
+            for (const tc of msg.tool_calls) {
+              removedToolCallIds.add(tc.id);
+            }
+          }
+        }
+        // Scan for tool messages that belong to these removed tool_call_ids
+        for (let i = valid.length - 1; i >= 0; i--) {
+          const msg = valid[i];
+          if (msg.role === "tool" && msg.tool_call_id && removedToolCallIds.has(msg.tool_call_id)) {
+            indicesToRemove.add(i);
+          }
+        }
+        // Remove in reverse order to preserve indices
+        const sorted = Array.from(indicesToRemove).sort((a, b) => b - a);
+        for (const idx of sorted) {
+          valid.splice(idx, 1);
+        }
+      }
+    }
+
+    this.messages = valid;
   }
 
   getMemory(): Memory {

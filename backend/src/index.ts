@@ -42,13 +42,13 @@ import { createDataSyncRoutes } from "./routes/data-sync";
 import { createGarudaRoutes } from "./routes/garuda";
 
 // Chat (for saving AI analysis results)
-import { saveMessages, loadMessages } from "./routes/chat";
+import { saveMessages, loadMessages, chatUpdateNotify } from "./routes/chat";
 
-// LLM client (for silent agent analysis)
-import { LLMClient } from "./agent/llm";
+// LLM client (for silent agent analysis — currently unused, import kept for reference)
+// import { LLMClient } from "./agent/llm";
 
 // Register all tools
-import { registerFileTools } from "./tools/file-tools";
+import { registerFileTools, bashTool } from "./tools/file-tools";
 import { registerStockTool } from "./tools/stock";
 import { registerScreenTool } from "./tools/screen";
 import { registerStrategyTool } from "./tools/strategy";
@@ -137,6 +137,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   // ===== Initialize tool registry =====
   const toolRegistry = new ToolRegistry();
   registerFileTools(toolRegistry);
+  toolRegistry.register(bashTool);
   registerStockTool(toolRegistry);
   registerScreenTool(toolRegistry);
   registerStrategyTool(toolRegistry);
@@ -177,6 +178,16 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     agentManager.pushNotification(userId, notification);
   };
 
+  // Wire scheduler to push user-facing queue notifications to agent manager
+  scheduler.pushUserNotification = (userId, notification) => {
+    agentManager.pushNotification(userId, { ...notification, status: notification.type === 'completed' ? 'completed' : 'failed', strategies: '', matchedCount: 0, totalCount: 0, topResults: [], timestamp: Date.now() });
+  };
+
+  // Wire scheduler to abort agents on task cancel
+  scheduler.abortAgent = (userId) => {
+    agentManager.abortAgent(userId);
+  };
+
   // Wire watch engine to push notifications to agent manager
   watchEngine.deps = {
     ...watchEngine.deps,
@@ -186,44 +197,78 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   };
 
   // Wire scheduler to run AI analysis on screening results (aiMode=agent/both)
-  scheduler.analyzeWithAgent = async (userId, taskLabel, strategyNames, topResults) => {
+  // Uses the full PerUserAgentManager agent so it has tool access (K-line, data fetch, etc.)
+  scheduler.analyzeWithAgent = async (taskId, userId, taskLabel, strategyNames, topResults, customPrompt) => {
     try {
-      const analysisPrompt = `Below are the results of a scheduled stock screening task "${taskLabel}" using strategies: ${strategyNames.join(', ')}.
+      const agent = agentManager.getAgent(userId);
+      agent.setDebug(true);
+      agent.reset(); // Fresh start — no leftover state from previous failed runs
 
-Top ${topResults.length} results:
-${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — Score: ${r.score.toFixed(2)}`).join('\n')}
+      // Build context: use custom prompt if provided, otherwise default stock analysis
+      const context = customPrompt
+        ? `📋 [定时任务] "${taskLabel}"\n\n${customPrompt}`
+        : `📊 [定时选股任务] "${taskLabel}"
 
-Please provide a brief analysis including:
-1. Overall assessment of the screening results
-2. Notable stocks worth attention
-3. Any patterns or insights
+策略: ${strategyNames.join(', ')}
 
-Keep it concise — 3-5 sentences.`;
+选股结果（前${topResults.length}只）:
+${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.toFixed(2)}`).join('\n')}
 
-      const llm = new LLMClient();
-      const response = await llm.chat([
-        { role: 'system', content: 'You are a professional stock analyst. Provide a concise analysis of the screening results.' },
-        { role: 'user', content: analysisPrompt },
-      ], [], 'deepseek-chat');
+请对以上选股结果进行全面分析。你可以使用工具拉取这些股票的K线数据做技术分析（如缠论买卖点判断）、查看实时行情等，然后给出综合评估和操作建议。
+请直接开始分析。`;
 
-      const analysis = response.content || 'Analysis failed';
+      const result = await agent.run(
+        context,
+        (token) => { scheduler.emitAgentEvent(taskId, 'token', { token }); },
+        (token) => { scheduler.emitAgentEvent(taskId, 'reasoning', { token }); },
+        (tc) => { scheduler.emitAgentEvent(taskId, 'tool_call', tc); },
+        (turn) => { scheduler.emitAgentEvent(taskId, 'turn', { turn }); },
+        (name, content) => { scheduler.emitAgentEvent(taskId, 'tool_result', { name, content: content.slice(0, 300) }); },
+        undefined,
+      );
 
-      // Save to chat history as a system notification message
-      const history = loadMessages(userId);
-      history.push({
-        role: 'user',
-        content: `📊 [Scheduled Screen Report] "${taskLabel}" completed\nStrategies: ${strategyNames.join(', ')}\nResults: ${topResults.length} stocks`,
+      // Signal done via SSE
+      scheduler.emitAgentEvent(taskId, 'done', {
+        response: (result.response || '分析完成').slice(0, 500),
+        toolCalls: result.toolCalls,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
       });
+      scheduler.closeAgentStream(taskId);
+
+      const analysis = result.response || '分析完成';
+
+      // Save to chat history as a message pair
+      const history = loadMessages(userId);
+
+      // Different message format depending on whether this is a screening-based or pure agent task
+      const isAgentTask = strategyNames.length === 0 && topResults.length === 0;
+      if (isAgentTask) {
+        history.push({
+          role: 'user',
+          content: `🤖 [AI任务完成] "${taskLabel}"`,
+        });
+      } else {
+        history.push({
+          role: 'user',
+          content: `📊 [定时选股报告] "${taskLabel}" 已完成\n策略: ${strategyNames.join(', ')}\n结果: ${topResults.length} 只股票`,
+        });
+      }
       history.push({
         role: 'assistant',
         content: analysis,
       });
       saveMessages(userId, history);
 
-      console.log(`[Scheduler] AI analysis saved to chat for user ${userId}`);
+      // Notify chat SSE watchers that new messages are available
+      chatUpdateNotify(userId);
+
+      console.log(`[Scheduler] Agent analysis completed for user ${userId} (${analysis.length} chars)`);
       return analysis;
     } catch (err) {
-      console.error('[Scheduler] AI analysis error:', err);
+      console.error('[Scheduler] Agent analysis error:', err);
+      scheduler.emitAgentEvent(taskId, 'error', { message: String(err).slice(0, 300) });
+      scheduler.closeAgentStream(taskId);
       return '';
     }
   };

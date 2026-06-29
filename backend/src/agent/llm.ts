@@ -160,9 +160,10 @@ export class LLMClient {
           if (m.tool_call_id) {
             msg.tool_call_id = m.tool_call_id;
           }
-          // DeepSeek thinking mode: must pass back reasoning_content
-          if (m.reasoning_content && m.role === "assistant") {
-            msg.reasoning_content = m.reasoning_content;
+          // DeepSeek thinking mode: MUST pass back reasoning_content when present
+          // (even empty string — API requires it for tool_calls messages)
+          if (m.role === "assistant" && (m as any).reasoning_content !== undefined) {
+            msg.reasoning_content = (m as any).reasoning_content;
           }
           return msg;
         }),
@@ -229,9 +230,10 @@ export class LLMClient {
         if (m.tool_call_id) {
           msg.tool_call_id = m.tool_call_id;
         }
-        // DeepSeek thinking mode: must pass back reasoning_content
-        if (m.reasoning_content && m.role === "assistant") {
-          msg.reasoning_content = m.reasoning_content;
+        // DeepSeek thinking mode: MUST pass back reasoning_content when present
+        // (even empty string — API requires it for tool_calls messages)
+        if (m.role === "assistant" && (m as any).reasoning_content !== undefined) {
+          msg.reasoning_content = (m as any).reasoning_content;
         }
         return msg;
       }),

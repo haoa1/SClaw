@@ -16,18 +16,19 @@ export function registerScheduleTools(
 ): void {
   registry.register(new Tool(
     'manage_schedule',
-    '管理定时选股/回测任务。支持操作: create(创建), list(列出), delete(删除), toggle(启用/停用), run(立即执行), result(查看最近一次执行结果)。\n\n创建选股任务 (taskType=screen, 默认):\n  aiMode 参数说明:\n    - email (默认): 纯机械筛选→发邮件，不进AI\n    - agent: 机械筛选→AI分析→存聊天记录，不发邮件\n    - both: 发邮件 + AI分析都做\n\n创建回测任务 (taskType=backtest):\n  额外需要 backtestConfig JSON: {\n    startDate: "2024-01-01",\n    endDate: "2025-12-31",\n    rebalanceFrequency: "monthly" | "weekly" | "quarterly" | "none",\n    initialCapital: 1000000,\n    maxPositions: 5,\n    commission: 0.0003,\n    benchmark: "000300.SH" (可选),\n    stopLoss: -15 (可选),\n    takeProfit: 50 (可选),\n    slippageModel: "fixed" | "none" | "volume"\n  }',
+    '管理定时选股/回测/AI任务。支持操作: create(创建), list(列出), delete(删除), toggle(启用/停用), run(立即执行), result(查看最近一次执行结果)。\n\n创建选股任务 (taskType=screen, 默认):\n  aiMode 参数说明:\n    - email (默认): 纯机械筛选→发邮件，不进AI\n    - agent: 机械筛选→AI分析→存聊天记录，不发邮件\n    - both: 发邮件 + AI分析都做\n\n创建回测任务 (taskType=backtest):\n  额外需要 backtestConfig JSON: {\n    startDate: "2024-01-01",\n    endDate: "2025-12-31",\n    rebalanceFrequency: "monthly" | "weekly" | "quarterly" | "none",\n    initialCapital: 1000000,\n    maxPositions: 5,\n    commission: 0.0003,\n    benchmark: "000300.SH" (可选),\n    stopLoss: -15 (可选),\n    takeProfit: 50 (可选),\n    slippageModel: "fixed" | "none" | "volume"\n  }\n\n创建AI自定义任务 (taskType=agent):\n  不需要 strategies，直接给出 prompt 即可，Agent会自由使用工具执行任务。结果保存到聊天记录。',
     [
       { name: 'action', type: 'string', description: '操作: create / list / delete / toggle / run / result' },
       { name: 'taskId', type: 'string', description: '任务ID（delete/toggle/run 需要）', required: false },
       { name: 'cronExpr', type: 'string', description: 'cron 表达式，例如 "0 9 * * 1-5" = 工作日9点（create 需要）', required: false },
       { name: 'email', type: 'string', description: '接收报告的邮箱，多个邮箱用逗号分隔（如 "a@b.com, c@d.com"），create需要，回测任务可选', required: false },
-      { name: 'taskType', type: 'string', description: '任务类型: screen(默认,选股) / backtest(回测)', required: false },
+      { name: 'taskType', type: 'string', description: '任务类型: screen(默认,选股) / backtest(回测) / agent(AI自定义)', required: false },
       { name: 'backtestConfig', type: 'string', description: '回测配置JSON（taskType=backtest时需要）', required: false },
-      { name: 'strategies', type: 'string', description: 'JSON 策略数组，例如 [{"pluginId":"volume","strategyId":"volume-surge","params":{"minChange":5}}]（create 需要）', required: false },
+      { name: 'strategies', type: 'string', description: 'JSON 策略数组，例如 [{"pluginId":"volume","strategyId":"volume-surge","params":{"minChange":5}}]（screen/backtest 需要，agent 不需要）', required: false },
       { name: 'enabled', type: 'string', description: 'true=启用 false=停用（toggle 需要）', required: false },
       { name: 'label', type: 'string', description: '任务标签（create 可选）', required: false },
       { name: 'aiMode', type: 'string', description: 'AI分析模式(仅筛选任务): email(默认,纯邮件)/agent(仅AI分析存聊天)/both(邮件+AI分析)', required: false },
+      { name: 'prompt', type: 'string', description: '自定义提示词，取代默认的选股分析提示词（仅选股任务、仅 aiMode=agent/both 时生效，可选）', required: false },
     ],
     async (args) => {
       const userId = getUserId();
@@ -43,11 +44,42 @@ export function registerScheduleTools(
           const label = args['label'] as string | undefined;
           const taskType = (args['taskType'] as string) || 'screen';
           const aiMode = (args['aiMode'] as 'email' | 'agent' | 'both') || 'email';
+          const prompt = args['prompt'] as string | undefined;
 
           if (!cronExpr) {
             return '❌ create 需要提供 cronExpr';
           }
 
+          // ===== Agent task =====
+          if (taskType === 'agent') {
+            const agentPrompt = args['prompt'] as string;
+            if (!agentPrompt) {
+              return '❌ agent 任务需要提供 prompt';
+            }
+
+            const cron = require('node-cron');
+            if (!cron.validate(cronExpr)) {
+              return '❌ 无效的 cron 表达式，请使用 5 段式 (分 时 日 月 周)';
+            }
+
+            const task = scheduler.addTask({
+              userId,
+              taskType: 'agent',
+              cronExpr,
+              prompt: agentPrompt,
+              label: label || `AI任务: ${agentPrompt.slice(0, 30)}${agentPrompt.length > 30 ? '...' : ''}`,
+              enabled: true,
+            });
+
+            return `✅ AI自定义任务已创建！
+  ───
+  任务ID: ${task.id}
+  标签: ${task.label}
+  Cron: ${cronExpr}
+  提示词: ${agentPrompt.slice(0, 50)}${agentPrompt.length > 50 ? '...' : ''}`;
+          }
+
+          // ===== Screen / Backtest tasks require strategies =====
           let strategies: Array<{ pluginId: string; strategyId: string; params: Record<string, any> }>;
           try {
             strategies = JSON.parse(args['strategies'] as string);
@@ -137,6 +169,7 @@ export function registerScheduleTools(
             aiMode,
             strategies: resolvedData,
             label: label || `定时选股: ${resolvedData.map(s => s.strategyName).join(', ')}`,
+            prompt,
             enabled: true,
           });
 
@@ -164,11 +197,11 @@ export function registerScheduleTools(
           for (const t of tasks) {
             const status = t.enabled ? '🟢' : '🔴';
             const lastRun = t.lastRun ? new Date(t.lastRun).toLocaleString('zh-CN') : '从未';
-            const aiModeLabel =
+            const typeTag = t.taskType === 'agent' ? '🤖' :
               t.aiMode === 'agent' ? '🤖' :
               t.aiMode === 'both' ? '📧🤖' : '📧';
-            output += `\n${status} ${aiModeLabel} [${t.id}] ${t.label || '未命名'}
-   Cron: ${t.cronExpr} | ${t.email ? `邮件: ${t.email} | ` : ''}上次: ${lastRun}`;
+            output += `\n${status} ${typeTag} [${t.id}] ${t.label || '未命名'}
+   Cron: ${t.cronExpr}${t.email ? ` | 邮件: ${t.email}` : ''} | 上次: ${lastRun}`;
           }
           return output;
         }
@@ -197,9 +230,12 @@ export function registerScheduleTools(
           const taskId = args['taskId'] as string;
           if (!taskId) return '❌ 需要 taskId';
           const started = await scheduler.runNow(taskId);
-          return started
-            ? `✅ 任务 ${taskId} 已触发执行，结果将通过邮件发送`
-            : `❌ 任务 ${taskId} 未找到或执行失败`;
+          const allTasks = scheduler.listAllTasks();
+          const task = allTasks.find(t => t.id === taskId);
+          if (!started) return `❌ 任务 ${taskId} 未找到或执行失败`;
+          if (task?.taskType === 'agent') return `✅ 任务 ${taskId} 已触发执行，结果将保存到聊天记录`;
+          if (task?.aiMode === 'agent' || task?.aiMode === 'both') return `✅ 任务 ${taskId} 已触发执行，结果将发送到邮箱${task?.aiMode === 'both' ? '和聊天记录' : ''}`;
+          return `✅ 任务 ${taskId} 已触发执行，结果将通过邮件发送`;
         }
 
         // ===== RESULT =====

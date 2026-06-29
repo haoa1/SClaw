@@ -40,8 +40,12 @@ def test_login(page, base_url, test_credentials):
     Expected: After login, the main dashboard is shown with the SClaw header
     and the user's display name.
     """
-    page.goto(base_url)
-    page.wait_for_load_state("networkidle")
+    # Block external fonts/analytics that can hang headless Chromium
+    page.route("**/*", lambda route, request: route.abort() if "fonts.googleapis" in request.url or "fonts.gstatic" in request.url else route.continue_())
+    try:
+        page.goto(base_url, wait_until="domcontentloaded", timeout=10000)
+    except Exception:
+        pass  # Navigation succeeded, only the wait timed out
 
     # Handle possible "Backend Offline" or loading state
     # The app first checks backend health. If online, the login form appears.
@@ -100,7 +104,7 @@ def test_screen_run(login, page):
     page = login
 
     # Wait for the page to fully load with strategies
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(3000)
 
     # Check if plugins section is visible
     plugin_section = page.locator("text=Plugins").first
@@ -163,7 +167,7 @@ def test_chat(login, page):
     page = login
 
     # Wait for the page to fully load
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(3000)
 
     # The ChatPanel is on the right side
     # Look for the chat input - it might be a textarea or input inside the chat panel

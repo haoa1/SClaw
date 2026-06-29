@@ -81,6 +81,30 @@ function normalizeToFlatFormat(msg: any): { role: string; content: string; reaso
   return { role: msg.role, content: msg.content || "" };
 }
 
+/** Chat SSE clients per user: userId → Set of Response objects */
+const chatSseClients = new Map<string, Set<Response>>();
+
+/**
+ * Notify all SSE watchers for a user that chat has been updated.
+ * Called from index.ts after scheduler saves chat messages.
+ */
+export function chatUpdateNotify(userId: string): void {
+  const clients = chatSseClients.get(userId);
+  console.log(`[chatUpdateNotify] Called for userId=${userId}, chatSseClients size=${chatSseClients.size}`);
+  if (!clients) {
+    console.log(`[chatUpdateNotify] No SSE clients for userId=${userId}, returning`);
+    return;
+  }
+  console.log(`[chatUpdateNotify] Found ${clients.size} SSE clients for userId=${userId}`);
+  const msg = `data: ${JSON.stringify({ type: 'chat_updated', timestamp: Date.now() })}\n\n`;
+  for (const res of clients) {
+    try {
+      res.write(msg);
+      console.log(`[chatUpdateNotify] Wrote message to client`);
+    } catch { /* client gone */ }
+  }
+}
+
 function getUserId(req: Request): string | null {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
@@ -121,6 +145,12 @@ export function createChatRoutes(
 
       // Debug mode: always dump prompt to file for the Debug panel
       agent.setDebug(true);
+
+      // RESET agent context — start fresh each request, using saved history
+      // as the single source of truth. Without this, agent.messages accumulates
+      // across requests, causing duplicates and broken tool_calls cycles that
+      // trigger "assistant with tool_calls must be followed by tool messages" errors.
+      agent.reset();
 
       // Load past messages into agent context
       let history = loadMessages(userId);
@@ -182,12 +212,7 @@ export function createChatRoutes(
           return text;
         }).join('\n---\n');
 
-        // Inject as a user message before the real one
-        if (history.length > 0) {
-          agent.loadHistory(history);
-        }
-        // Run the notification message first, then the actual user message
-        // We'll make the first turn about the notification, then process the user message
+        // Inject notifications into the user message (history already loaded above)
         actualMessage = `[系统通知]\n${notifText}\n\n---\n\n用户消息: ${message}`;
       }
 
@@ -252,6 +277,58 @@ export function createChatRoutes(
     } finally {
       res.end();
     }
+  });
+
+  /** GET /api/chat/events — SSE endpoint: notifies when chat is updated by scheduled tasks */
+  router.get("/api/chat/events", (req: Request, res: Response) => {
+    // Support token via both Authorization header and query param (for EventSource which can't set headers)
+    let userId: string | null = getUserId(req);
+    if (!userId && req.query.token) {
+      const session = validateSession(req.query.token as string);
+      userId = session ? session.userId : null;
+    }
+    if (!userId) {
+      res.status(401).json({ error: "Not logged in" });
+      return;
+    }
+
+    // SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    // Initial connection OK
+    res.write(':ok\n\n');
+
+    // Register client
+    if (!chatSseClients.has(userId)) {
+      chatSseClients.set(userId, new Set());
+    }
+    chatSseClients.get(userId)!.add(res);
+
+    // Keepalive ping every 30s
+    const keepalive = setInterval(() => {
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'keepalive', timestamp: Date.now() })}\n\n`);
+      } catch {
+        clearInterval(keepalive);
+      }
+    }, 30_000);
+
+    // Cleanup on disconnect
+    req.on('close', () => {
+      const clients = chatSseClients.get(userId);
+      if (clients) {
+        clients.delete(res);
+        if (clients.size === 0) chatSseClients.delete(userId);
+      }
+      clearInterval(keepalive);
+      res.end();
+    });
   });
 
   /** GET /api/messages — load saved messages */

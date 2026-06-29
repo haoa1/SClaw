@@ -7,7 +7,7 @@ Uses pytest-playwright for browser automation.
 import pytest
 
 # Base URL for the SClaw application
-BASE_URL = "http://47.109.31.187:3001"
+BASE_URL = "http://localhost:3001"
 
 # Test user credentials
 TEST_USERNAME = "testuser"
@@ -29,8 +29,13 @@ def test_credentials() -> dict:
 @pytest.fixture(scope="function")
 def login(page, base_url, test_credentials):
     """Log in as testuser and return the page."""
-    page.goto(base_url)
-    page.wait_for_load_state("networkidle")
+    # Block external fonts/analytics that can hang headless Chromium
+    page.route("**/*", lambda route, request: route.abort() if "fonts.googleapis" in request.url or "fonts.gstatic" in request.url else route.continue_())
+    # Navigate with short timeout — page loads fine, goto just times out on blocked resources
+    try:
+        page.goto(base_url, wait_until="domcontentloaded", timeout=10000)
+    except Exception:
+        pass  # Navigation succeeded, only the wait timed out
 
     # Wait for login form to appear (handles backend check/offline states)
     page.wait_for_selector('input[placeholder="Enter username"]', timeout=30000)

@@ -115,6 +115,34 @@ export const api = {
     fetchJson<ScreenRecord>(`/user/screens/${id}`),
 
   // Operation logs
+  // Scheduler
+  getSchedulerTasks: () =>
+    fetchJson<{ tasks: import('./types').ScheduledTask[] }>('/scheduler/tasks'),
+
+  getQueueStatus: () =>
+    fetchJson<import('./types').QueueStatus>('/scheduler/queue'),
+
+  runSchedulerTask: (taskId: string) =>
+    fetchJson<{ success: boolean }>('/scheduler/tasks/' + taskId + '/run', {
+      method: 'POST',
+    }),
+
+  cancelSchedulerTask: (taskId: string) =>
+    fetchJson<{ success: boolean; message: string }>('/scheduler/tasks/' + taskId + '/cancel', {
+      method: 'POST',
+    }),
+
+  toggleSchedulerTask: (taskId: string, enabled: boolean) =>
+    fetchJson<{ success: boolean }>('/scheduler/tasks/' + taskId + '/toggle', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+
+  deleteSchedulerTask: (taskId: string) =>
+    fetchJson<{ success: boolean }>('/scheduler/tasks/' + taskId, {
+      method: 'DELETE',
+    }),
+
   getLogs: (limit = 50) =>
     fetchJson<{ logs: LogEntry[] }>(`/user/logs?limit=${limit}`),
 };

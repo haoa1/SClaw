@@ -243,11 +243,11 @@ export class PluginManager extends EventEmitter {
     if (!entryPath) return;
 
     try {
-      // Clear require cache for hot reload
-      const resolvedPath = require.resolve(entryPath);
-      delete require.cache[resolvedPath];
+      // Register tsx loader to handle .ts files via require()
+      try { require('tsx/cjs'); } catch { /* tsx not available, .ts files may fail */ }
 
-      const pluginModule = require(entryPath);
+      // Use dynamic import() instead of require() — handles .ts files with type annotations
+      const pluginModule = await import(entryPath);
       const plugin = pluginModule.default || pluginModule;
 
       if (!this.validatePlugin(plugin)) {

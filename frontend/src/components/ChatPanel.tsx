@@ -381,6 +381,66 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     return () => el.removeEventListener('keydown', nativeHandler)
   }, [streaming]) // only re-attach on streaming change, NOT on input change
 
+  // ===== SSE listener: auto-refresh chat when scheduled tasks save messages =====
+  // Re-connects on auth token change (logout/relogin)
+  useEffect(() => {
+    const token = getAuthToken()
+    if (!token) {
+      console.log('[ChatPanel] No auth token, SSE disabled')
+      return
+    }
+    const url = `/api/chat/events?token=${encodeURIComponent(token)}`
+    let evtSource: EventSource | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let mounted = true
+
+    console.log('[ChatPanel] Connecting SSE with token:', token.slice(0, 8) + '...')
+
+    function connect() {
+      if (!mounted) return
+      evtSource = new EventSource(url)
+
+      evtSource.addEventListener('open', () => {
+        if (!mounted) return
+        console.log('[ChatPanel] SSE connected')
+      })
+
+      evtSource.addEventListener('chat_updated', (e: MessageEvent) => {
+        if (!mounted) return
+        console.log('[ChatPanel] SSE chat_updated, reloading messages...')
+        loadMessagesFromServer().then(serverMessages => {
+          if (mounted && serverMessages.length > 0) {
+            setMessages(serverMessages)
+          }
+        })
+      })
+
+      evtSource.onerror = () => {
+        console.log('[ChatPanel] SSE error, will reconnect in 5s')
+        // Clean up and reconnect after 5 seconds
+        if (evtSource) {
+          evtSource.close()
+          evtSource = null
+        }
+        if (mounted) {
+          if (reconnectTimer) clearTimeout(reconnectTimer) // prevent timer leak
+          reconnectTimer = setTimeout(connect, 5000)
+        }
+      }
+    }
+
+    connect()
+
+    return () => {
+      mounted = false
+      if (evtSource) {
+        console.log('[ChatPanel] SSE closing (token may have changed)')
+        evtSource.close()
+      }
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+    }
+  }, [getAuthToken()]) // reconnect when token changes (login/logout)
+
   /** Recall a message: truncate from this index, reload from server */
   const handleRecall = async (index: number) => {
     const res = await authFetch('/api/chat/recall', {
@@ -540,97 +600,108 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     )
   }
 
-  /* ===== Process Block: scrollable (5 lines) during streaming, collapsible after ===== */
+    /* ===== Process Block: terminal-style agent stream view ===== */
   function ProcessBlock({ segments, isStreaming }: { segments: Segment[]; isStreaming: boolean }) {
     const scrollRef = useRef<HTMLDivElement>(null)
-    // Start collapsed if already finished; start open if still streaming
     const [collapsed, setCollapsed] = useState(!isStreaming)
 
-    // Auto-scroll to bottom during streaming
     useEffect(() => {
       if (scrollRef.current && isStreaming) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
     }, [segments, isStreaming])
 
-    // Auto-collapse when streaming finishes
     useEffect(() => {
       if (!isStreaming) {
-        setCollapsed(true)
+        // Don't auto-collapse immediately — let user see the final state
+        const timer = setTimeout(() => setCollapsed(true), 3000)
+        return () => clearTimeout(timer)
       }
     }, [isStreaming])
 
-    // Collapsed state (after streaming): show expand button only
     if (!isStreaming && collapsed) {
+      const toolCount = segments.filter(s => s.type === 'tool_call').length
       return (
-        <div className="mb-1">
+        <div className="mb-2">
           <button
             onClick={() => setCollapsed(false)}
-            className="text-bronze/60 hover:text-bronze text-xs outline-none cursor-pointer"
+            className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg border"
+            style={{ background: 'rgba(180,130,70,0.04)', borderColor: 'rgba(180,130,70,0.12)', color: '#c8b080' }}
           >
-            ▶ Show reasoning ({segments.length} steps)
+            <span className="text-xs">&#9654;</span>
+            <span className="text-xs font-medium">Agent 分析</span>
+            <span className="text-xs opacity-60">({toolCount} 次工具调用)</span>
           </button>
         </div>
       )
     }
 
-    // Expanded or streaming: show the content with optional scroll
     return (
-      <div className="mb-1">
-        {!isStreaming && (
-          <div className="flex items-center gap-2 mb-0.5">
+      <div className="mb-2 rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(180,130,70,0.12)', background: '#0d0d14' }}>
+        {/* Header bar */}
+        <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'rgba(180,130,70,0.06)', borderBottom: '1px solid rgba(180,130,70,0.08)' }}>
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full" style={{
+              background: isStreaming ? '#e8b84b' : '#4ade80',
+              boxShadow: isStreaming ? '0 0 4px #e8b84b66' : 'none'
+            }} />
+            <span className="text-xs font-medium" style={{ color: '#c8b080' }}>Agent</span>
+            {isStreaming && <span className="text-xs animate-pulse" style={{ color: '#a09070' }}>&#9679; 思考中</span>}
+          </div>
+          {!isStreaming && (
             <button
               onClick={() => setCollapsed(true)}
-              className="text-gray-600 hover:text-gray-400 text-xs outline-none cursor-pointer"
+              className="text-xs outline-none cursor-pointer" style={{ color: '#6b5d48' }}
             >
-              ▼ Hide reasoning
+              ▲ 收起
             </button>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Content area */}
         <div
           ref={scrollRef}
-          style={isStreaming ? { maxHeight: '7.5rem', overflowY: 'auto' } : undefined}
+          className="px-3 py-2 space-y-1.5"
+          style={isStreaming ? { maxHeight: '200px', overflowY: 'auto' } : {}}
         >
+          {segments.length === 0 && isStreaming && (
+            <div className="text-xs animate-pulse" style={{ color: '#5a5a6a' }}>等待 Agent 输出...</div>
+          )}
           {segments.map((seg, i) => renderProcessSegment(seg, i))}
+          {isStreaming && (
+            <span className="inline-block w-1.5 h-3 ml-0.5 animate-pulse" style={{ background: '#e8b84b', boxShadow: '0 0 4px #e8b84b66' }} />
+          )}
         </div>
       </div>
     )
   }
 
-  /* ===== Render a single process segment (reasoning / content / tool_call / tool_result) ===== */
+  /* ===== Render a single process segment (terminal agent style) ===== */
   function renderProcessSegment(seg: Segment, idx: number) {
     switch (seg.type) {
       case 'reasoning':
         return (
-          <div key={idx} className="text-amber-700/80 text-xs italic leading-normal py-0.5">
+          <div key={idx} className="text-xs leading-relaxed py-0.5" style={{ color: '#7a7a8a' }}>
             {seg.data}
           </div>
         )
       case 'content':
         return (
-          <div key={idx} className="text-gray-400 text-xs leading-normal py-0.5 border-l border-gray-800 pl-2">
+          <div key={idx} className="text-xs leading-relaxed py-0.5" style={{ color: '#c8c090' }}>
             {seg.data}
           </div>
         )
       case 'tool_call': {
         let tc: ToolCallInfo
         try { tc = JSON.parse(seg.data) } catch { tc = { id: '', name: seg.data, arguments: '' } }
-        const toolColors: Record<string, string> = {
-          assess_stock_risk: 'bg-red-900/40 text-red-300 border-red-700',
-          assess_portfolio_risk: 'bg-red-900/40 text-red-300 border-red-700',
-          get_stock_recommendations: 'bg-purple-900/40 text-purple-300 border-purple-700',
-          get_strategy: 'bg-bronze-glow text-bronze-light border-bronze',
-          get_stock: 'bg-green-900/40 text-green-300 border-green-700',
-          screen_stocks: 'bg-cyan-900/40 text-cyan-300 border-cyan-700',
-          query_historical_data: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
-        }
-        const colorClass = toolColors[tc.name] || 'bg-gray-900/40 text-gray-300 border-gray-700'
+        const argsTrunc = tc.arguments.length > 60 ? tc.arguments.slice(0, 60) + '...' : tc.arguments
         return (
-          <div key={idx} className="my-1">
-            <div className={`inline-block ${colorClass} text-[10px] font-mono px-1.5 py-0.5 rounded border`}>
-              <span className="opacity-60 mr-1">🔧</span>{tc.name}
+          <div key={idx} className="rounded border px-2.5 py-1.5" style={{ borderColor: 'rgba(180,130,70,0.12)', background: 'rgba(180,130,70,0.04)' }}>
+            <div className="flex items-center gap-1.5 text-xs font-mono" style={{ color: '#c8b080' }}>
+              <span>&#9670;</span>
+              <span className="font-medium">{tc.name}</span>
+              {argsTrunc && <span className="truncate" style={{ color: '#8a7a60' }}>{argsTrunc}</span>}
             </div>
-            <div className="text-gray-600 text-[10px] font-mono mt-0.5 truncate max-w-full">{tc.arguments || tc.id}</div>
           </div>
         )
       }
@@ -640,22 +711,18 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         try {
           const parsed = JSON.parse(seg.data)
           if (parsed && typeof parsed === 'object') {
-            // Format nicely for display
             display = JSON.stringify(parsed, null, 2)
             isJson = true
           }
         } catch {}
-        const isLong = display.length > 200
+        const isLong = display.length > 150
+        const snippet = isLong ? display.slice(0, 150) + '...' : display
         return (
-          <div key={idx} className="my-1">
-            <details>
-              <summary className="text-green-700/80 text-[10px] font-mono cursor-pointer hover:text-green-600">
-                ✅ Result ({isLong ? `${display.length} chars` : 'short'})
-              </summary>
-              <pre className={`text-gray-600 text-[10px] font-mono mt-0.5 whitespace-pre-wrap break-all ${isJson ? 'bg-gray-950/30 p-1 rounded' : ''}`}>
-                {isLong ? display.slice(0, 500) + (display.length > 500 ? '\n...' : '') : display}
-              </pre>
-            </details>
+          <div key={idx} className="rounded border px-2.5 py-1.5" style={{ borderColor: 'rgba(74,222,128,0.1)', background: 'rgba(74,222,128,0.04)' }}>
+            <div className="text-xs font-mono leading-relaxed" style={{ color: '#6a7a6a' }}>
+              <span className="mr-1">&#9654;</span>
+              <span>{snippet}</span>
+            </div>
           </div>
         )
       }
@@ -671,7 +738,6 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     // Final content segments (everything after last tool_result)
     const contentSegments: Segment[] = []
 
-    let foundContent = false
     for (let i = 0; i < segs.length; i++) {
       const seg = segs[i]
       if (seg.type === 'content' && !isStreaming) {

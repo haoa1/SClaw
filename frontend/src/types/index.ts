@@ -87,3 +87,36 @@ export interface WatchSSEStatus {
   activeTasks: number;
   totalTasks: number;
 }
+
+// Scheduler task types
+export interface ScheduledTask {
+  id: string;
+  userId: string;
+  taskType: 'screen' | 'backtest';
+  cronExpr: string;
+  email: string;
+  aiMode?: 'email' | 'agent' | 'both';
+  strategies: Array<{
+    pluginId: string;
+    strategyId: string;
+    strategyName?: string;
+    params: Record<string, any>;
+  }>;
+  backtestConfig?: any;
+  label?: string;
+  enabled: boolean;
+  lastRun?: number;
+  lastResult?: {
+    matchedCount: number;
+    totalCount: number;
+    topResults: Array<{code: string; name: string; score: number}>;
+    strategies: string;
+    timestamp: number;
+  };
+  createdAt: number;
+}
+
+export interface QueueStatus {
+  running: { id: string; label: string } | null;
+  queued: Array<{ id: string; label: string }>;
+}

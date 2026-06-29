@@ -259,13 +259,27 @@ const grepFn = (args: Record<string, unknown>): string => {
   if (denied) safePath = PROJECT_ROOT; // fall back to project root
 
   try {
-    const { execSync } = require("child_process");
+    const { spawnSync } = require("child_process");
     const flags = caseInsensitive ? "-in" : "-n";
-    const result = execSync(
-      `grep -r ${flags} "${pattern}" "${safePath}" 2>/dev/null || true`,
-      { encoding: "utf-8", maxBuffer: 5 * 1024 * 1024 }
-    );
-    const lines = result.split("\n").filter((l: string) => l.trim());
+    // Use spawnSync NOT execSync to prevent shell injection via pattern
+    // spawnSync passes arguments directly to the process (no shell interpretation)
+    const result = spawnSync("grep", ["-r", flags, pattern, safePath], {
+      encoding: "utf-8",
+      maxBuffer: 5 * 1024 * 1024,
+      timeout: 10000,
+      windowsHide: true,
+    });
+    if (result.error) {
+      if (result.error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+        return "Error: Output too large (max 5MB)";
+      }
+      return `Error: ${result.error.message}`;
+    }
+    // grep exits with code 1 when no matches found
+    if (result.status !== 0 && result.status !== 1) {
+      return `grep failed with exit code ${result.status}${result.stderr ? ": " + result.stderr.slice(0, 500) : ""}`;
+    }
+    const lines = (result.stdout || "").split("\n").filter((l: string) => l.trim());
     return lines.length > 0 ? lines.join("\n") : "No matches found";
   } catch (e: unknown) {
     return `Error: ${e instanceof Error ? e.message : String(e)}`;
@@ -286,4 +300,6 @@ export function registerFileTools(registry: ToolRegistry): void {
   registry.register(writeFileTool);
   registry.register(globTool);
   registry.register(grepTool);
+  // bash is intentionally NOT registered here — it's registered separately in index.ts
+  // to allow selective tool registration per context
 }

@@ -81,6 +81,14 @@ export class PerUserAgentManager {
     return (this.pendingNotifications.get(userId) || []).length;
   }
 
+  /** Abort a user's running agent. */
+  abortAgent(userId: string): void {
+    const agent = this.agents.get(userId);
+    if (agent) {
+      agent.abort();
+    }
+  }
+
   /** Reset a user's agent (clear conversation history). */
   resetAgent(userId: string): void {
     const agent = this.agents.get(userId);

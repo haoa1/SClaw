@@ -13,9 +13,10 @@ import GarudaTerminal from './components/GarudaTerminal'
 import { useWatchAlertSSE } from './hooks/useWatchAlertSSE'
 import WatchAlertToast from './components/WatchAlertToast'
 import WatchAlertPanel from './components/WatchAlertPanel'
+import SchedulerPanel from './components/SchedulerPanel'
 import { WatchAlert } from './types'
 
-type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'debug' | 'garuda'
+type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'scheduler' | 'debug' | 'garuda'
 
 const RESULTS_KEY = 'stock-screen-results'
 const TAB_KEY = 'stock-screen-tab'
@@ -396,6 +397,12 @@ export default function App() {
                   {t === 'results' && results.length > 0 && <span className="ml-1.5 text-xs bg-stock-hover text-bronze px-1.5 py-0.5 rounded">{results.length}</span>}
                 </button>
               ))}
+              <button onClick={() => setTab('scheduler')}
+                  className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
+                    tab === 'scheduler' ? 'tab-active text-bronze' : 'text-stock-text-secondary hover:text-stock-text'
+                  }`}>
+                  ⏰ 定时
+                </button>
               {user.role === 'admin' && (
                 <button onClick={() => setTab('debug')}
                   className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
@@ -577,6 +584,12 @@ export default function App() {
           {tab === 'backtest' && (
             <div className="max-w-5xl mx-auto">
               <BacktestPanel plugins={plugins} />
+            </div>
+          )}
+
+          {tab === 'scheduler' && (
+            <div className="max-w-5xl mx-auto">
+              <SchedulerPanel />
             </div>
           )}
         </div>

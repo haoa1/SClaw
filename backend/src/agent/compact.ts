@@ -166,6 +166,59 @@ export async function compactContext(
     }
   }
 
+  // ADJUST splitIdx to NOT break tool_calls cycles.
+  // If recentMessages starts with a "tool" role message (which is a response
+  // to a tool_call from oldMessages), we must extend splitIdx backward to
+  // include the matching assistant tool_calls message.
+  for (let i = splitIdx; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "tool" && msg.tool_call_id) {
+      // This tool message belongs to an assistant tool_calls message.
+      // Scan backward from i-1 to find the matching tool_calls message.
+      let foundParent = false;
+      for (let j = i - 1; j >= 0; j--) {
+        const prev = messages[j];
+        if (prev.role === "assistant" && prev.tool_calls) {
+          const hasMatchingId = prev.tool_calls.some(tc => tc.id === msg.tool_call_id);
+          if (hasMatchingId) {
+            foundParent = true;
+            break;
+          }
+        }
+      }
+      if (!foundParent) {
+        // This tool message's parent is in oldMessages.
+        // Adjust split to include this tool message in oldMessages.
+        // Move splitIdx forward to include up to i (the tool message).
+        splitIdx = i + 1;
+      }
+    }
+    if (msg.role !== "tool") break; // Only adjust for contiguous tool messages
+  }
+
+  // Similarly, if oldMessages ends with an assistant tool_calls message
+  // that doesn't have matching tool responses in oldMessages, extend splitIdx
+  // to include those tool responses.
+  if (splitIdx > 0 && splitIdx < messages.length) {
+    const lastOld = messages[splitIdx - 1];
+    if (lastOld.role === "assistant" && lastOld.tool_calls) {
+      // This assistant has tool_calls. Check if all tool responses are in oldMessages.
+      const toolCallIds = new Set(lastOld.tool_calls.map(tc => tc.id));
+      let toolResponseIdx = splitIdx;
+      while (toolResponseIdx < messages.length && messages[toolResponseIdx].role === "tool") {
+        const toolMsg = messages[toolResponseIdx];
+        if (toolMsg.tool_call_id && toolCallIds.has(toolMsg.tool_call_id)) {
+          toolCallIds.delete(toolMsg.tool_call_id);
+        }
+        toolResponseIdx++;
+      }
+      if (toolCallIds.size > 0) {
+        // Not all tool responses are in oldMessages. Move splitIdx forward.
+        splitIdx = toolResponseIdx;
+      }
+    }
+  }
+
   const oldMessages = messages.slice(0, splitIdx);
   const recentMessages = messages.slice(splitIdx);
 

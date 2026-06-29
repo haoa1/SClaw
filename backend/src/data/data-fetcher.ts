@@ -1,72 +1,69 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import iconv from 'iconv-lite';
 import { StockData, KLineData } from '../types';
 
 /**
- * East Money (东方财富) 实时行情 API
+ * Tencent QQ 股票行情 API
  * 
- * 批量查询所有A股:
- *   https://push2.eastmoney.com/api/qt/clist/get
- *   ?pn=1&pz=100&po=1&np=1
- *   &fields=f2,f3,f4,f5,f6,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f37,f115
- *   &fid=f3
- *   &fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048
+ * 批量查询:
+ *   http://qt.gtimg.cn/q=sh600000,sz000001,...
  * 
- * fs 参数含义:
- *   m:0+t:6       = 沪市A股
- *   m:0+t:80      = 沪市B股(忽略)
- *   m:1+t:2       = 深市A股主板
- *   m:1+t:23      = 创业板
- *   m:0+t:81+s:2048 = 北交所
+ * 返回格式: v_CODE="field1~field2~...~fieldN";
  * 
- * 字段说明:
- *   f2  = 最新价 (需 ÷100)
- *   f3  = 涨跌幅% (需 ÷100)
- *   f4  = 涨跌额 (需 ÷100)
- *   f5  = 成交量(手)
- *   f6  = 成交额(元)
- *   f8  = 换手率% (需 ÷100)
- *   f9  = 量比 (需 ÷100)
- *   f10 = 振幅% (需 ÷100)
- *   f12 = 股票代码
- *   f14 = 股票名称
- *   f15 = 最高价 (需 ÷100)
- *   f16 = 最低价 (需 ÷100)
- *   f17 = 今开 (需 ÷100)
- *   f18 = 昨收 (需 ÷100)
- *   f20 = 总市值(元)
- *   f21 = 流通市值(元)
- *   f37 = 静态市盈率 (已是小数)
- *   f115 = 市盈率TTM (需 ÷100)
+ * 字段映射（已验证）:
+ *   [0]  = 交易所标识 (1=SH, 51=SZ, 不用来判断市场)
+ *   [1]  = 股票名称
+ *   [2]  = 股票代码
+ *   [3]  = 当前价格
+ *   [4]  = 昨收
+ *   [5]  = 今开
+ *   [6]  = 成交量(手)
+ *   [31] = 涨跌额
+ *   [32] = 涨跌幅 %
+ *   [33] = 最高价
+ *   [34] = 最低价
+ *   [37] = 成交额(万元)
+ *   [38] = 换手率 %
+ *   [39] = 市盈率 PE
+ *   [43] = 振幅 %
+ *   [44] = 流通市值(亿)
+ *   [45] = 总市值(亿)
+ *   [46] = 市净率 PB
+ *   [49] = 量比
  */
-const EASTMONEY_CLIST_API = 'https://push2.eastmoney.com/api/qt/clist/get';
-
-// 全市场 A 股筛选条件
-const EASTMONEY_FS_ALL_A = 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048';
-// 需要的字段
-const EASTMONEY_FIELDS = 'f2,f3,f4,f5,f6,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f37,f115';
-
-// 单票实时行情 API (备用)
-const EASTMONEY_ULIST_API = 'https://push2.eastmoney.com/api/qt/ulist.np/get';
 
 // 缓存文件路径
 const CACHE_FILE = path.resolve(__dirname, '../../data/stock_cache.json');
+// 股票代码列表
+const STOCK_LIST_FILE = path.resolve(__dirname, '../../data/stock_list.json');
+
+// 批量查询参数
+const TENCENT_BATCH_SIZE = 500;  // 每批股票数
+const TENCENT_DELAY_MS = 200;    // 批间延迟
+
+interface StockListItem {
+  code: string;
+  name: string;
+  market: 'SH' | 'SZ' | 'BJ';
+}
 
 export class DataFetcher {
   private memoryCache: { stocks: StockData[] | null; timestamp: number } = { stocks: null, timestamp: 0 };
   private readonly MEMORY_TTL = 300_000; // 5 min in-memory
-  private refreshPromise: Promise<void> | null = null; // guard against concurrent refresh
+  private refreshPromise: Promise<void> | null = null;
+  private stockListPromise: Promise<StockListItem[]> | null = null;
 
   // ===== Public API =====
 
   /** 获取全市场数据：从内存 → 磁盘 → 网络刷新（后台） */
   async fetchAllStocks(markets: ('SH' | 'SZ' | 'BJ')[] = ['SH', 'SZ', 'BJ']): Promise<StockData[]> {
-    // 1. 内存缓存（即时）
+    // 1. 内存缓存
     if (this.memoryCache.stocks && (Date.now() - this.memoryCache.timestamp) < this.MEMORY_TTL) {
       return this.memoryCache.stocks;
     }
 
-    // 2. 磁盘缓存（首次启动快速恢复）
+    // 2. 磁盘缓存
     if (!this.memoryCache.stocks) {
       const loaded = this.loadFromDisk();
       if (loaded) {
@@ -74,20 +71,19 @@ export class DataFetcher {
       }
     }
 
-    // 有缓存就先返回（无论是否过期），后台刷新
+    // 有缓存就先返回，后台刷新
     if (this.memoryCache.stocks) {
       this.refreshInBackground(markets);
       return this.memoryCache.stocks;
     }
 
-    // 3. 首次启动，没有缓存 → 同步等待网络拉取
+    // 3. 首次启动，同步等待网络拉取
     await this.refreshFromNetwork(markets);
     return this.memoryCache.stocks || [];
   }
 
-  /** 获取个股K线数据 */
+  /** 获取个股K线数据（仍用新浪API） */
   async fetchKLine(code: string, market: 'SH' | 'SZ', days: number = 120): Promise<KLineData[]> {
-    // 新浪 K 线 API（备用，仍可用）
     const symbol = market === 'SH' ? `sh${code}` : `sz${code}`;
     const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/OHLC.getKLineData?symbol=${symbol}&datalen=${days}&scale=60`;
 
@@ -110,64 +106,34 @@ export class DataFetcher {
     }
   }
 
-  /**
-   * Fetch real-time quotes for specific stocks (盯盘用).
-   * Uses East Money ulist API: https://push2.eastmoney.com/api/qt/ulist.np/get
-   * Batches by 50 stocks per request to avoid URL length limits.
-   */
+  /** 获取指定股票的实时快照（盯盘用） */
   async fetchQuotes(codes: string[]): Promise<Record<string, StockSnapshot>> {
     const result: Record<string, StockSnapshot> = {};
     if (!codes.length) return result;
 
-    // Build secids: "0.000001" for SZ, "1.600000" for SH, "0.830750" for BJ
-    // East Money format: market_code: 0=SZ, 1=SH, 2=BJ
-    const secids = codes.map(code => {
-      if (code.startsWith('6') || code.startsWith('9')) return `1.${code}`;
-      if (code.startsWith('8') || code.startsWith('4')) return `2.${code}`;
-      return `0.${code}`; // default SZ
-    });
+    for (let i = 0; i < codes.length; i += TENCENT_BATCH_SIZE) {
+      const batch = codes.slice(i, i + TENCENT_BATCH_SIZE);
+      if (i > 0) await new Promise(r => setTimeout(r, TENCENT_DELAY_MS));
 
-    const fields = 'f2,f3,f4,f5,f6,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f37,f115';
-    const BATCH_SIZE = 50;
-
-    for (let i = 0; i < secids.length; i += BATCH_SIZE) {
-      const batch = secids.slice(i, i + BATCH_SIZE);
-      const url = `${EASTMONEY_ULIST_API}?fields=${fields}&fltt=2&secids=${batch.join(',')}`;
-
+      const items = batch.map(c => this.codeToTencentSymbol(c)).join(',');
       try {
-        const res = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://quote.eastmoney.com/',
-          },
-          signal: AbortSignal.timeout(10000),
+        const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
+          signal: AbortSignal.timeout(15000),
+          headers: { 'User-Agent': 'Mozilla/5.0' },
         });
-        const json: any = await res.json();
-        if (json.rc !== 0 || !json.data?.diff) continue;
+        const rawBuf = await res.arrayBuffer();
+        const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
+        const lines = text.split(';');
 
-        for (const item of json.data.diff as EastMoneyItem[]) {
-          const code = item.f12;
-          if (!code) continue;
-          result[code] = {
-            code,
-            name: item.f14 || '',
-            price: this.div100(item.f2),
-            changePercent: this.div100(item.f3),
-            volume: item.f5 || 0,
-            turnover: item.f6 || 0,
-            open: this.div100(item.f17),
-            high: this.div100(item.f15),
-            low: this.div100(item.f16),
-            prevClose: this.div100(item.f18),
-            volumeRatio: item.f9 != null ? this.div100(item.f9) : undefined,
-            turnoverRate: item.f8 != null ? this.div100(item.f8) : undefined,
-            amplitude: item.f10 != null ? this.div100(item.f10) : undefined,
-            marketCap: item.f20,
-            circulatingMarketCap: item.f21,
-          };
+        for (const line of lines) {
+          if (!line.includes('~')) continue;
+          const snap = this.parseTencentSnapshot(line);
+          if (snap && snap.code) {
+            result[snap.code] = snap;
+          }
         }
       } catch (err) {
-        console.warn(`[DataFetcher] fetchQuotes batch failed:`, err);
+        console.warn(`[DataFetcher] fetchQuotes batch failed at offset ${i}:`, err);
       }
     }
 
@@ -179,160 +145,211 @@ export class DataFetcher {
     try { if (fs.existsSync(CACHE_FILE)) fs.unlinkSync(CACHE_FILE); } catch {}
   }
 
-  // ===== Private: Refresh from East Money =====
+  // ===== Private: Refresh from Tencent API =====
 
-  /** 后台刷新，不会阻塞调用方 */
   private refreshInBackground(markets: ('SH' | 'SZ' | 'BJ')[]): void {
-    if (this.refreshPromise) return; // 已经在刷新
+    if (this.refreshPromise) return;
     this.refreshPromise = this.refreshFromNetwork(markets).finally(() => {
       this.refreshPromise = null;
     });
   }
 
-  /** 从东方财富网络拉取全市场数据 — 并行抓取所有页面 */
+  /** 从腾讯 API 拉取全市场数据 */
   private async refreshFromNetwork(markets: ('SH' | 'SZ' | 'BJ')[]): Promise<void> {
-    console.log('[DataFetcher] Fetching all stocks from East Money (parallel)...');
+    console.log('[DataFetcher] Fetching all stocks from Tencent API...');
     const startTime = Date.now();
 
-    // Step 1: 获取第一页，获取 total 总数
-    const firstPage = await this.fetchEastMoneyPage(1);
-    if (!firstPage) {
-      console.error('[DataFetcher] Failed to fetch first page from East Money');
+    // 1. 获取股票代码列表
+    const allCodes = await this.getStockList();
+    if (!allCodes.length) {
+      console.error('[DataFetcher] No stock list available, using disk cache if present');
       this.memoryCache = { stocks: this.memoryCache.stocks || [], timestamp: Date.now() };
       return;
     }
 
-    const total = firstPage.total;
-    const PAGE_SIZE = 100;
-    const totalPages = Math.ceil(total / PAGE_SIZE);
-    console.log(`[DataFetcher] East Money total: ${total} stocks, ${totalPages} pages`);
+    // 2. 过滤市场
+    const filtered = allCodes.filter(s => markets.includes(s.market));
+    console.log(`[DataFetcher] Total: ${filtered.length} stocks (${markets.join('/')})`);
 
-    // Step 2: 并行抓取剩余页面（但控制并发，避免触发限流）
-    const pageResults: EastMoneyPageData[] = [firstPage];
-
-    const remainingPages: number[] = [];
-    for (let pn = 2; pn <= totalPages; pn++) {
-      remainingPages.push(pn);
-    }
-
-    // 分批并行：每次最多 10 个并发请求
-    const CONCURRENCY = 10;
-    for (let i = 0; i < remainingPages.length; i += CONCURRENCY) {
-      const batch = remainingPages.slice(i, i + CONCURRENCY);
-      const batchResults = await Promise.all(
-        batch.map(pn => this.fetchEastMoneyPage(pn).catch(err => {
-          console.warn(`[DataFetcher] Page ${pn} failed:`, err);
-          return null;
-        }))
-      );
-      for (const r of batchResults) {
-        if (r) pageResults.push(r);
-      }
-      // 每批之间加 200ms 延迟，避免触发限流
-      if (i + CONCURRENCY < remainingPages.length) {
-        await new Promise(r => setTimeout(r, 200));
-      }
-    }
-
-    // Step 3: 解析结果，去重，构建 StockData
-    const seenCodes = new Set<string>();
+    // 3. 批量从腾讯拉取
     const allStocks: StockData[] = [];
+    const seenCodes = new Set<string>();
 
-    for (const pageData of pageResults) {
-      for (const item of pageData.items) {
-        const code = item.f12;
-        if (!code || seenCodes.has(code)) continue;
-        seenCodes.add(code);
+    for (let i = 0; i < filtered.length; i += TENCENT_BATCH_SIZE) {
+      const batch = filtered.slice(i, i + TENCENT_BATCH_SIZE);
+      if (i > 0) await new Promise(r => setTimeout(r, TENCENT_DELAY_MS));
 
-        const market = this.detectMarket(code);
-        if (!market || !markets.includes(market)) continue;
+      const items = batch.map(s => {
+        if (s.market === 'SH') return 'sh' + s.code;
+        if (s.market === 'BJ') return 'bj' + s.code;
+        return 'sz' + s.code;
+      }).join(',');
 
-        allStocks.push(this.parseEastMoneyItem(item, market));
+      try {
+        const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
+          signal: AbortSignal.timeout(15000),
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        const rawBuf = await res.arrayBuffer();
+        const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
+        const lines = text.split(';');
+
+        for (const line of lines) {
+          if (!line.includes('~')) continue;
+          const stock = this.parseTencentStockData(line, batch);
+          if (stock && !seenCodes.has(stock.code)) {
+            seenCodes.add(stock.code);
+            allStocks.push(stock);
+          }
+        }
+      } catch (err) {
+        console.warn(`[DataFetcher] Tencent batch ${i} failed:`, err);
       }
     }
 
+    console.log(`[DataFetcher] Parsed ${allStocks.length} stocks from Tencent API`);
+
+    // 4. 更新内存缓存 + 写入磁盘
     this.memoryCache = { stocks: allStocks, timestamp: Date.now() };
     this.saveToDisk(allStocks);
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[DataFetcher] Total: ${allStocks.length} stocks (fetched in ${elapsed}s)`);
+    console.log(`[DataFetcher] Done in ${elapsed}s`);
   }
 
-  /** 获取东方财富一页数据 */
-  private async fetchEastMoneyPage(pn: number): Promise<EastMoneyPageData | null> {
-    const url = `${EASTMONEY_CLIST_API}?pn=${pn}&pz=100&po=1&np=1&fields=${EASTMONEY_FIELDS}&fid=f3&fs=${EASTMONEY_FS_ALL_A}`;
+  // ===== Tencent Data Parsing =====
 
-    try {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://quote.eastmoney.com/',
-          'Accept': 'application/json, text/plain, */*',
-        },
-        signal: AbortSignal.timeout(15000),
-      });
+  /**
+   * 解析一行腾讯行情数据为 StockData
+   * @param line 类似: v_sh600000="1~浦发银行~600000~8.73~..."
+   * @param batchInfo 该批次股票信息（用于获取 stock_list 中的 name/market 兜底）
+   */
+  private parseTencentStockData(line: string, batchInfo: StockListItem[]): StockData | null {
+    const parts = line.split('~');
+    if (parts.length < 50) return null;
 
-      const json: any = await res.json();
+    const code = parts[2]?.trim();
+    if (!code) return null;
 
-      if (json.rc !== 0 || !json.data) {
-        console.warn(`[DataFetcher] East Money page ${pn} returned error:`, json.rt || 'unknown');
-        return null;
-      }
+    // 用代码前缀判断市场
+    const market = this.detectMarketByCode(code);
+    if (!market) return null;
 
-      return {
-        total: json.data.total as number,
-        items: (json.data.diff || []) as EastMoneyItem[],
-      };
-    } catch (err) {
-      console.warn(`[DataFetcher] East Money page ${pn} fetch failed:`, err);
-      return null;
-    }
-  }
+    // 名称：优先用 Tencent 的，兜底用 stock_list 的
+    const name = parts[1]?.trim() || this.findNameInBatch(code, batchInfo) || '';
 
-  /** 将东方财富数据项解析为 StockData */
-  private parseEastMoneyItem(item: EastMoneyItem, market: 'SH' | 'SZ' | 'BJ'): StockData {
-    const price = this.div100(item.f2);
-    const prevClose = this.div100(item.f18);
+    const price = parseFloat(parts[3]);
+    if (isNaN(price) || price <= 0) return null; // 停牌或无效数据
 
     return {
-      code: item.f12,
-      name: item.f14 || '',
+      code,
+      name,
       market,
-      price: price,
-      changePercent: this.div100(item.f3),
-      volume: item.f5 || 0,
-      turnover: item.f6 || 0,
-      open: item.f17 != null ? this.div100(item.f17) : undefined,
-      high: item.f15 != null ? this.div100(item.f15) : undefined,
-      low: item.f16 != null ? this.div100(item.f16) : undefined,
-      turnoverRate: item.f8 != null ? this.div100(item.f8) : undefined,
-      // 基本面
-      pe: item.f115 != null ? this.div100(item.f115) : undefined,
-      pb: undefined, // East Money clist 不直接提供 PB
-      marketCap: item.f20 || undefined,
-      circulatingMarketCap: item.f21 || undefined,
-      volumeRatio: item.f9 != null ? this.div100(item.f9) : undefined,
+      price,
+      changePercent: this.safeParseFloat(parts[32]) ?? 0,
+      volume: this.safeParseFloat(parts[6]) ?? 0,
+      turnover: (this.safeParseFloat(parts[37]) ?? 0) * 10000, // 万元 → 元
+      open: this.safeParseFloat(parts[5]) ?? undefined,
+      high: this.safeParseFloat(parts[33]) ?? undefined,
+      low: this.safeParseFloat(parts[34]) ?? undefined,
+      turnoverRate: this.safeParseFloat(parts[38]) ?? undefined,
+      pe: this.safeParseFloat(parts[39]) ?? undefined,
+      pb: this.safeParseFloat(parts[46]) ?? undefined,
+      marketCap: (this.safeParseFloat(parts[45]) ?? 0) * 1e8 || undefined, // 亿 → 元
+      circulatingMarketCap: (this.safeParseFloat(parts[44]) ?? 0) * 1e8 || undefined,
+      volumeRatio: this.safeParseFloat(parts[49]) ?? undefined,
+    };
+  }
+
+  /**
+   * 解析一行腾讯行情数据为 StockSnapshot（用于 fetchQuotes）
+   */
+  private parseTencentSnapshot(line: string): StockSnapshot | null {
+    const parts = line.split('~');
+    if (parts.length < 50) return null;
+
+    const code = parts[2]?.trim();
+    if (!code) return null;
+
+    const name = parts[1]?.trim() || '';
+    const price = parseFloat(parts[3]);
+    if (isNaN(price) || price <= 0) return null;
+
+    return {
+      code,
+      name,
+      price,
+      changePercent: this.safeParseFloat(parts[32]) ?? 0,
+      volume: this.safeParseFloat(parts[6]) ?? 0,
+      turnover: (this.safeParseFloat(parts[37]) ?? 0) * 10000,
+      open: this.safeParseFloat(parts[5]) ?? undefined,
+      high: this.safeParseFloat(parts[33]) ?? undefined,
+      low: this.safeParseFloat(parts[34]) ?? undefined,
+      prevClose: this.safeParseFloat(parts[4]) ?? undefined,
+      volumeRatio: this.safeParseFloat(parts[49]) ?? undefined,
+      turnoverRate: this.safeParseFloat(parts[38]) ?? undefined,
+      amplitude: this.safeParseFloat(parts[43]) ?? undefined,
+      marketCap: (this.safeParseFloat(parts[45]) ?? 0) * 1e8 || undefined,
+      circulatingMarketCap: (this.safeParseFloat(parts[44]) ?? 0) * 1e8 || undefined,
     };
   }
 
   // ===== Helpers =====
 
-  /** 除以 100（东方财富价格/百分比字段通常放大100倍） */
-  private div100(val: number | undefined | null): number {
-    if (val == null) return 0;
-    return val / 100;
+  /** 安全解析浮点数 */
+  private safeParseFloat(val: string | undefined): number | null {
+    if (val === undefined || val === '' || val === '-') return null;
+    const n = parseFloat(val);
+    return isNaN(n) ? null : n;
   }
 
   /** 根据代码前缀判断市场 */
-  private detectMarket(code: string): 'SH' | 'SZ' | 'BJ' | null {
+  private detectMarketByCode(code: string): 'SH' | 'SZ' | 'BJ' | null {
     if (code.startsWith('6') || code.startsWith('9')) return 'SH';
     if (code.startsWith('0') || code.startsWith('3')) return 'SZ';
     if (code.startsWith('8') || code.startsWith('4')) return 'BJ';
     return null;
   }
 
+  /** 在批次信息中查找股票名称 */
+  private findNameInBatch(code: string, batch: StockListItem[]): string | undefined {
+    return batch.find(s => s.code === code)?.name;
+  }
+
+  /** 代码 → 腾讯符号 */
+  private codeToTencentSymbol(code: string): string {
+    if (code.startsWith('6') || code.startsWith('9')) return 'sh' + code;
+    if (code.startsWith('8') || code.startsWith('4')) return 'bj' + code;
+    return 'sz' + code;
+  }
+
+  // ===== Stock List =====
+
+  /** 从 stock_list.json 获取股票代码列表 */
+  private async getStockList(): Promise<StockListItem[]> {
+    if (this.stockListPromise) return this.stockListPromise;
+
+    this.stockListPromise = this.loadStockListFromDisk();
+    const result = await this.stockListPromise;
+    return result;
+  }
+
+  private async loadStockListFromDisk(): Promise<StockListItem[]> {
+    try {
+      if (fs.existsSync(STOCK_LIST_FILE)) {
+        const raw = fs.readFileSync(STOCK_LIST_FILE, 'utf-8');
+        const data = JSON.parse(raw) as StockListItem[];
+        console.log(`[DataFetcher] Loaded ${data.length} stock codes from stock_list.json`);
+        return data;
+      }
+    } catch (err) {
+      console.warn('[DataFetcher] Failed to load stock_list.json:', err);
+    }
+    return [];
+  }
+
   // ===== Disk Cache =====
 
-  /** 从磁盘加载缓存 */
   private loadFromDisk(): StockData[] | null {
     try {
       if (fs.existsSync(CACHE_FILE)) {
@@ -347,7 +364,6 @@ export class DataFetcher {
     return null;
   }
 
-  /** 保存到磁盘 */
   private saveToDisk(stocks: StockData[]): void {
     try {
       const dir = path.dirname(CACHE_FILE);
@@ -361,34 +377,6 @@ export class DataFetcher {
 }
 
 // ===== Types =====
-
-interface EastMoneyPageData {
-  total: number;
-  items: EastMoneyItem[];
-}
-
-interface EastMoneyItem {
-  f2?: number;  // 最新价 (需÷100)
-  f3?: number;  // 涨跌幅% (需÷100)
-  f4?: number;  // 涨跌额 (需÷100)
-  f5?: number;  // 成交量(手)
-  f6?: number;  // 成交额(元)
-  f8?: number;  // 换手率% (需÷100)
-  f9?: number;  // 量比 (需÷100)
-  f10?: number; // 振幅% (需÷100)
-  f12: string;  // 股票代码
-  f14?: string; // 股票名称
-  f15?: number; // 最高价 (需÷100)
-  f16?: number; // 最低价 (需÷100)
-  f17?: number; // 今开 (需÷100)
-  f18?: number; // 昨收 (需÷100)
-  f20?: number; // 总市值(元)
-  f21?: number; // 流通市值(元)
-  f37?: number; // 静态市盈率 (已是小数)
-  f115?: number;// 市盈率TTM (需÷100)
-}
-
-// ===== Watch Engine Types =====
 
 export interface StockSnapshot {
   code: string;

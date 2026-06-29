@@ -6,13 +6,15 @@ import { Router, Request, Response } from 'express';
 import { ScreenScheduler } from '../scheduler';
 import { UserStore } from '../user-store';
 import { PluginManager } from '../plugin-system/plugin-manager';
+import { validateSession } from '../auth';
 
-// Simple auth middleware: get userId from Authorization header
+// Auth middleware: extract userId from session token
 function getUserId(req: Request): string | null {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) return null;
-  // Token format: userId_sessionId
-  return auth.slice(7).split('_')[0] || null;
+  const token = auth.slice(7);
+  const session = validateSession(token);
+  return session ? session.userId : null;
 }
 
 export function createSchedulerRoutes(
@@ -41,14 +43,16 @@ export function createSchedulerRoutes(
       return;
     }
 
-    const { cronExpr, email, strategies, label, aiMode, taskType, backtestConfig } = req.body;
+    const { cronExpr, email, strategies, label, aiMode, taskType, backtestConfig, prompt } = req.body;
 
     if (!cronExpr) {
       res.status(400).json({ error: '请提供 cronExpr' });
       return;
     }
 
-    if (!strategies || strategies.length === 0) {
+    // Agent tasks don't need strategies; screen/backtest tasks do
+    const type = taskType || 'screen';
+    if (type !== 'agent' && (!strategies || strategies.length === 0)) {
       res.status(400).json({ error: '请提供 strategies' });
       return;
     }
@@ -57,6 +61,33 @@ export function createSchedulerRoutes(
     const cron = require('node-cron');
     if (!cron.validate(cronExpr)) {
       res.status(400).json({ error: '无效的 cron 表达式' });
+      return;
+    }
+
+    // ===== Agent task (no screening, just AI with prompt) =====
+    if (type === 'agent') {
+      if (!prompt) {
+        res.status(400).json({ error: 'AI任务需要提供 prompt' });
+        return;
+      }
+
+      const task = scheduler.addTask({
+        userId,
+        taskType: 'agent',
+        cronExpr,
+        strategies: [],
+        label: label || `AI任务: ${prompt.slice(0, 30)}${prompt.length > 30 ? '...' : ''}`,
+        prompt,
+        enabled: true,
+      });
+
+      userStore.addLog(userId, {
+        type: 'system',
+        action: '创建定时AI任务',
+        detail: `定时: ${cronExpr} | prompt: ${prompt.slice(0, 50)}`,
+      });
+
+      res.json({ task });
       return;
     }
 
@@ -72,8 +103,6 @@ export function createSchedulerRoutes(
         params: s.params || {},
       };
     });
-
-    const type = taskType || 'screen';
 
     if (type === 'backtest') {
       // Validate backtest config
@@ -134,6 +163,7 @@ export function createSchedulerRoutes(
       aiMode: mode,
       strategies: resolvedStrategies,
       label: label || `${resolvedStrategies.map((s: any) => s.strategyName).join(', ')}`,
+      prompt,
       enabled: true,
     });
 
@@ -211,6 +241,50 @@ export function createSchedulerRoutes(
     });
 
     res.json({ success: true, message: '任务已触发执行' });
+  });
+
+  /** POST /api/scheduler/tasks/:id/cancel — cancel a queued or running task */
+  router.post('/api/scheduler/tasks/:id/cancel', async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: '\u672a\u767b\u5f55' });
+      return;
+    }
+
+    const result = scheduler.cancelTask(req.params['id']);
+    res.json(result);
+  });
+
+  /** GET /api/scheduler/agent-stream/:taskId — SSE stream for agent real-time output */
+  router.get('/api/scheduler/agent-stream/:taskId', (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: '\u672a\u767b\u5f55' });
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write('event: connected\ndata: {}\n\n');
+
+    scheduler.subscribeAgentStream(req.params['taskId'], res);
+  });
+
+  /** GET /api/scheduler/queue — get queue/running status for current user */
+  
+  router.get('/api/scheduler/queue', (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: '\u672a\u767b\u5f55' });
+      return;
+    }
+
+    const status = scheduler.getQueueStatus(userId);
+    res.json(status);
   });
 
   return router;

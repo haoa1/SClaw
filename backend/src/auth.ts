@@ -4,6 +4,36 @@
  */
 
 import * as crypto from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+
+// ===== Session Persistence =====
+const SESSIONS_PATH = path.join(__dirname, "..", "data", "sessions.json");
+
+function loadSessions(): void {
+  try {
+    if (!fs.existsSync(SESSIONS_PATH)) return;
+    const raw = fs.readFileSync(SESSIONS_PATH, "utf-8");
+    const list: Session[] = JSON.parse(raw);
+    for (const s of list) {
+      sessions.set(s.token, s);
+      userSessions.set(s.userId, s.token);
+    }
+    console.log(`[Auth] Loaded ${list.length} persisted sessions`);
+  } catch (err) {
+    console.warn("[Auth] Failed to load sessions:", err);
+  }
+}
+
+function persistSessions(): void {
+  try {
+    const list = Array.from(sessions.values());
+    fs.mkdirSync(path.dirname(SESSIONS_PATH), { recursive: true });
+    fs.writeFileSync(SESSIONS_PATH, JSON.stringify(list, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[Auth] Failed to persist sessions:", err);
+  }
+}
 
 // ===== Hardcoded Users =====
 // Edit this array to add/remove users. Passwords should be hashed in production.
@@ -37,6 +67,9 @@ const sessions = new Map<string, Session>();
 const userSessions = new Map<string, string>(); // userId -> token
 const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+// Load persisted sessions on module init
+loadSessions();
+
 function generateToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
@@ -66,6 +99,7 @@ export function login(username: string, password: string): Session | null {
   };
   sessions.set(token, session);
   userSessions.set(user.id, token);
+  persistSessions();
   return session;
 }
 
@@ -77,6 +111,7 @@ export function validateSession(token: string | undefined): Session | null {
   if (Date.now() - session.createdAt > SESSION_TTL) {
     sessions.delete(token);
     userSessions.delete(session.userId);
+    persistSessions();
     return null;
   }
   return session;
@@ -87,6 +122,7 @@ export function logout(token: string): boolean {
   if (session) {
     sessions.delete(token);
     userSessions.delete(session.userId);
+    persistSessions();
     return true;
   }
   return false;
