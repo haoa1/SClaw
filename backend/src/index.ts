@@ -269,6 +269,27 @@ ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.
       console.error('[Scheduler] Agent analysis error:', err);
       scheduler.emitAgentEvent(taskId, 'error', { message: String(err).slice(0, 300) });
       scheduler.closeAgentStream(taskId);
+
+      // Even if AI analysis fails, save the screening results and notify the user
+      try {
+        const history = loadMessages(userId);
+        const isAgentTask = strategyNames.length === 0 && topResults.length === 0;
+        if (!isAgentTask) {
+          history.push({
+            role: 'user',
+            content: `📊 [定时选股报告] "${taskLabel}" 已完成（AI分析失败）\n策略: ${strategyNames.join(', ')}\n结果: ${topResults.length} 只股票\n\n⚠️ AI分析失败: ${String(err).slice(0, 200)}`,
+          });
+          history.push({
+            role: 'assistant',
+            content: `选股结果如下:\n${topResults.slice(0, 10).map((r: any, i: number) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.toFixed(2)}`).join('\n')}`,
+          });
+          saveMessages(userId, history);
+          chatUpdateNotify(userId);
+        }
+      } catch (e2) {
+        console.error('[Scheduler] Failed to save fallback message:', e2);
+      }
+
       return '';
     }
   };
