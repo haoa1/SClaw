@@ -51,6 +51,7 @@ const USERS: AuthUser[] = [
   { id: "3", username: "siwei", password: "siwei123", displayName: "Siwei", role: "user" },
   { id: "4", username: "yuwei", password: "yuwei123", displayName: "Yuwei", role: "user" },
   { id: "5", username: "testuser", password: "test123", displayName: "TestUser", role: "user" },
+  { id: "6", username: "mumu", password: "mumu123", displayName: "Mumu", role: "user" },
 ];
 
 // ===== Session Management =====

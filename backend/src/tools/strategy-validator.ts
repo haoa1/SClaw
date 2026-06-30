@@ -6,7 +6,6 @@
 
 import { Tool, ToolParamDef } from "./registry";
 import { getStocks } from "./stock-info";
-import { HistoricalDataFetcher } from "../data/eastmoney-historical";
 import * as path from "path";
 import * as fs from "fs";
 import { PluginManager } from "../plugin-system/plugin-manager";

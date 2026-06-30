@@ -1,11 +1,14 @@
 // stock-info.ts - 从腾讯 API 获取股票数据（早期数据加载/插件用）
 
 const iconv = require('iconv-lite');
-const STOCK_LIST_FILE = require('path').resolve(__dirname, '../../data/stock_list.json');
+const path = require('path');
+const STOCK_LIST_FILE = path.resolve(__dirname, '../../data/stock_list.json');
 const CACHE_TTL = 30000;
 let cache: { data: any[]; time: number } | null = null;
 
 const BATCH_SIZE = 500;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
 
 interface StockListItem {
   code: string;
@@ -92,6 +95,37 @@ function parseTencentData(line: string): any | null {
   };
 }
 
+/**
+ * 重试包装器：异步函数失败时自动重试
+ */
+async function withRetry<T>(fn: () => Promise<T>, context: string, retries = MAX_RETRIES, delayMs = RETRY_DELAY_MS): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < retries) {
+        console.warn(`[stock-info] ${context} 第${attempt}/${retries}次失败，${delayMs}ms后重试...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastError!;
+}
+
+/** 获取一批腾讯行情，带重试 */
+async function fetchTencentBatch(items: string): Promise<string> {
+  return withRetry(async () => {
+    const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const rawBuf = await res.arrayBuffer();
+    return iconv.decode(Buffer.from(rawBuf), 'gbk');
+  }, 'Tencent batch');
+}
+
 export async function getStocks(): Promise<any[]> {
   if (cache && Date.now() - cache.time < CACHE_TTL) return cache.data;
 
@@ -109,11 +143,7 @@ export async function getStocks(): Promise<any[]> {
       if (i > 0) await new Promise(r => setTimeout(r, 200));
 
       const items = batch.map((s: StockListItem) => codeToTencentSymbol(s.code)).join(',');
-      const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
-      const rawBuf = await res.arrayBuffer();
-      const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
+      const text = await fetchTencentBatch(items);
       const lines = text.split(';');
 
       for (const line of lines) {

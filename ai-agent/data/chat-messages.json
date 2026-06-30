@@ -1,0 +1,11 @@
+[
+  {
+    "role": "assistant",
+    "segments": [
+      {
+        "type": "content",
+        "data": "连接成功，输入指令开始分析"
+      }
+    ]
+  }
+]

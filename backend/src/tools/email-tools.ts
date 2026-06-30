@@ -94,6 +94,12 @@ export function registerEmailTools(toolRegistry: ToolRegistry): void {
           description: 'JSON array of filter results: [{"code":"600000","name":"浦发银行","score":85,"signals":["signal1","signal2"],"metrics":{}}]',
           required: true,
         },
+        {
+          name: "agent_analysis",
+          type: "string",
+          description: "Optional AI analysis text (e.g. 缠论/筹码 analysis) to include in the email body",
+          required: false,
+        },
       ],
       async (args) => {
         const to = args.to as string;
@@ -114,7 +120,8 @@ export function registerEmailTools(toolRegistry: ToolRegistry): void {
         }
         catch { return "Error: results_json must be valid JSON"; }
 
-        const success = await sendScreenReport(to, stats, results, strategyNames);
+        const agentAnalysis = args.agent_analysis ? String(args.agent_analysis) : undefined;
+        const success = await sendScreenReport(to, stats, results, strategyNames, agentAnalysis);
         if (success) return `✅ Screen report sent to ${to}`;
         return "⚠️ Failed to send screen report. SMTP may not be configured.";
       }

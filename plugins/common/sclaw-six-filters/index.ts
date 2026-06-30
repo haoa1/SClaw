@@ -64,7 +64,7 @@ const plugin: StockScreenerPlugin = {
             name: item.name,
             score: chg >= 4 ? 85 : 75,
             signals,
-            metrics: { changePercent: chg, turnoverRate: tr, marketCapYi, volumeRatio: volRatio, hasLimitUp, priceAboveAvg }
+            metrics: { changePercent: chg, turnoverRate: tr, mcapYi, volumeRatio: volRatio, hasLimitUp, priceAboveAvg }
           });
         }
         return results;

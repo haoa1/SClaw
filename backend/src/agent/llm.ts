@@ -22,6 +22,86 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 
+// ===== JSON safety =====
+
+/** Safe JSON.parse that returns fallback instead of throwing */
+function safeParseJSON(json: string, fallback: Record<string, unknown> = {}): Record<string, unknown> {
+  if (!json || json.trim() === "") return fallback;
+  try {
+    return JSON.parse(json);
+  } catch {
+    console.log(`  [LLM] Malformed JSON in tool_call arguments: "${json.slice(0, 100)}..."`);
+    return fallback;
+  }
+}
+
+/**
+ * Pre-LLM-call validation: ensure every assistant message with tool_calls
+ * is followed by the corresponding tool responses. Drops orphaned messages
+ * that would trigger "assistant with tool_calls must be followed by tool messages" API error.
+ */
+function validateToolCallSequence(messages: LLMMessage[]): LLMMessage[] {
+  const result: LLMMessage[] = [];
+  let pendingToolCallIds = new Set<string>();
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+      for (const tc of msg.tool_calls) {
+        pendingToolCallIds.add(tc.id);
+      }
+      result.push(msg);
+    } else if (msg.role === "tool" && msg.tool_call_id) {
+      if (pendingToolCallIds.has(msg.tool_call_id)) {
+        pendingToolCallIds.delete(msg.tool_call_id);
+        result.push(msg);
+      } else {
+        // Orphaned tool message (no matching assistant tool_calls) — drop it
+        console.log(`  [LLM] Dropped orphaned tool message (tool_call_id=${msg.tool_call_id})`);
+      }
+    } else {
+      // Non-tool, non-tool_calls message encountered while tool_calls are pending
+      if (pendingToolCallIds.size > 0) {
+        console.log(`  [LLM] ${pendingToolCallIds.size} unresolved tool_calls before '${msg.role}' message, removing orphaned assistant`);
+        // Scan backwards in result to remove the assistant with unresolved tool_calls
+        for (let j = result.length - 1; j >= 0; j--) {
+          const prev = result[j];
+          if (prev.role === "assistant" && prev.tool_calls) {
+            const unresolved = prev.tool_calls.filter(tc => pendingToolCallIds.has(tc.id));
+            if (unresolved.length > 0) {
+              console.log(`  [LLM] Removed assistant with ${unresolved.length} unresolved tool_calls`);
+              result.splice(j, 1);
+              for (const tc of unresolved) pendingToolCallIds.delete(tc.id);
+              if (pendingToolCallIds.size === 0) break;
+            }
+          }
+        }
+        pendingToolCallIds = new Set();
+      }
+      result.push(msg);
+    }
+  }
+
+  // End of messages with pending tool_calls — dangling assistant at the end
+  if (pendingToolCallIds.size > 0) {
+    console.log(`  [LLM] ${pendingToolCallIds.size} unresolved tool_calls at end of messages, cleaning up`);
+    for (let j = result.length - 1; j >= 0; j--) {
+      const prev = result[j];
+      if (prev.role === "assistant" && prev.tool_calls) {
+        const unresolved = prev.tool_calls.filter(tc => pendingToolCallIds.has(tc.id));
+        if (unresolved.length > 0) {
+          result.splice(j, 1);
+          for (const tc of unresolved) pendingToolCallIds.delete(tc.id);
+          if (pendingToolCallIds.size === 0) break;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 export interface LLMResponse {
   content: string | null;
   tool_calls: ToolCall[] | null;
@@ -147,9 +227,12 @@ export class LLMClient {
     const modelName = model || process.env["LLM_MODEL"] || this.getDefaultModel();
 
     try {
+      // Pre-LLM-call validation: fix dangling tool_calls before API sees them
+      const safeMessages = validateToolCallSequence(messages);
+
       const body = {
         model: modelName,
-        messages: messages.map((m) => {
+        messages: safeMessages.map((m) => {
           const msg: Record<string, unknown> = {
             role: m.role,
             content: m.content,
@@ -189,7 +272,7 @@ export class LLMClient {
         message?.tool_calls?.map((tc: any) => ({
           id: tc.id,
           name: tc.function?.name || "",
-          arguments: JSON.parse(tc.function?.arguments || "{}"),
+          arguments: safeParseJSON(tc.function?.arguments || "", {}),
         })) ?? null;
 
       return {
@@ -217,9 +300,12 @@ export class LLMClient {
   ): Promise<LLMResponse> {
     const modelName = model || process.env["LLM_MODEL"] || this.getDefaultModel();
 
+    // Pre-LLM-call validation: fix dangling tool_calls before API sees them
+    const safeMessages = validateToolCallSequence(messages);
+
     const body: Record<string, unknown> = {
       model: modelName,
-      messages: messages.map((m) => {
+      messages: safeMessages.map((m) => {
         const msg: Record<string, unknown> = {
           role: m.role,
           content: m.content,
@@ -312,7 +398,7 @@ export class LLMClient {
           ? toolCallsAccumulator.map((tc) => ({
               id: tc.id,
               name: tc.name,
-              arguments: JSON.parse(tc.arguments || "{}"),
+              arguments: safeParseJSON(tc.arguments || "", {}),
             }))
           : null;
 

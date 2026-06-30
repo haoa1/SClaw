@@ -227,6 +227,34 @@ export function createSchedulerRoutes(
     res.json({ success: true });
   });
 
+  /** PUT /api/scheduler/tasks/:id — update task fields (prompt, label, cronExpr, etc.) */
+  router.put('/api/scheduler/tasks/:id', (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: '未登录' });
+      return;
+    }
+
+    const { prompt, label, cronExpr, email, aiMode, strategies, backtestConfig, enabled } = req.body;
+
+    const updated = scheduler.updateTask(req.params['id'], {
+      prompt, label, cronExpr, email, aiMode, strategies, backtestConfig, enabled,
+    });
+
+    if (!updated) {
+      res.status(404).json({ error: '任务未找到' });
+      return;
+    }
+
+    userStore.addLog(userId, {
+      type: 'system',
+      action: '更新定时任务',
+      detail: `任务ID: ${req.params['id']} | label: ${label || '(unchanged)'}`,
+    });
+
+    res.json({ success: true });
+  });
+
   /** POST /api/scheduler/tasks/:id/run — run immediately */
   router.post('/api/scheduler/tasks/:id/run', async (req: Request, res: Response) => {
     const userId = getUserId(req);

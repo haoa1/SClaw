@@ -206,6 +206,38 @@ export class ScreenScheduler {
     return true;
   }
 
+  /** Update editable fields of a task (reschedules cron if cronExpr changed) */
+  updateTask(taskId: string, updates: Partial<Pick<ScheduledTask, 'prompt' | 'label' | 'cronExpr' | 'email' | 'aiMode' | 'strategies' | 'backtestConfig' | 'enabled'>>): boolean {
+    const tasks = this.loadTasks();
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return false;
+
+    const cronChanged = updates.cronExpr && updates.cronExpr !== task.cronExpr;
+
+    // Apply updates
+    if (updates.prompt !== undefined) task.prompt = updates.prompt;
+    if (updates.label !== undefined) task.label = updates.label;
+    if (updates.cronExpr !== undefined) task.cronExpr = updates.cronExpr;
+    if (updates.email !== undefined) task.email = updates.email;
+    if (updates.aiMode !== undefined) task.aiMode = updates.aiMode;
+    if (updates.strategies !== undefined) task.strategies = updates.strategies;
+    if (updates.backtestConfig !== undefined) task.backtestConfig = updates.backtestConfig;
+    if (updates.enabled !== undefined) task.enabled = updates.enabled;
+
+    this.saveTasks(tasks);
+
+    // If cron changed, restart the job
+    if (cronChanged) {
+      this.stopJob(taskId);
+      if (task.enabled) {
+        this.startJob(task);
+      }
+    }
+
+    console.log(`[Scheduler] Task updated: ${taskId} (${task.label || task.cronExpr})`);
+    return true;
+  }
+
   /** Run a specific task immediately */
   async runNow(taskId: string): Promise<boolean> {
     const tasks = this.loadTasks();
@@ -394,17 +426,6 @@ export class ScreenScheduler {
 
       const aiMode = task.aiMode || 'email';
 
-      // ===== Email mode: send report =====
-      let sent = false;
-      if ((aiMode === 'email' || aiMode === 'both') && task.email) {
-        const stats = {
-          totalStocks: allStocks.length,
-          matchedStocks: results.length,
-          executionTime: 0,
-        };
-        sent = await sendScreenReport(task.email, stats, results, strategyNames);
-      }
-
       // ===== Agent mode: run AI analysis on results =====
       let agentAnalysis = '';
       if ((aiMode === 'agent' || aiMode === 'both') && this.analyzeWithAgent) {
@@ -426,6 +447,17 @@ export class ScreenScheduler {
           console.error(`[Scheduler] AI analysis failed for task ${task.id}:`, e);
           agentAnalysis = '';
         }
+      }
+
+      // ===== Email mode: send report (including AI analysis if available) =====
+      let sent = false;
+      if ((aiMode === 'email' || aiMode === 'both') && task.email) {
+        const stats = {
+          totalStocks: allStocks.length,
+          matchedStocks: results.length,
+          executionTime: 0,
+        };
+        sent = await sendScreenReport(task.email, stats, results, strategyNames, agentAnalysis || undefined);
       }
 
       // ===== Push notification (only for email/both modes) =====

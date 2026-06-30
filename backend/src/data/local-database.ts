@@ -45,7 +45,7 @@ export interface KLineQuery {
 
 export interface SyncLogEntry {
   id?: number;
-  source: 'tushare' | 'eastmoney';
+  source: 'tushare';
   date: string;           // YYYY-MM-DD
   stockCount: number;
   status: 'success' | 'partial' | 'failed';

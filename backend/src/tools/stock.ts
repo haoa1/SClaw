@@ -7,13 +7,25 @@
 
 import { Tool, ToolParamDef, ToolRegistry } from "./registry";
 import { getStocks } from "./stock-info";
-import { TushareHistoricalDataFetcher } from "../data/tushare-historical";
-import { HistoricalDataFetcher } from "../data/eastmoney-historical";
+import { DataFetcher, withRetry } from "../data/data-fetcher";
 
-const tushareFetcher = new TushareHistoricalDataFetcher();
-const eastMoneyFetcher = new HistoricalDataFetcher();
+const fetcher = new DataFetcher();
 
-// ===== Historical K-line fetch (moved from historical-data.ts) =====
+// ===== Compute changePct from close price =====
+function enrichKLineData(data: Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>): any[] {
+  return data.map((d, i) => {
+    const prevClose = i > 0 ? data[i - 1].close : d.open;
+    const changePct = prevClose > 0 ? ((d.close - prevClose) / prevClose) * 100 : 0;
+    return {
+      ...d,
+      changePct: parseFloat(changePct.toFixed(2)),
+      amount: 0,          // Sina API 不提供成交额
+      turnoverRate: 0,    // Sina API 不提供换手率
+    };
+  });
+}
+
+// ===== Historical K-line fetch (Sina API + retry, no Tushare) =====
 
 const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
   const code = (args.code as string || "").trim();
@@ -30,17 +42,22 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
     else market = 'SZ';
   }
 
+  // BJ 暂不支持 K 线，退回 SH/SZ
+  if (market === 'BJ') market = 'SH';
+
   const days = Math.min(Math.max(1, (args.days as number) || 120), 1000);
   const format = (args.format as string || 'table').toLowerCase();
 
   try {
-    // Try Tushare first, fallback to East Money
-    let data = await tushareFetcher.fetchDailyKLine(code, market, days);
-    if (!data || data.length === 0) {
-      console.log(`[StockTool] Tushare empty for ${code}, trying East Money fallback...`);
-      data = await eastMoneyFetcher.fetchDailyKLine(code, market, days);
-    }
-    if (!data || data.length === 0) return `ℹ️ No historical data found for ${code} (${market})`;
+    const rawData = await withRetry(
+      () => fetcher.fetchKLine(code, market as 'SH' | 'SZ', days),
+      3, 1000, `History ${code}`
+    );
+    if (!rawData || rawData.length === 0) return `ℹ️ No historical data found for ${code} (${market})`;
+
+    // 用 Tencent 快照补充最新价（可选）
+    // 先 enrich 计算 changePct
+    const data = enrichKLineData(rawData);
 
     if (format === 'json') return JSON.stringify({ code, market, days: data.length, data });
     if (format === 'compact') {
@@ -51,11 +68,11 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
     }
 
     // Default: table format
-    const header = `${'日期'.padEnd(12)} ${'开盘'.padEnd(8)} ${'收盘'.padEnd(8)} ${'最高'.padEnd(8)} ${'最低'.padEnd(8)} ${'涨跌幅'.padEnd(8)} ${'成交量'.padEnd(12)} ${'成交额'.padEnd(12)} ${'换手率'.padEnd(8)}`;
-    const sep = '─'.repeat(12) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(11) + ' ─' + '─'.repeat(11) + ' ─' + '─'.repeat(7);
+    const header = `${'日期'.padEnd(12)} ${'开盘'.padEnd(8)} ${'收盘'.padEnd(8)} ${'最高'.padEnd(8)} ${'最低'.padEnd(8)} ${'涨跌幅'.padEnd(8)} ${'成交量'.padEnd(12)}`;
+    const sep = '─'.repeat(12) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(11);
     const lines = data.slice(-60).map((d: any) => {
       const changeStr = d.changePct >= 0 ? `+${d.changePct.toFixed(2)}%` : `${d.changePct.toFixed(2)}%`;
-      return `${d.date.padEnd(12)} ${d.open.toFixed(2).padEnd(8)} ${d.close.toFixed(2).padEnd(8)} ${d.high.toFixed(2).padEnd(8)} ${d.low.toFixed(2).padEnd(8)} ${changeStr.padEnd(8)} ${d.volume.toLocaleString().padEnd(12)} ${(d.amount / 1e4).toFixed(0).padEnd(11)}万 ${d.turnoverRate.toFixed(2).padEnd(7)}%`;
+      return `${d.date.padEnd(12)} ${d.open.toFixed(2).padEnd(8)} ${d.close.toFixed(2).padEnd(8)} ${d.high.toFixed(2).padEnd(8)} ${d.low.toFixed(2).padEnd(8)} ${changeStr.padEnd(8)} ${d.volume.toLocaleString().padEnd(12)}`;
     });
     const closes = data.map((d: any) => d.close);
     const maxClose = Math.max(...closes);

@@ -1,0 +1,15 @@
+{
+  "name": "sclaw",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/web-server.ts",
+    "update": "bash /root/sclaw/deploy.sh"
+  },
+  "dependencies": {
+    "openai": "^4.70.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0"
+  }
+}

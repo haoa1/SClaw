@@ -42,6 +42,35 @@ const STOCK_LIST_FILE = path.resolve(__dirname, '../../data/stock_list.json');
 const TENCENT_BATCH_SIZE = 500;  // 每批股票数
 const TENCENT_DELAY_MS = 200;    // 批间延迟
 
+// 重试参数
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+/**
+ * 重试包装器：失败时重试最多 retries 次
+ * 成功返回结果，全部失败则抛出最后一次错误
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries: number = MAX_RETRIES,
+  delayMs: number = RETRY_DELAY_MS,
+  context?: string
+): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < retries) {
+        console.warn(`[withRetry]${context ? ' [' + context + ']' : ''} 第${attempt}/${retries}次失败，${delayMs}ms后重试...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastError!;
+}
+
 interface StockListItem {
   code: string;
   name: string;
@@ -82,27 +111,31 @@ export class DataFetcher {
     return this.memoryCache.stocks || [];
   }
 
-  /** 获取个股K线数据（仍用新浪API） */
+  /** 获取个股K线数据（新浪API，带重试） */
   async fetchKLine(code: string, market: 'SH' | 'SZ', days: number = 120): Promise<KLineData[]> {
     const symbol = market === 'SH' ? `sh${code}` : `sz${code}`;
     const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/OHLC.getKLineData?symbol=${symbol}&datalen=${days}&scale=60`;
 
     try {
-      const res = await fetch(url);
-      const data = await res.json() as Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>;
-      if (!data || !Array.isArray(data)) return [];
-
-      return data.map(item => ({
-        date: item.date,
-        open: item.open,
-        close: item.close,
-        high: item.high,
-        low: item.low,
-        volume: item.volume,
-      }));
+      return await withRetry(async () => {
+        const res = await fetch(url, {
+          signal: AbortSignal.timeout(10000),
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        const data = await res.json() as Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>;
+        if (!data || !Array.isArray(data)) return [];
+        return data.map(item => ({
+          date: item.date,
+          open: item.open,
+          close: item.close,
+          high: item.high,
+          low: item.low,
+          volume: item.volume,
+        }));
+      }, 3, 1000, `KLine ${code}`);
     } catch (err) {
-      console.error(`[DataFetcher] Failed to fetch KLine for ${code}:`, err);
-      return [];
+      console.error(`[DataFetcher] Failed to fetch KLine for ${code} after 3 retries:`, err);
+      throw new Error(`获取 ${code} K线数据失败（重试3次后）: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -117,23 +150,26 @@ export class DataFetcher {
 
       const items = batch.map(c => this.codeToTencentSymbol(c)).join(',');
       try {
-        const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
-          signal: AbortSignal.timeout(15000),
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-        });
-        const rawBuf = await res.arrayBuffer();
-        const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
-        const lines = text.split(';');
+        await withRetry(async () => {
+          const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
+            signal: AbortSignal.timeout(15000),
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+          });
+          const rawBuf = await res.arrayBuffer();
+          const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
+          const lines = text.split(';');
 
-        for (const line of lines) {
-          if (!line.includes('~')) continue;
-          const snap = this.parseTencentSnapshot(line);
-          if (snap && snap.code) {
-            result[snap.code] = snap;
+          for (const line of lines) {
+            if (!line.includes('~')) continue;
+            const snap = this.parseTencentSnapshot(line);
+            if (snap && snap.code) {
+              result[snap.code] = snap;
+            }
           }
-        }
+        }, 3, 1000, `Quotes batch ${i}`);
       } catch (err) {
-        console.warn(`[DataFetcher] fetchQuotes batch failed at offset ${i}:`, err);
+        console.error(`[DataFetcher] fetchQuotes batch at offset ${i} failed after 3 retries:`, err);
+        // 不抛错，继续处理下一批
       }
     }
 
@@ -186,24 +222,27 @@ export class DataFetcher {
       }).join(',');
 
       try {
-        const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
-          signal: AbortSignal.timeout(15000),
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-        });
-        const rawBuf = await res.arrayBuffer();
-        const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
-        const lines = text.split(';');
+        await withRetry(async () => {
+          const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
+            signal: AbortSignal.timeout(15000),
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+          });
+          const rawBuf = await res.arrayBuffer();
+          const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
+          const lines = text.split(';');
 
-        for (const line of lines) {
-          if (!line.includes('~')) continue;
-          const stock = this.parseTencentStockData(line, batch);
-          if (stock && !seenCodes.has(stock.code)) {
-            seenCodes.add(stock.code);
-            allStocks.push(stock);
+          for (const line of lines) {
+            if (!line.includes('~')) continue;
+            const stock = this.parseTencentStockData(line, batch);
+            if (stock && !seenCodes.has(stock.code)) {
+              seenCodes.add(stock.code);
+              allStocks.push(stock);
+            }
           }
-        }
+        }, 3, 1000, `Tencent batch ${i}`);
       } catch (err) {
-        console.warn(`[DataFetcher] Tencent batch ${i} failed:`, err);
+        console.error(`[DataFetcher] Tencent batch ${i} failed after 3 retries:`, err);
+        // 不抛错，继续处理下一批
       }
     }
 

@@ -84,14 +84,23 @@ export default function App() {
   const [expandedScreen, setExpandedScreen] = useState<string | null>(null)
 
   // ===== Auth =====
+  // Track whether we're restoring a session from a saved token
+  const [restoringSession, setRestoringSession] = useState(() => !!token)
+
   // Try to restore session on mount
   useEffect(() => {
-    if (!token) { setBackendStatus('online'); return }
+    if (!token) {
+      setBackendStatus('online')
+      setRestoringSession(false)
+      return
+    }
     api.me().then(res => {
       setUser(res.user)
+      setRestoringSession(false)
     }).catch(() => {
       localStorage.removeItem('auth-token')
       setToken(null)
+      setRestoringSession(false)
     })
   }, [token])
 
@@ -318,8 +327,8 @@ export default function App() {
     )
   }
 
-  if (backendStatus === 'checking') {
-    return <LoadingSpinner message="Connecting to backend..." />
+  if (backendStatus === 'checking' || restoringSession) {
+    return <LoadingSpinner message={restoringSession ? "Restoring session..." : "Connecting to backend..."} />
   }
 
   if (!user) {

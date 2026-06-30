@@ -59,6 +59,7 @@ import { registerSandboxTools } from "./tools/sandbox";
 import { SkillManager } from "./skill-manager";
 import { registerSkillTool } from "./tools/skill";
 import { registerEmailTools } from "./tools/email-tools";
+import { registerDeepAnalysisTool } from "./tools/deep-analysis";
 import { registerCompactTool } from "./tools/compact-tool";
 import { registerGoalTool } from "./tools/goal-tools";
 
@@ -87,7 +88,10 @@ Supports cooldown dedup, per-stock state tracking, multi-condition (AND/OR) logi
 - Your scope: screening stocks, analyzing risk, optimizing parameters. You don't manage accounts, handle personal holdings, or give tax/legal advice.
 - When a tool fails, state the problem and suggest next steps. Never apologize profusely.
 - Only use tools explicitly provided. Do not invent tool names or fabricate data.
-- screen(sub_cmd="run") is preferred for screening (it also pushes results to frontend).`;
+- screen(sub_cmd="run") is preferred for screening (it also pushes results to frontend).
+
+## Deep Analysis
+- run_deep_analysis(strategy_id?, limit?) \u2014 One-shot deep stock analysis. Runs screening, fetches K-line, pre-computes technical metrics. Use this when the user asks for \u6df1\u5ea6\u5206\u6790 / \u7f20\u8bba\u5206\u6790 / \u7b79\u7801\u5206\u6790 / 5\u6761\u4ef6\u505aT or any comprehensive stock analysis. After calling, analyze each stock's data to identify Chan Theory buy/sell signals and re-score.`;
 
 /**
  * Create and configure the Express app — no side effects, no listening.
@@ -154,6 +158,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     return getCurrentUserId();
   });
   registerEmailTools(toolRegistry);
+  registerDeepAnalysisTool(toolRegistry);
   registerCompactTool(toolRegistry);
   registerGoalTool(toolRegistry);
   registerManageWatchTool(toolRegistry, watchEngine, () => {
@@ -214,8 +219,14 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
 选股结果（前${topResults.length}只）:
 ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.toFixed(2)}`).join('\n')}
 
-请对以上选股结果进行全面分析。你可以使用工具拉取这些股票的K线数据做技术分析（如缠论买卖点判断）、查看实时行情等，然后给出综合评估和操作建议。
-请直接开始分析。`;
+请对以上选股结果进行专业分析。使用工具拉取K线数据、实时行情等，完成以下分析要求：
+
+1. 🔄 重新评分排名 — 机选评分仅供参考。请根据实时行情、技术面、估值等数据，对每只股票重新打分(0-100)并排序，给出你的评分理由
+2. 📊 筹码分析 — 分析每只股票的筹码分布情况：主力资金动向（大单买卖）、成交量变化趋势、换手率是否异常、是否有资金吸筹或出货迹象
+3. 📈 缠论买卖点分析 — 拉取日K线数据，分析每只股票的中枢位置、是否出现背驰信号、一/二/三类买卖点判断
+4. 🏆 综合评级与建议 — 综合以上分析给出操作建议（强烈推荐/推荐/观望/回避），并说明理由
+
+请直接开始分析，用工具获取数据后给出完整报告。`;
 
       const result = await agent.run(
         context,
