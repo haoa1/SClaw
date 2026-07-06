@@ -41,6 +41,15 @@ test-results/
 playwright-report/
 backend/data/
 
+# --- Temp scripts ---
+check_*.js
+check_*.py
+test_*.js
+test_*.py
+
+# --- Core dumps ---
+core.*
+
 # --- Workspace / Runtime data (local only) ---
 .garuda/
 .sclaw/
