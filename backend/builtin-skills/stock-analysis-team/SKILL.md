@@ -7,6 +7,7 @@ scripts:
   - chart_generator.py: 生成K线/MACD/RSI/走势图表
   - html_report_generator.py: 生成HTML研究报告（Jinja2模板）
   - image_fetcher.py: 获取公司Logo/产品图片
+  - sniper_limit_up.py: 狙击涨停板选股策略引擎 (曹达<狙击涨停板>) — 大盘情绪扫描/首板评分/连板追踪/龙头评分/仓位计算
 ---
 
 # 股票分析团队 📊
@@ -115,7 +116,50 @@ run_script({skill: "stock-analysis-team", script: "analysis_data_bridge.py", arg
 - 包含：所属行业板块（申万一级行业）、所属概念板块（最多显示前10个+总数）
 - 无需代理，直接HTTP访问
 
-## 注意事项
+## 狙击涨停板选股策略引擎
+
+> 基于《狙击涨停板——打板客高级进阶教程》(曹达) 的完整策略系统化
+
+### 选股流水线 (五步)
+
+```text
+Step 1: 大盘情绪扫描 → 涨停数/跌停数/涨停跌停比/情绪分(1-10)
+Step 2: 涨停板分析 → 连板检测(首板/二板/三板+)，流通市值/股价/换手率
+Step 3: 首板评分 → 5维度评分(盘大小/股价/换手/板类型/强度) [0-10分]
+Step 4: 龙头评分 → 寻龙诀7变量(政策/氛围/题材/高度/K线/技术/分时) [0-21分]
+Step 5: 仓位计算 → 凯利公式 + 香农之妖(单只≤1/3, 总持仓≤2只, 现金≥1/3)
+```
+
+### 使用方法
+
+```bash
+# 完整选股流水线
+run_script({skill: "stock-analysis-team", script: "sniper_limit_up.py", args: "--mode pipeline --capital 100000"})
+
+# 保存结果为JSON
+run_script({skill: "stock-analysis-team", script: "sniper_limit_up.py", args: "--mode pipeline --capital 100000 --output /tmp/sniper_result.json"})
+
+# 仅情绪扫描
+run_script({skill: "stock-analysis-team", script: "sniper_limit_up.py", args: "--mode scan"})
+
+# 个股连板检测
+run_script({skill: "stock-analysis-team", script: "sniper_limit_up.py", args: "--mode stock --symbol 000858.SZ"})
+```
+
+### 核心理念速查
+
+| 策略 | 要点 | 脚本逻辑 |
+|:----|:-----|:---------|
+| **首板战法** | 早盘封板前排，流通盘3-7亿，中低价 | score_first_board() |
+| **二板接力** | 放量实体换手板最佳，竞价高开>3% | board_count==2 |
+| **天板有缝** | 盘中开板→急速回封，仓位1/3 | intraday gap detection |
+| **大长腿** | 盘中深V→封板，仓位1/6~1/4 | (需要实时分时数据) |
+| **寻龙诀** | 7变量综合评分≥60%即为龙头候选 | dragon_head_scoring() |
+| **凯利公式** | f*=(bp-q)/b, 胜率=75%基准+评分增益 | calculate_position() |
+| **香农之妖** | 单只≤1/3, 总持仓≤2只, 现金≥1/3 | position sizing limit |
+
+### 注意事项
 - 风险评分必须基于多维度综合判断，避免单一指标主导
 - 数据源：A股腾讯实时行情 qt.gtimg.cn + 新浪历史K线 + AKShare财务数据
 - 本skill不含美股数据（如需美股需 yfinance 数据源，但当前未集成）
+- 选股结果仅供参考，实盘需结合人工判断和动态市场信息

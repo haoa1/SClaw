@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; }
+.container { max-width: 800px; margin: 0 auto; }
+.header { background: linear-gradient(135deg, #1e293b, #0f172a); padding: 24px; border-radius: 12px; margin-bottom: 16px; text-align: center; border: 1px solid #334155; }
+.header h1 { color: #fbbf24; margin: 0 0 8px; font-size: 22px; }
+.header .sub { color: #94a3b8; font-size: 13px; }
+.section { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
+.section h2 { color: #fbbf24; font-size: 16px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: #334155; color: #fbbf24; padding: 8px 6px; text-align: center; font-weight: 600; }
+td { padding: 6px; text-align: center; border-bottom: 1px solid #1e293b; }
+tr:nth-child(even) { background: #0f172a40; }
+tr:hover { background: #33415560; }
+.buy { color: #34d399; }
+.sell { color: #f87171; }
+.neutral { color: #94a3b8; }
+.score-high { background: #065f46; color: #34d399; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+.score-mid { background: #92400e; color: #fbbf24; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+.score-low { background: #7f1d1d; color: #fca5a5; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+.rank-1 { color: #fbbf24; font-weight: bold; }
+.rank-2 { color: #94a3b8; font-weight: bold; }
+.rank-3 { color: #d97706; font-weight: bold; }
+.card { background: #0f172a; border-radius: 8px; padding: 12px; margin-bottom: 8px; border: 1px solid #334155; }
+.card h3 { margin: 0 0 8px; font-size: 14px; }
+.good { color: #34d399; }
+.warn { color: #fbbf24; }
+.bad { color: #f87171; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.info-item { text-align: center; padding: 8px; background: #1e293b; border-radius: 6px; }
+.info-item .label { color: #94a3b8; font-size: 10px; }
+.info-item .value { font-size: 16px; font-weight: bold; margin-top: 2px; }
+.footer { text-align: center; padding: 16px; color: #64748b; font-size: 11px; }
+.market-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.market-item { text-align: center; padding: 10px; border-radius: 6px; }
+.market-up { background: #065f4620; border: 1px solid #065f46; }
+.market-down { background: #7f1d1d20; border: 1px solid #7f1d1d; }
+.market-flat { background: #1e293b; border: 1px solid #334155; }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin: 1px; }
+.tag-buy { background: #065f46; color: #34d399; }
+.tag-risk { background: #7f1d1d; color: #fca5a5; }
+.tag-trend { background: #92400e; color: #fbbf24; }
+.tag-div { background: #312e81; color: #a5b4fc; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+<h1>🦀 SClaw 5条件做T + 缠论(午盘) 分析报告</h1>
+<div class="sub">2026-07-06 14:20 CST · 全市场 1762↑ / 3329↓ / 115平 · 33.8%个股上涨</div>
+</div>
+
+<!-- 市场概况 -->
+<div class="section">
+<h2>📊 市场概况</h2>
+<div class="market-summary">
+<div class="market-item market-up"><div class="label">上涨</div><div style="font-size:24px;font-weight:bold;color:#34d399;">1762</div><div style="font-size:11px;color:#34d399;">+33.8%</div></div>
+<div class="market-item market-down"><div class="label">下跌</div><div style="font-size:24px;font-weight:bold;color:#f87171;">3329</div><div style="font-size:11px;color:#f87171;">-63.9%</div></div>
+<div class="market-item market-flat"><div class="label">平盘</div><div style="font-size:24px;font-weight:bold;color:#94a3b8;">115</div><div style="font-size:11px;color:#94a3b8;">+2.2%</div></div>
+</div>
+<p style="color:#94a3b8;font-size:12px;text-align:center;">
+今日大盘偏弱，仅33.8%个股上涨，但尾盘做T环境仍有机会。
+5条件筛选(涨幅3~5%+量比>1+换手5~15%+市值20~500亿) 共匹配 <strong style="color:#fbbf24;">22只</strong> 优质标的。
+</p>
+</div>
+
+<!-- 缠论评分总表 -->
+<div class="section">
+<h2>📋 缠论评分总表 · 全部已评分标的</h2>
+<p style="color:#94a3b8;font-size:11px;margin:-8px 0 8px;">
+评分维度：买点信号(60分) + 趋势强度(20分) + 风控(20分) = 总分100
+</p>
+<table>
+<thead>
+<tr><th>#</th><th>代码</th><th>名称</th><th>总分</th><th>买点</th><th>趋势</th><th>风控</th><th>涨幅%</th><th>量比</th><th>换手%</th><th>市值亿</th><th>PE</th><th>振幅%</th><th>分时</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>🥇</td>
+<td><strong>603590</strong></td>
+<td>康辰药业</td>
+<td><span class="score-high">82</span></td>
+<td>48</td>
+<td>18</td>
+<td>16</td>
+<td>4.04</td>
+<td>2.55</td>
+<td>5.22</td>
+<td>52</td>
+<td>31.1</td>
+<td>10.7</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>🥈</td>
+<td><strong>601177</strong></td>
+<td>杭齿前进</td>
+<td><span class="score-high">80</span></td>
+<td>46</td>
+<td>18</td>
+<td>16</td>
+<td>4.75</td>
+<td>3.98</td>
+<td>6.78</td>
+<td>61</td>
+<td>23.3</td>
+<td>8.6</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>🥉</td>
+<td><strong>605305</strong></td>
+<td>中际联合</td>
+<td><span class="score-high">79</span></td>
+<td>46</td>
+<td>16</td>
+<td>17</td>
+<td>3.78</td>
+<td>2.41</td>
+<td>5.63</td>
+<td>101</td>
+<td>18.1</td>
+<td>7.9</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>603496</strong></td>
+<td>恒为科技</td>
+<td><span class="score-mid">77</span></td>
+<td>44</td>
+<td>18</td>
+<td>15</td>
+<td>4.93</td>
+<td>2.30</td>
+<td>6.68</td>
+<td>76</td>
+<td>157.0</td>
+<td>12.5</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>603158</strong></td>
+<td>腾龙股份</td>
+<td><span class="score-mid">76</span></td>
+<td>44</td>
+<td>18</td>
+<td>14</td>
+<td>4.39</td>
+<td>2.52</td>
+<td>8.04</td>
+<td>61</td>
+<td>101.6</td>
+<td>11.1</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>002440</strong></td>
+<td>闰土股份</td>
+<td><span class="score-mid">75</span></td>
+<td>42</td>
+<td>16</td>
+<td>17</td>
+<td>4.36</td>
+<td>1.17</td>
+<td>6.09</td>
+<td>124</td>
+<td>15.4</td>
+<td>7.3</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>603203</strong></td>
+<td>快克智能</td>
+<td><span class="score-mid">74</span></td>
+<td>42</td>
+<td>18</td>
+<td>14</td>
+<td>4.58</td>
+<td>1.27</td>
+<td>7.21</td>
+<td>203</td>
+<td>135.9</td>
+<td>6.9</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>000521</strong></td>
+<td>长虹美菱</td>
+<td><span class="score-mid">73</span></td>
+<td>46</td>
+<td>14</td>
+<td>13</td>
+<td>3.06</td>
+<td>1.15</td>
+<td>5.45</td>
+<td>62</td>
+<td>20.9</td>
+<td>11.1</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>002734</strong></td>
+<td>利民股份</td>
+<td><span class="score-mid">72</span></td>
+<td>40</td>
+<td>16</td>
+<td>16</td>
+<td>3.76</td>
+<td>1.68</td>
+<td>5.21</td>
+<td>84</td>
+<td>16.7</td>
+<td>6.9</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>688135</strong></td>
+<td>利扬芯片</td>
+<td><span class="score-mid">71</span></td>
+<td>44</td>
+<td>18</td>
+<td>9</td>
+<td>4.19</td>
+<td>1.21</td>
+<td>9.64</td>
+<td>93</td>
+<td>-</td>
+<td>13.8</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p style="color:#64748b;font-size:10px;margin-top:8px;">
+* 买点评分基于量能、振幅、PE合理性；趋势评分基于涨幅位置、换手适中、量比趋势；风控评分基于PE/PB估值、市值大小
+</p>
+</div>
+
+<!-- 前5详细分析 -->
+<div class="section">
+<h2>🔍 TOP 5 深度分析</h2>
+
+<div class="card">
+<h3>🥇 603590 康辰药业 · <span class="score-high">总分82</span> <span class="tag tag-buy">低PE</span> <span class="tag tag-buy">巨量</span> <span class="tag tag-div">换手适中</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:12px;">⭐⭐⭐ 偏多 — 量比2.55巨量+低PE，资金介入明显</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:12px;color:#fbbf24;">尾盘回踩均价线企稳可低吸，目标+2%做T止盈；止损设均价线下-2%</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:12px;color:#f87171;">市值52亿偏小，波动性较大；分时未站稳均价线</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:12px;">
+<strong style="color:#34d399;">✅ 优势：</strong>PE仅31.1倍，估值合理偏低；量比2.55显着放量，资金大举介入；涨幅4.04%处于最佳做T区间；换手5.22%温和，筹码换手充分但未过热；振幅10.7%做T空间充裕<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>分时未站稳均价线，需观察尾盘能否突破；市值52亿偏小，波动性较大
+</div>
+</div>
+
+<div class="card">
+<h3>🥈 601177 杭齿前进 · <span class="score-high">总分80</span> <span class="tag tag-buy">巨量3.98</span> <span class="tag tag-buy">低PE</span> <span class="tag tag-div">量价齐升</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:12px;">⭐⭐⭐⭐ 强买 — 量比3.98为全市场最高倍量之一</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:12px;color:#fbbf24;">尾盘回落至14.5~14.7区间可低吸，冲高+2%分批兑现；跌破14.2止损</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:12px;color:#f87171;">量比过高(3.98)需警惕放量滞涨</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:12px;">
+<strong style="color:#34d399;">✅ 优势：</strong>量比3.98全市场最高放量倍数之一，资金抢筹明显；PE23.3倍合理偏低；涨幅4.75%强势但不极端；换手6.78%配合温和<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>量比过高(3.98)需警惕放量滞涨；分时未站稳均价线
+</div>
+</div>
+
+<div class="card">
+<h3>🥉 605305 中际联合 · <span class="score-high">总分79</span> <span class="tag tag-buy">低PE</span> <span class="tag tag-trend">量比2.41</span> <span class="tag tag-div">风电</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:12px;">⭐⭐⭐ 偏多 — 估值安全+放量，适合稳健做T</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:12px;color:#fbbf24;">沿分时均线附近分批低吸，冲高+1.5~2%分批兑现；设均价线下-2%止损</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:12px;color:#f87171;">涨幅3.78%偏保守，动能可能不足</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:12px;">
+<strong style="color:#34d399;">✅ 优势：</strong>PE仅18.1倍，全市场最低估值之一；量比2.41大幅放量；市值101亿流动性好；风电设备赛道景气；振幅7.9%做T空间充足<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>涨幅3.78%偏保守，动能可能不足；分时未站稳均价线
+</div>
+</div>
+
+<div class="card">
+<h3>4 603496 恒为科技 · <span class="score-mid">总分77</span> <span class="tag tag-trend">振幅12.5%</span> <span class="tag tag-div">量比2.3</span> <span class="tag tag-div">算力</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:12px;">⭐⭐⭐ 偏多 — 高振幅+放量，典型做T标的</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:12px;color:#fbbf24;">尾盘回踩22.5附近可低吸，拉高+3%以上分批出；设22.0止损</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:12px;color:#f87171;">PE157倍偏高，缺乏安全边际</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:12px;">
+<strong style="color:#34d399;">✅ 优势：</strong>振幅12.5%全市场最大之一，做T空间极佳；量比2.30放量明显；涨幅4.93%接近5%上限但未封板；算力/AI赛道热点<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>PE157倍偏高，缺乏安全边际；分时未站稳均价线
+</div>
+</div>
+
+<div class="card">
+<h3>5 603158 腾龙股份 · <span class="score-mid">总分76</span> <span class="tag tag-trend">振幅11.1%</span> <span class="tag tag-div">量比2.52</span> <span class="tag tag-div">汽车</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:12px;">⭐⭐⭐ 偏多 — 高振幅+巨量，短线资金活跃</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:12px;color:#fbbf24;">回踩12.0~12.2区间低吸，博尾盘反弹+2~3%；设11.8止损</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:12px;color:#f87171;">PE102倍偏高，估值压力大</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:12px;">
+<strong style="color:#34d399;">✅ 优势：</strong>量比2.52大幅放量；振幅11.1%做T空间极佳；涨幅4.39%处于最佳区间；换手8.04%活跃；市值61亿适中<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>PE101.6倍偏高，估值压力大；分时未站稳均价线
+</div>
+</div>
+
+</div>
+
+<!-- 做T信号汇总 -->
+<div class="section">
+<h2>⚡ 尾盘做T信号汇总</h2>
+<table>
+<thead>
+<tr><th>标的</th><th>代码</th><th>信号类型</th><th>操作方向</th><th>参考价位</th><th>目标</th><th>止损</th><th>优先级</th></tr>
+</thead>
+<tbody>
+<tr><td>康辰药业</td><td>603590</td><td><span class="tag tag-buy">巨量+低PE</span></td><td class="buy">回踩低吸</td><td>32.5~33.0</td><td>+2%</td><td>-2%</td><td>🥇</td></tr>
+<tr><td>杭齿前进</td><td>601177</td><td><span class="tag tag-buy">量比3.98</span></td><td class="buy">回踩低吸</td><td>14.5~14.7</td><td>+2%</td><td>-2%</td><td>🥇</td></tr>
+<tr><td>中际联合</td><td>605305</td><td><span class="tag tag-div">低PE放量</span></td><td class="buy">分批建仓</td><td>47.0~47.5</td><td>+1.5%</td><td>-2%</td><td>🥈</td></tr>
+<tr><td>恒为科技</td><td>603496</td><td><span class="tag tag-trend">高振幅</span></td><td class="buy">低吸做多</td><td>22.5~23.0</td><td>+3%</td><td>-3%</td><td>🥈</td></tr>
+<tr><td>腾龙股份</td><td>603158</td><td><span class="tag tag-trend">巨量高振幅</span></td><td class="buy">回踩低吸</td><td>12.0~12.2</td><td>+2.5%</td><td>-2.5%</td><td>🥈</td></tr>
+<tr><td>闰土股份</td><td>002440</td><td><span class="tag tag-buy">低PE</span></td><td class="buy">回踩低吸</td><td>10.7~10.8</td><td>+1.5%</td><td>-1.5%</td><td>🥉</td></tr>
+<tr><td>利扬芯片</td><td>688135</td><td><span class="tag tag-buy">分时强势✅</span></td><td class="buy">低吸做多</td><td>39~39.5</td><td>+5%</td><td>-3%</td><td>🥉</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- 回避个股 -->
+<div class="section" style="background:#1e293b80;border-color:#7f1d1d;">
+<h2 style="color:#f87171;">⚠️ 回避个股 & 风险提示</h2>
+<div style="font-size:12px;color:#f87171;margin-bottom:8px;">
+<strong>以下标的今日不推荐参与：</strong>
+</div>
+<table>
+<thead>
+<tr><th>代码</th><th>名称</th><th>回避原因</th></tr>
+</thead>
+<tbody>
+<tr><td>600376</td><td>首开股份</td><td class="bad">PE为负(-1.6)，基本面恶化；房地产行业持续低迷</td></tr>
+<tr><td>603110</td><td>东方材料</td><td class="bad">PE高达4000+，严重高估；市值仅45亿偏小</td></tr>
+<tr><td>603039</td><td>泛微网络</td><td class="bad">距MA5偏离-15.6%，技术面走弱明显</td></tr>
+<tr><td>002805</td><td>丰元股份</td><td class="bad">PE为负(-24.2)，持续亏损；振幅12%波动过大</td></tr>
+<tr><td>688378</td><td>奥来德</td><td class="bad">科创板PE115倍高估，换手8.34%偏大筹码松动</td></tr>
+</tbody>
+</table>
+<div style="margin-top:12px;padding:8px;background:#0f172a;border-radius:6px;font-size:12px;color:#94a3b8;line-height:1.6;">
+<strong style="color:#f87171;">⚠️ 风险提示：</strong><br>
+1. 本报告为技术面量化筛选，仅供参考，不构成投资建议<br>
+2. 科创板（688开头）实行±20%涨跌幅，波动风险更大<br>
+3. 做T策略需盯盘执行，非专业投资者谨慎使用<br>
+4. 今日仅33.8%个股上涨，市场整体偏弱，控制仓位<br>
+5. 以上分析基于2026-07-06午盘数据，市场瞬息万变<br>
+6. 股市有风险，投资需谨慎
+</div>
+</div>
+
+<div class="footer">
+🦀 SClaw 5条件做T · 缠论午盘分析 · 2026-07-06<br>
+Generated by AI · Data source: Real-time A-share market
+</div>
+
+</div>
+</body>
+</html>
