@@ -3,7 +3,7 @@
 const iconv = require('iconv-lite');
 const path = require('path');
 const STOCK_LIST_FILE = path.resolve(__dirname, '../../data/stock_list.json');
-const CACHE_TTL = 30000;
+const CACHE_TTL = 10000;  // 30s -> 10s
 let cache: { data: any[]; time: number } | null = null;
 
 const BATCH_SIZE = 500;
@@ -126,13 +126,29 @@ async function fetchTencentBatch(items: string): Promise<string> {
   }, 'Tencent batch');
 }
 
+export class TencentAPIError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'TencentAPIError';
+  }
+}
+
+const STALE_THRESHOLD_MS = 15000; // 15s: too old
+
+function stampCacheAge(data: any[], cacheTime: number): any[] {
+  const ageMs = Date.now() - cacheTime;
+  return data.map(stock => ({ ...stock, _cacheAge: Math.round(ageMs / 1000) }));
+}
+
 export async function getStocks(): Promise<any[]> {
-  if (cache && Date.now() - cache.time < CACHE_TTL) return cache.data;
+  if (cache && Date.now() - cache.time < CACHE_TTL) {
+    return stampCacheAge(cache.data, cache.time);
+  }
 
   const allCodes = loadStockList();
   if (!allCodes.length) {
     if (cache) return cache.data;
-    return [];
+    throw new TencentAPIError('股票列表文件为空或不存在，无法获取行情数据');
   }
 
   try {
@@ -154,10 +170,16 @@ export async function getStocks(): Promise<any[]> {
     }
 
     cache = { data: allData, time: Date.now() };
-    return allData;
+    return stampCacheAge(allData, Date.now());
   } catch (err) {
     console.warn('[stock-info] Tencent fetch failed:', err);
-    if (cache) return cache.data;
-    return [];
+    if (cache) {
+      const ageS = Math.round((Date.now() - cache.time) / 1000);
+      console.warn('[stock-info] Returning stale cache (' + cache.data.length + ' stocks, age ' + ageS + 's)');
+      return stampCacheAge(cache.data, cache.time);
+    }
+    throw new TencentAPIError(
+      '腾讯行情API请求失败: ' + (err instanceof Error ? err.message : String(err))
+    );
   }
 }

@@ -48,6 +48,7 @@ export function registerManageWatchTool(
       { name: 'interval', type: 'number', description: '检查间隔秒数，最小30秒（默认60）', required: false },
       { name: 'cooldownSeconds', type: 'number', description: '重复报警冷却秒数（默认300，即5分钟）', required: false },
       { name: 'enabled', type: 'string', description: 'true=启用 false=停用（toggle需要）', required: false },
+      { name: 'email', type: 'string', description: '可选，邮件收件人（多个用逗号分隔），如 "jack@example.com,alice@example.com"。开启邮件报警需同时设置此字段和 alertChannels.email=true', required: false },
     ],
     async (args) => {
       const userId = getUserId();
@@ -88,6 +89,7 @@ export function registerManageWatchTool(
             taskId = `watch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           }
 
+          const email = args['email'] as string | undefined;
           const task: WatchTask = {
             id: taskId,
             userId,
@@ -97,7 +99,8 @@ export function registerManageWatchTool(
             conditions,
             label: (args['label'] as string) || undefined,
             cooldownSeconds: (args['cooldownSeconds'] as number) || 300,
-            alertChannels: { frontend: true, email: false, agent: true },
+            alertChannels: { frontend: true, email: !!email, agent: true },
+            email: email || undefined,
             _state: {},
             createdAt: Date.now(),
           };
@@ -109,7 +112,8 @@ export function registerManageWatchTool(
   监控: ${codes.length} 只股票
   间隔: ${task.interval}秒
   条件数: ${conditions.length}
-  冷却: ${task.cooldownSeconds}秒`;
+  冷却: ${task.cooldownSeconds}秒
+  ${task.email ? `邮件报警: ${task.email}` : '邮件报警: 未设置'}`;
         }
 
         // ===== LIST =====
@@ -122,7 +126,7 @@ export function registerManageWatchTool(
             const label = t.label ? `「${t.label}」` : '';
             return `${status} [${t.id}] ${label} ${t.watchTargets.length}只股票 @ ${t.interval}s/次
    条件: ${t.conditions.map(c => c.type).join(', ')}
-   冷却: ${t.cooldownSeconds}s${t.lastAlert ? ` | 上次报警: ${new Date(t.lastAlert.timestamp).toLocaleString('zh-CN')}` : ''}`;
+   冷却: ${t.cooldownSeconds}s${t.email ? ` | 邮件: ${t.email}` : ''}${t.lastAlert ? ` | 上次报警: ${new Date(t.lastAlert.timestamp).toLocaleString('zh-CN')}` : ''}`;
           });
 
           return `📋 共 ${tasks.length} 个盯盘任务\n\n${lines.join('\n\n')}`;
@@ -191,6 +195,11 @@ export function registerManageWatchTool(
           if (args['interval'] !== undefined) update.interval = args['interval'] as number;
           if (args['cooldownSeconds'] !== undefined) update.cooldownSeconds = args['cooldownSeconds'] as number;
           if (args['label'] !== undefined) update.label = args['label'] as string;
+          if (args['email'] !== undefined) {
+            const email = args['email'] as string;
+            update.email = email || undefined;
+            update.alertChannels = { ...existing.alertChannels, email: !!email };
+          }
 
           const updated = watchEngine.updateTask(taskId, update);
           return updated ? `✅ 任务 ${taskId} 已更新` : `❌ 更新失败`;

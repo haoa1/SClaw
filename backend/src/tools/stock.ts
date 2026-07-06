@@ -6,10 +6,24 @@
  */
 
 import { Tool, ToolParamDef, ToolRegistry } from "./registry";
-import { getStocks } from "./stock-info";
+import { getStocks, TencentAPIError } from "./stock-info";
 import { DataFetcher, withRetry } from "../data/data-fetcher";
 
 const fetcher = new DataFetcher();
+const MAX_CACHE_AGE_S = 15; // 超过 15s 的缓存视为过旧
+
+/** 检查缓存数据年龄，过旧或接近过期时给出提示 */
+function checkStaleCache(stocks: any[]): string | null {
+  if (!stocks || stocks.length === 0) return null;
+  const age = stocks[0]._cacheAge;
+  if (age === undefined || age === null) return null;
+  if (age === 0) return null; // 全新数据
+  if (age > MAX_CACHE_AGE_S) {
+    return `\u26a0\ufe0f \u5f53\u524d\u6570\u636e\u662f ${age} \u79d2\u524d\u7684\u7f13\u5b58\uff0c\u53ef\u80fd\u4e0d\u662f\u6700\u65b0\u884c\u60c5\u3002\u5efa\u8bae\u51e0\u79d2\u540e\u91cd\u65b0\u83b7\u53d6\u3002`;
+  }
+  return `\u2139\ufe0f \u5f53\u524d\u6570\u636e\u662f ${age} \u79d2\u524d\u83b7\u53d6\u7684\uff08\u4ecd\u5728\u6709\u6548\u671f\u5185\uff09\u3002`;
+}
+
 
 // ===== Compute changePct from close price =====
 function enrichKLineData(data: Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>): any[] {
@@ -49,11 +63,17 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
   const format = (args.format as string || 'table').toLowerCase();
 
   try {
-    const rawData = await withRetry(
+    const rawResult = await withRetry(
       () => fetcher.fetchKLine(code, market as 'SH' | 'SZ', days),
       3, 1000, `History ${code}`
     );
+    const rawData = rawResult.data;
     if (!rawData || rawData.length === 0) return `ℹ️ No historical data found for ${code} (${market})`;
+
+    // Log data source feedback to console
+    if (rawResult.meta.warnings.length > 0) {
+      console.log(`[KLine ${code}] ${rawResult.meta.warnings.join('; ')}`);
+    }
 
     // 用 Tencent 快照补充最新价（可选）
     // 先 enrich 计算 changePct
@@ -105,41 +125,69 @@ const stockHandler = async (args: Record<string, unknown>): Promise<string> => {
   const subCmd = (args.sub_cmd as string || "").toLowerCase().trim();
   if (!subCmd) return "❌ Error: sub_cmd is required. Options: search, detail, overview, history";
 
-  switch (subCmd) {
-    case "search": {
-      const q = (args.query as string || "").toLowerCase();
-      if (!q) return "❌ Error: query is required for search";
-      const stocks = await getStocks();
-      const results = stocks.filter((s: any) => s.code.includes(q) || s.name.includes(q))
-        .slice(0, (args.limit as number) || 50);
-      return JSON.stringify(results);
-    }
+  try {
+    switch (subCmd) {
+      case "search": {
+        const q = (args.query as string || "").toLowerCase();
+        if (!q) return "❌ Error: query is required for search";
+        const stocks = await getStocks();
+        if (!stocks || stocks.length === 0) {
+          return "❌ 实时数据暂时不可用（腾讯行情API未返回数据），等几秒后重试(sub_cmd=\"overview\")即可";
+        }
+        const cacheWarn = checkStaleCache(stocks);
+        const results = stocks.filter((s: any) => s.code.includes(q) || s.name.includes(q))
+          .slice(0, (args.limit as number) || 50);
+        if (results.length === 0) {
+          return `⚠️ 未找到匹配 "${q}" 的股票`;
+        }
+        if (cacheWarn) return cacheWarn + "\n" + JSON.stringify(results);
+        return JSON.stringify(results);
+      }
 
-    case "detail": {
-      const code = (args.code as string || "").trim();
-      if (!code) return "❌ Error: code is required for detail";
-      const stocks = await getStocks();
-      const found = stocks.find((s: any) => s.code === code);
-      return JSON.stringify(found || { error: "Not found" });
-    }
+      case "detail": {
+        const code = (args.code as string || "").trim();
+        if (!code) return "❌ Error: code is required for detail";
+        const stocks = await getStocks();
+        if (!stocks || stocks.length === 0) {
+          return "❌ 实时数据暂时不可用（腾讯行情API未返回数据），等几秒后重试(sub_cmd=\"overview\")即可";
+        }
+        const cacheWarn = checkStaleCache(stocks);
+        const found = stocks.find((s: any) => s.code === code);
+        if (!found) return `⚠️ 未找到股票 ${code}，请检查代码是否正确`;
+        if (cacheWarn) return cacheWarn + "\n" + JSON.stringify(found);
+        return JSON.stringify(found);
+      }
 
-    case "overview": {
-      const stocks = await getStocks();
-      const up = stocks.filter((s: any) => s.changePct > 0).length;
-      const down = stocks.filter((s: any) => s.changePct < 0).length;
-      return JSON.stringify({
-        total: stocks.length, up, down,
-        flat: stocks.length - up - down,
-        time: new Date().toISOString(),
-      });
-    }
+      case "overview": {
+        const stocks = await getStocks();
+        if (!stocks || stocks.length === 0) {
+          return "❌ 实时数据暂时不可用（腾讯行情API未返回数据），等几秒后重试(sub_cmd=\"overview\")即可";
+        }
+        const cacheWarn = checkStaleCache(stocks);
+        const up = stocks.filter((s: any) => s.changePct > 0).length;
+        const down = stocks.filter((s: any) => s.changePct < 0).length;
+        const result = JSON.stringify({
+          total: stocks.length, up, down,
+          flat: stocks.length - up - down,
+          time: new Date().toISOString(),
+        });
+        if (cacheWarn) return cacheWarn + "\n" + result;
+        return result;
+      }
 
-    case "history": {
-      return await fetchKLineFn(args);
-    }
+      case "history": {
+        return await fetchKLineFn(args);
+      }
 
-    default:
-      return `❌ Unknown sub_cmd: "${subCmd}". Options: search, detail, overview, history`;
+      default:
+        return `❌ Unknown sub_cmd: "${subCmd}". Options: search, detail, overview, history`;
+    }
+  } catch (err: unknown) {
+    if (err instanceof TencentAPIError) {
+      return `❌ 行情数据获取失败: ${err.message}`;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return `❌ stock ${subCmd} 执行出错: ${msg}`;
   }
 };
 

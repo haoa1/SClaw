@@ -65,6 +65,35 @@ export interface KLineData {
   volume: number;
 }
 
+/** KLine response metadata for tracking data source & rollback feedback */
+export interface KLineMeta {
+  /** Total number of data points returned */
+  total: number;
+  /** Number of days requested by caller */
+  requested_days: number;
+  /** Actual date range of returned data */
+  date_range: {
+    from: string;
+    to: string;
+  };
+  /** Data source breakdown */
+  sources: Array<{
+    source: string;       // e.g. "sqlite_local", "tushare", "stock_cache"
+    count: number;        // how many data points from this source
+    range?: string;       // e.g. "2026-02-24 to 2026-04-30"
+  }>;
+  /** Warnings about data quality, gaps, or fallbacks */
+  warnings: string[];
+}
+
+/** KLine API response with optional rollback feedback */
+export interface KLineResponse {
+  code: string;
+  market: 'SH' | 'SZ';
+  data: KLineData[];
+  meta: KLineMeta;
+}
+
 export interface FilterResult {
   code: string;
   name: string;
@@ -300,6 +329,8 @@ export interface WatchTask {
     email: boolean;
     agent: boolean;         // send to AI agent notification queue
   };
+
+  email?: string;            // comma-separated email recipients for email alerts
 
   cooldownSeconds: number;  // cooldown between alerts per stock (default 300)
 

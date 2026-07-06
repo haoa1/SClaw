@@ -3,6 +3,7 @@ import { PluginManager } from '../plugin-system/plugin-manager';
 import { StrategyEngine } from '../strategies/strategy-engine';
 import { DataFetcher } from '../data/data-fetcher';
 import { ScreenRequest, PluginInfo, StrategyInfo, ScreenResponse } from '../types';
+import { enrichWithHistory } from '../tools/strategy-validator';
 
 export function createRoutes(
   pluginManager: PluginManager,
@@ -76,6 +77,57 @@ export function createRoutes(
       // 获取全市场数据
       const allStocks = await dataFetcher.fetchAllStocks(request.market);
 
+      // ===== 两阶段数据增强：先前4条件预过滤，再对少量候选股补充涨停数据 =====
+
+      /** 用策略参数做预过滤（条件1-4：涨跌幅、量比、换手、市值） */
+      function preFilterConds1to4(stocks: any[], strategies: ScreenRequest['strategies']): any[] {
+        // 从请求中提取 dt-filter 的参数
+        const dtCfg = strategies.find(s =>
+          s.pluginId === 'sclaw-dt-filter' || s.strategyId === 'dt-filter'
+        );
+        const p = dtCfg?.params || {};
+        const minChg = p.minChange ?? 3;
+        const maxChg = p.maxChange ?? 5;
+        const minVolRatio = p.minVolumeRatio ?? 1;
+        const minTr = p.minTurnover ?? 5;
+        const maxTr = p.maxTurnover ?? 10;
+        const minMcapYi = p.minMcap ?? 50;
+        const maxMcapYi = p.maxMcap ?? 300;
+
+        return stocks.filter(stock => {
+          const chg = stock.changePercent ?? 0;
+          if (chg < minChg || chg > maxChg) return false;
+          let vr = stock.volumeRatio ?? 0;
+          if (vr < 0.1 || vr > 1000) {
+            vr = (stock.volume && stock.avgVolume) ? stock.volume / stock.avgVolume : 0;
+          }
+          if (vr < minVolRatio) return false;
+          let tr = stock.turnoverRate ?? 0;
+          if (tr > 100) tr = tr / 100;
+          if (tr < minTr || tr > maxTr) return false;
+          const mcapYi = (stock.marketCap ?? 0) / 100000000;
+          if (mcapYi < minMcapYi || mcapYi > maxMcapYi) return false;
+          return true;
+        });
+      }
+
+      // 第1步：前4条件预过滤 → 一般缩到 < 100 只
+      const candidates = preFilterConds1to4(allStocks, request.strategies);
+
+      // 第2步：只对候选股做数据增强（涨停基因检测）→ 快！
+      if (candidates.length > 0) {
+        await enrichWithHistory(candidates);
+        // 把增强结果同步回全量数据（不满足前4条件的直接标记 false）
+        const enriched = new Map(candidates.map(s => [s.code, s]));
+        for (const stock of allStocks) {
+          stock.limitUpIn20Days = enriched.get(stock.code)?.limitUpIn20Days ?? false;
+        }
+      } else {
+        for (const stock of allStocks) stock.limitUpIn20Days = false;
+      }
+
+      console.log(`[API Screen] Pre-filter: ${allStocks.length} → ${candidates.length} candidates, enriched + merged`);
+
       // 执行策略
       const { results } = await strategyEngine.execute(allStocks, request);
 
@@ -115,8 +167,8 @@ export function createRoutes(
     const days = parseInt(req.query.days as string) || 120;
 
     try {
-      const kline = await dataFetcher.fetchKLine(code, market, days);
-      res.json({ code, market, data: kline });
+      const { data, meta } = await dataFetcher.fetchKLine(code, market, days);
+      res.json({ code, market, data, meta });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch K-line data', detail: String(err) });
     }

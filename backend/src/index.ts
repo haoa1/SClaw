@@ -40,6 +40,7 @@ import { createDataSyncRoutes } from "./routes/data-sync";
 
 // Garuda admin routes
 import { createGarudaRoutes } from "./routes/garuda";
+import { createTradeRoutes } from "./routes/trade";
 
 // Chat (for saving AI analysis results)
 import { saveMessages, loadMessages, chatUpdateNotify } from "./routes/chat";
@@ -67,6 +68,7 @@ import { registerGoalTool } from "./tools/goal-tools";
 import { WatchEngine } from "./watch-engine";
 import { registerManageWatchTool } from "./tools/manage-watch-tool";
 import { createWatchStreamRoutes } from "./routes/watch-stream";
+import { registerTradeTools } from "./tools/trade";
 
 // System prompt for AI agent
 const SYSTEM_PROMPT = `## Tool Overview
@@ -81,15 +83,20 @@ You have data, screen, strategy, risk, schedule, memory, file, skill, script, fu
 - watch(sub_cmd="stream") — Subscribe to real-time SSE alerts
 Supports cooldown dedup, per-stock state tracking, multi-condition (AND/OR) logic.
 
-## Safety
-- Never give financial advice ("buy this", "sell that"). This includes any statement that could be interpreted as a recommendation to buy, sell, or predict performance. Present data, let the user decide.
-- Never execute trades or pretend to.
-- You may express opinions about screening methods and data interpretations, but never about whether someone should buy, sell, or hold a security.
-- Your scope: screening stocks, analyzing risk, optimizing parameters. You don't manage accounts, handle personal holdings, or give tax/legal advice.
-- When a tool fails, state the problem and suggest next steps. Never apologize profusely.
-- Only use tools explicitly provided. Do not invent tool names or fabricate data.
-- screen(sub_cmd="run") is preferred for screening (it also pushes results to frontend).
 
+## Trade Tools (交易)
+- trade(sub_cmd="account") — 查询账户总资产、可用资金、持仓市值
+- trade(sub_cmd="positions") — 查询持仓列表
+- trade(sub_cmd="buy", code="600519", price=150.0, qty=100) — 买入股票（需用户确认）
+- trade(sub_cmd="sell", code="600519", price=155.0, qty=100) — 卖出股票（需用户确认）
+
+## Safety
+- Never give financial advice ("buy this", "sell that"). Present data, let the user decide.
+- **账户查询和持仓查询可以直接执行** — 用户问“查账户”“查持仓”时直接调用 trade(account) / trade(positions)，不需要额外确认。
+- **买入/卖出必须用户明确确认** — 用户说“帮我买/卖XXX”时，必须先展示详情让用户确认，确认后才调用 trade(buy/sell)。
+- Never fabricate data or invent tool names.
+- When a tool fails, state the problem and suggest next steps. Don't apologize profusely.
+- screen(sub_cmd="run") is preferred for screening (it also pushes results to frontend).
 ## Deep Analysis
 - run_deep_analysis(strategy_id?, limit?) \u2014 One-shot deep stock analysis. Runs screening, fetches K-line, pre-computes technical metrics. Use this when the user asks for \u6df1\u5ea6\u5206\u6790 / \u7f20\u8bba\u5206\u6790 / \u7b79\u7801\u5206\u6790 / 5\u6761\u4ef6\u505aT or any comprehensive stock analysis. After calling, analyze each stock's data to identify Chan Theory buy/sell signals and re-score.`;
 
@@ -166,6 +173,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     return getCurrentUserId();
   });
 
+  registerTradeTools(toolRegistry);
   // ===== Initialize agent manager =====
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir);
   // Override system prompt
@@ -345,6 +353,8 @@ ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.
   // Garuda admin routes (POST /api/admin/garuda/exec, GET /api/admin/garuda/health)
   const garudaRoutes = createGarudaRoutes();
   app.use(garudaRoutes);
+  const tradeRoutes = createTradeRoutes();
+  app.use(tradeRoutes);
 
   // Watch stream SSE route (GET /api/watch/stream)
   const watchStreamRoutes = createWatchStreamRoutes(watchEngine);

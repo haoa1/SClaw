@@ -119,7 +119,8 @@ export class LocalDBDataProvider implements BacktestDataProvider {
           const start = new Date(startDate);
           const end = new Date(endDate);
           const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-          const kline = await this.dataFetcher.fetchKLine(code, market, Math.max(days, 120));
+          const klineResult = await this.dataFetcher.fetchKLine(code, market, Math.max(days, 120));
+          const kline = klineResult.data;
           if (kline && kline.length > 0) {
             result.set(
               code,

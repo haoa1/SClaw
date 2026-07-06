@@ -26,35 +26,180 @@ export function getPluginManager(): PluginManager | null {
 
 const HISTORICAL_DIR = path.resolve(__dirname, '../../data/historical');
 const LIMIT_UP_THRESHOLD = 9.5; //涨停阈值（A股主板10%, 创业板/科创板20%, 用9.5作为通用阈值）
+const ENRICH_CONCURRENCY = 10; // 并发数
 
 /**
  * Check if a stock has had a limit-up (涨停) in the last N trading days.
- * Uses disk-cached historical K-line data. If no cache exists, returns false.
+ * Uses disk-cached historical K-line data. If no cache exists, returns null (unknown).
  */
-function checkLimitUpLastNDays(code: string, market: string, days: number = 20): boolean {
+function checkLimitUpFromCache(code: string, market: string, days: number = 20): boolean | null {
   const marketKey = market === 'SH' ? 'SH' : (market === 'BJ' ? 'BJ' : 'SZ');
   const cachePath = path.join(HISTORICAL_DIR, `${marketKey}_${code}.json`);
   
-  if (!fs.existsSync(cachePath)) return false;
+  if (!fs.existsSync(cachePath)) return null;
   
   try {
     const items: any[] = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
     const recent = items.slice(-days);
-    return recent.some(item => (item.changePct ?? 0) >= LIMIT_UP_THRESHOLD);
-  } catch {
+    // 60分钟K线数据，计算每日收盘涨跌幅
+    // 按日期分组，取每天最后一条的close作为收盘价
+    const dailyMap = new Map<string, number>();
+    for (const item of items) {
+      dailyMap.set(item.date, item.close ?? item.closePrice ?? 0);
+    }
+    // 如果有changePct字段直接用
+    if (items.length > 0 && 'changePct' in items[0]) {
+      return recent.some(item => (item.changePct ?? 0) >= LIMIT_UP_THRESHOLD);
+    }
+    // 否则从close序列计算涨跌幅
+    const closes = Array.from(dailyMap.values());
+    for (let i = 1; i < closes.length; i++) {
+      const pct = (closes[i] - closes[i - 1]) / closes[i - 1] * 100;
+      if (pct >= LIMIT_UP_THRESHOLD) return true;
+    }
     return false;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch K-line data for a single stock from Sina API and cache to disk.
+ * Returns true/false if the stock has had a limit-up in the last 20 trading days.
+ */
+async function fetchAndCheckLimitUp(code: string, market: string): Promise<boolean | null> {
+  const marketKey = market === 'SH' ? 'SH' : (market === 'BJ' ? 'BJ' : 'SZ');
+  const cachePath = path.join(HISTORICAL_DIR, `${marketKey}_${code}.json`);
+  
+  // Double-check cache (another concurrent request may have written it)
+  if (fs.existsSync(cachePath)) {
+    return checkLimitUpFromCache(code, market);
+  }
+  
+  try {
+    const symbol = market === 'SH' ? `sh${code}` : (market === 'BJ' ? `bj${code}` : `sz${code}`);
+    const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/OHLC.getKLineData?symbol=${symbol}&datalen=30&scale=60`;
+    
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    
+    if (!res.ok) return null;
+    
+    const data = await res.json() as Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>;
+    if (!Array.isArray(data) || data.length === 0) return null;
+    
+    // Calculate daily change percentage from close prices
+    let hasLimitUp = false;
+    const enriched = data.map((item, i, arr) => {
+      const changePct = i > 0 ? (item.close - arr[i - 1].close) / arr[i - 1].close * 100 : 0;
+      if (changePct >= LIMIT_UP_THRESHOLD) hasLimitUp = true;
+      return { ...item, changePct: Math.round(changePct * 100) / 100 };
+    });
+    
+    // Cache to disk
+    try {
+      fs.mkdirSync(HISTORICAL_DIR, { recursive: true });
+      fs.writeFileSync(cachePath, JSON.stringify(enriched));
+    } catch { /* ignore cache write errors */ }
+    
+    return hasLimitUp;
+  } catch {
+    return null; // fetch failed, unknown
   }
 }
 
 /**
  * Enrich stock data array with historical information (limit-up detection).
+ * Only fetches K-line data for stocks that don't have disk cache.
+ * Async: checks disk cache first (instant), falls back to Sina API (slow but cached).
  */
-function enrichWithHistory(stocks: any[]): void {
+export async function enrichWithHistory(stocks: any[]): Promise<void> {
+  // Phase 1: Check disk cache for all stocks (instant)
+  const uncached: Array<{ stock: any; code: string; market: string }> = [];
+  
   for (const stock of stocks) {
-    if (stock.code) {
-      (stock as any).limitUpIn20Days = checkLimitUpLastNDays(stock.code, stock.market || 'SZ', 20);
+    if (!stock.code) continue;
+    const cachedResult = checkLimitUpFromCache(stock.code, stock.market || 'SZ');
+    if (cachedResult !== null) {
+      stock.limitUpIn20Days = cachedResult;
+    } else {
+      uncached.push({ stock, code: stock.code, market: stock.market || 'SZ' });
     }
   }
+  
+  // Phase 2: Fetch uncached stocks with limited concurrency
+  if (uncached.length === 0) return;
+  
+  console.log(`[enrichWithHistory] Fetching K-line data for ${uncached.length} uncached stocks...`);
+  
+  let completed = 0;
+  
+  async function worker(startIdx: number): Promise<void> {
+    for (let i = startIdx; i < uncached.length; i += ENRICH_CONCURRENCY) {
+      const { stock, code, market } = uncached[i];
+      const hasLimitUp = await fetchAndCheckLimitUp(code, market);
+      stock.limitUpIn20Days = hasLimitUp === true;
+      completed++;
+      if (completed % 200 === 0) {
+        console.log(`[enrichWithHistory] ${completed}/${uncached.length} stocks processed`);
+      }
+    }
+  }
+  
+  const workers = Array.from({ length: ENRICH_CONCURRENCY }, (_, i) => worker(i));
+  await Promise.all(workers);
+  
+  console.log(`[enrichWithHistory] Completed: ${uncached.length} stocks enriched`);
+}
+
+/**
+ * Post-process screen results: check condition 5 (limit-up in 20 days).
+ * Only fetches K-line data for stocks that passed conditions 1-4 (typically < 100 stocks).
+ * This is MUCH more efficient than enriching all 5000+ stocks upfront.
+ */
+export async function filterResultsByLimitUp(
+  results: FilterResult[],
+  allStocks: StockData[]
+): Promise<FilterResult[]> {
+  // Build stock lookup by code
+  const stockMap = new Map<string, StockData>();
+  for (const s of allStocks) {
+    stockMap.set(s.code, s);
+  }
+  
+  const passed: FilterResult[] = [];
+  const failed: string[] = [];
+  
+  for (const r of results) {
+    const stock = stockMap.get(r.code);
+    if (!stock) { passed.push(r); continue; }
+    
+    const market = stock.market || 'SZ';
+    let hasLimitUp = checkLimitUpFromCache(r.code, market);
+    
+    if (hasLimitUp === null) {
+      // No cache, try fetching from API (with small concurrency, it's fine for <100 stocks)
+      hasLimitUp = await fetchAndCheckLimitUp(r.code, market);
+    }
+    
+    if (hasLimitUp === true) {
+      passed.push(r);
+    } else if (hasLimitUp === null) {
+      // API failed — fail open, keep the stock
+      passed.push(r);
+    } else {
+      // hasLimitUp === false — definitely no limit-up, filter out
+      failed.push(r.code);
+    }
+  }
+  
+  if (failed.length > 0) {
+    console.log(`[filterResultsByLimitUp] Filtered out ${failed.length}/${results.length} stocks (no limit-up in 20 days): ${failed.slice(0, 5).join(',')}...`);
+  }
+  
+  return passed;
 }
 
 // ===== Types =====
@@ -364,7 +509,7 @@ const multiStrategyFn = async (args: Record<string, unknown>): Promise<string> =
     const totalStocks = stocks.length;
 
     // Enrich with historical data (limit-up detection, etc.)
-    enrichWithHistory(stocks);
+    await enrichWithHistory(stocks);
 
     // Run all strategies in parallel (they're pure functions)
     const allResults = resolved.map(({ strategy, params }) => ({

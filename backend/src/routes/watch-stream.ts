@@ -1,7 +1,8 @@
 /**
- * Watch stream routes — SSE push for 盯盘 alerts.
+ * Watch routes — SSE push for 盯盘 alerts + REST API for task management.
  *
- * GET /api/watch-stream — SSE endpoint, pushes WatchAlert to authenticated clients.
+ * GET /api/watch-stream  — SSE endpoint, pushes WatchAlert to authenticated clients.
+ * GET /api/watch/tasks   — List the current user's watch tasks (for frontend display).
  */
 
 import { Router, Request, Response } from 'express';
@@ -11,6 +12,37 @@ import type { WatchAlert } from '../types';
 
 export function createWatchStreamRoutes(watchEngine: WatchEngine): Router {
   const router = Router();
+
+  /**
+   * GET /api/watch/tasks — List watch tasks for the authenticated user.
+   */
+  router.get('/api/watch/tasks', (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (req.query.token as string);
+    const session = validateSession(token);
+    if (!session) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const tasks = watchEngine.listTasks(session.userId);
+    // Return a sanitized view: expose task config but strip internal runtime state
+    const sanitized = tasks.map(t => ({
+      id: t.id,
+      label: t.label || null,
+      enabled: t.enabled,
+      interval: t.interval,
+      watchTargets: t.watchTargets,
+      conditions: t.conditions,
+      cooldownSeconds: t.cooldownSeconds,
+      alertChannels: t.alertChannels,
+      email: t.email || null,
+      createdAt: t.createdAt,
+      lastRun: t.lastRun || null,
+      lastAlert: t.lastAlert || null,
+    }));
+    res.json({ tasks: sanitized });
+  });
 
   /**
    * GET /api/watch-stream

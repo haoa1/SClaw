@@ -1,7 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import iconv from 'iconv-lite';
-import { StockData, KLineData } from '../types';
+import { StockData, KLineData, KLineMeta } from '../types';
+
+// ===== Local Database (direct SQLite for K-line) =====
+const DB_PATH = path.resolve(__dirname, '../../data/stock_history.db');
+const CACHE_FILE = path.resolve(__dirname, '../../data/stock_cache.json');
 
 /**
  * Tencent QQ 股票行情 API
@@ -33,8 +37,6 @@ import { StockData, KLineData } from '../types';
  *   [49] = 量比
  */
 
-// 缓存文件路径
-const CACHE_FILE = path.resolve(__dirname, '../../data/stock_cache.json');
 // 股票代码列表
 const STOCK_LIST_FILE = path.resolve(__dirname, '../../data/stock_list.json');
 
@@ -79,7 +81,7 @@ interface StockListItem {
 
 export class DataFetcher {
   private memoryCache: { stocks: StockData[] | null; timestamp: number } = { stocks: null, timestamp: 0 };
-  private readonly MEMORY_TTL = 300_000; // 5 min in-memory
+  private readonly MEMORY_TTL = 10_000;  // 10s (match stock-info CACHE_TTL)
   private refreshPromise: Promise<void> | null = null;
   private stockListPromise: Promise<StockListItem[]> | null = null;
 
@@ -111,31 +113,174 @@ export class DataFetcher {
     return this.memoryCache.stocks || [];
   }
 
-  /** 获取个股K线数据（新浪API，带重试） */
-  async fetchKLine(code: string, market: 'SH' | 'SZ', days: number = 120): Promise<KLineData[]> {
-    const symbol = market === 'SH' ? `sh${code}` : `sz${code}`;
-    const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/OHLC.getKLineData?symbol=${symbol}&datalen=${days}&scale=60`;
+  /**
+   * 获取个股K线数据（本地SQLite + 缓存补充）
+   * 返回 { data, meta } 结构，meta 包含数据来源、质量反馈和回滚告警
+   */
+  async fetchKLine(code: string, market: 'SH' | 'SZ', days: number = 120): Promise<{
+    data: KLineData[];
+    meta: KLineMeta;
+  }> {
+    const warnings: string[] = [];
+    const sources: KLineMeta['sources'] = [];
+    let allData: KLineData[] = [];
+    let usedFallback = false;
+
+    const endDate = new Date();
+    const todayStr = endDate.toISOString().slice(0, 10);
 
     try {
-      return await withRetry(async () => {
-        const res = await fetch(url, {
-          signal: AbortSignal.timeout(10000),
-          headers: { 'User-Agent': 'Mozilla/5.0' },
+      // Step 1: Query historical K-line from local SQLite database
+      const dbDays = days + 20;
+      const startDate = new Date(endDate.getTime() - dbDays * 24 * 60 * 60 * 1000);
+      const startStr = startDate.toISOString().slice(0, 10);
+
+      const dbRows = this.queryLocalKLine(code, startStr, todayStr);
+      allData = dbRows.map(r => ({
+        date: r.date, open: r.open, close: r.close,
+        high: r.high, low: r.low, volume: r.volume,
+      }));
+
+      if (dbRows.length > 0) {
+        sources.push({
+          source: 'sqlite_local',
+          count: dbRows.length,
+          range: `${dbRows[0].date} to ${dbRows[dbRows.length - 1].date}`,
         });
-        const data = await res.json() as Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>;
-        if (!data || !Array.isArray(data)) return [];
-        return data.map(item => ({
-          date: item.date,
-          open: item.open,
-          close: item.close,
-          high: item.high,
-          low: item.low,
-          volume: item.volume,
-        }));
-      }, 3, 1000, `KLine ${code}`);
+      }
+
+      // Step 2: Get today's data from stock_cache for the most recent day
+      const hasToday = allData.length > 0 && allData[allData.length - 1].date >= todayStr;
+      if (!hasToday) {
+        const todayData = this.getTodayFromCache(code);
+        if (todayData) {
+          allData.push(todayData);
+          sources.push({
+            source: 'stock_cache',
+            count: 1,
+            range: todayStr,
+          });
+        }
+      }
+
+      // Step 3: Sort and trim
+      allData.sort((a, b) => a.date.localeCompare(b.date));
+      allData = allData.slice(-days);
+
+      // --- Build warnings ---
+
+      // Check data completeness: DB data ended before cache period
+      if (dbRows.length > 0) {
+        const lastDbDate = dbRows[dbRows.length - 1].date;
+        const expectedEnd = todayStr;
+        if (lastDbDate < expectedEnd) {
+          warnings.push(`本地数据库仅包含至 ${lastDbDate} 的历史数据，缺失 ${expectedEnd} 前的最近交易日数据（已通过缓存补充）`);
+        }
+      }
+
+      // Check insufficient data
+      if (allData.length === 0) {
+        warnings.push(`没有获取到 ${code} 的任何K线数据`);
+      } else if (allData.length < Math.min(days, 20)) {
+        warnings.push(`数据不完整：仅 ${allData.length} 条，可能不足以计算技术指标`);
+      }
+
+      // Check for missing trading days (gap > 7 calendar days)
+      for (let i = 1; i < allData.length; i++) {
+        const gapDays = this.daysBetween(allData[i - 1].date, allData[i].date);
+        if (gapDays > 7) {
+          warnings.push(`数据不连续：${allData[i - 1].date} 至 ${allData[i].date} 之间有 ${gapDays} 天缺口`);
+        }
+      }
+
     } catch (err) {
-      console.error(`[DataFetcher] Failed to fetch KLine for ${code} after 3 retries:`, err);
-      throw new Error(`获取 ${code} K线数据失败（重试3次后）: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[DataFetcher] Failed to fetch KLine for ${code}:`, err);
+      usedFallback = true;
+
+      // Fallback: try to get whatever we can from cache
+      const todayData = this.getTodayFromCache(code);
+      if (todayData) {
+        allData = [todayData];
+        sources.push({ source: 'stock_cache', count: 1, range: todayStr });
+      }
+
+      warnings.push(`数据库查询异常，降级至缓存数据：${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Final warning if fallback was used
+    if (usedFallback) {
+      warnings.push('⚠️ 已触发降级：历史数据不可用，仅返回缓存数据');
+    }
+
+    // Build final meta
+    const from = allData.length > 0 ? allData[0].date : 'N/A';
+    const to = allData.length > 0 ? allData[allData.length - 1].date : 'N/A';
+
+    return {
+      data: allData,
+      meta: {
+        total: allData.length,
+        requested_days: days,
+        date_range: { from, to },
+        sources,
+        warnings,
+      },
+    };
+  }
+
+  /** 从本地 SQLite 查 K线数据 */
+  private queryLocalKLine(code: string, startDate: string, endDate: string): Array<{
+    date: string; open: number; high: number; low: number; close: number; volume: number;
+  }> {
+    try {
+      if (!fs.existsSync(DB_PATH)) {
+        console.warn(`[DataFetcher] DB not found: ${DB_PATH}`);
+        return [];
+      }
+      // Use better-sqlite3 for sync query (it's fast for indexed queries)
+      const Database = require('better-sqlite3');
+      const db = new Database(DB_PATH, { readonly: true });
+      try {
+        const rows = db.prepare(`
+          SELECT date, open, high, low, close, volume
+          FROM stock_daily
+          WHERE code = ? AND date >= ? AND date <= ?
+          ORDER BY date
+        `).all(code, startDate, endDate) as Array<{
+          date: string; open: number; high: number; low: number; close: number; volume: number;
+        }>;
+        return rows;
+      } finally {
+        db.close();
+      }
+    } catch (err) {
+      console.warn(`[DataFetcher] queryLocalKLine error for ${code}:`, err);
+      return [];
+    }
+  }
+
+  /** 从 stock_cache.json 获取今日K线（open/high/low/price -> close） */
+  private getTodayFromCache(code: string): KLineData | null {
+    try {
+      if (!fs.existsSync(CACHE_FILE)) return null;
+      const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')) as Array<{
+        code: string; open?: number; high?: number; low?: number; price: number; volume?: number;
+      }>;
+      const stock = cache.find(s => s.code === code);
+      if (!stock || !stock.price) return null;
+
+      const today = new Date().toISOString().slice(0, 10);
+      return {
+        date: today,
+        open: stock.open ?? stock.price,
+        high: stock.high ?? stock.price,
+        low: stock.low ?? stock.price,
+        close: stock.price,
+        volume: stock.volume ?? 0,
+      };
+    } catch (err) {
+      console.warn(`[DataFetcher] getTodayFromCache error for ${code}:`, err);
+      return null;
     }
   }
 
@@ -340,6 +485,13 @@ export class DataFetcher {
     if (val === undefined || val === '' || val === '-') return null;
     const n = parseFloat(val);
     return isNaN(n) ? null : n;
+  }
+
+  /** 计算两个日期之间的天数 */
+  private daysBetween(date1: string, date2: string): number {
+    const d1 = new Date(date1).getTime();
+    const d2 = new Date(date2).getTime();
+    return Math.round(Math.abs(d2 - d1) / (24 * 60 * 60 * 1000));
   }
 
   /** 根据代码前缀判断市场 */

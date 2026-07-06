@@ -11,6 +11,7 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 import type { WatchTask, WatchCondition, WatchAlert } from './types';
 import type { StockSnapshot } from './data/data-fetcher';
+import { sendEmail } from './email';
 
 // ===== Types =====
 
@@ -207,6 +208,40 @@ export class WatchEngine extends EventEmitter {
           this.deps.pushNotification(task.userId, {
             type: 'watch_alert',
             data: alert,
+          });
+        }
+
+        // Send email alert if configured
+        if (task.alertChannels?.email && task.email) {
+          const direction = quote.changePercent >= 0 ? '涨' : '跌';
+          const emailHtml = `
+<div style="background:#0a0a1a;color:#ccc;padding:20px;font-family:'PingFang SC','Helvetica Neue',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;">
+    <h2 style="color:#e0e0e0;margin:0 0 16px;font-size:18px;">🚨 盯盘预警</h2>
+    <div style="background:linear-gradient(135deg,#1a1a3e,#1a1a2e);border-radius:8px;border:1px solid #3a3a5e;padding:16px;margin-bottom:12px;">
+      <p style="margin:0 0 8px;font-size:16px;">
+        <strong style="color:#e0e0e0;">${quote.name}</strong>
+        <span style="color:#888;font-size:13px;">(${stock})</span>
+      </p>
+      <p style="margin:4px 0;font-size:14px;">
+        当前价：<span style="color:${quote.changePercent >= 0 ? '#f87171' : '#4ade80'};font-weight:bold;">¥${quote.price}</span>
+        <span style="margin-left:8px;color:${quote.changePercent >= 0 ? '#f87171' : '#4ade80'};">${direction}${Math.abs(quote.changePercent).toFixed(2)}%</span>
+      </p>
+      <p style="margin:4px 0;color:#aaa;font-size:13px;">量比：${(quote.volumeRatio || 0).toFixed(2)} | 换手：${(quote.turnoverRate || 0).toFixed(1)}%</p>
+      <p style="margin:12px 0 0;color:#a78bfa;font-size:13px;border-top:1px solid #2a2a4a;padding-top:8px;">${message}</p>
+    </div>
+    <p style="color:#666;font-size:11px;">由 股海盯盘 自动发送 • ${new Date(now).toLocaleString('zh-CN')}</p>
+  </div>
+</div>`;
+          sendEmail({
+            to: task.email,
+            subject: `🚨 ${quote.name}(${stock}) 盯盘预警`,
+            text: message,
+            html: emailHtml,
+          }).then(sent => {
+            if (sent) console.log(`[WatchEngine] Email alert sent to ${task.email} for ${stock}`);
+          }).catch(err => {
+            console.error(`[WatchEngine] Email send failed for ${stock}:`, err);
           });
         }
 

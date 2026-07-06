@@ -436,7 +436,12 @@ export class DataManager {
         .map(r => r.date)
     );
 
-    const allWeekdays = this.generateWeekdays(range.minDate, range.maxDate);
+    // 🌟 Extend to today so we can detect missing data after the last recorded date
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const effectiveEnd = todayStr > range.maxDate ? todayStr : range.maxDate;
+
+    const allWeekdays = this.generateWeekdays(range.minDate, effectiveEnd);
     const gaps = allWeekdays.filter(d => !existingDates.has(d));
 
     if (gaps.length > 0) {
