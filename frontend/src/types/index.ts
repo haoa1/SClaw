@@ -120,3 +120,34 @@ export interface QueueStatus {
   running: { id: string; label: string } | null;
   queued: Array<{ id: string; label: string }>;
 }
+
+// Watch task types (for frontend display)
+export interface WatchTaskSimple {
+  id: string;
+  label: string | null;
+  enabled: boolean;
+  interval: number;
+  watchTargets: string[];
+  conditions: Array<{
+    type: string;
+    direction?: string;
+    thresholdPercent?: number;
+    ratio?: number;
+    price?: number;
+    cross?: string;
+    period?: string;
+    operator?: string;
+    conditions?: any[];
+  }>;
+  cooldownSeconds: number;
+  alertChannels: { frontend: boolean; email: boolean; agent: boolean };
+  email: string | null;
+  createdAt: number;
+  lastRun: number | null;
+  lastAlert: {
+    timestamp: number;
+    stock: string;
+    conditionType: string;
+    message: string;
+  } | null;
+}

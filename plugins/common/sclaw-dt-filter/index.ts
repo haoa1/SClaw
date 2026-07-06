@@ -82,6 +82,7 @@ const plugin: StockScreenerPlugin = {
           const chg = item.changePercent ?? item.pctChg ?? 0;
           if (chg < minChg || chg > maxChg) continue;
           const hasLimitUp = item.limitUpIn20Days === true || item.hasLimitUp === true;
+          if (!hasLimitUp) continue; // 条件5：20日内有涨停基因（硬性要求）
           let volRatio = item.volumeRatio ?? 0;
           if (volRatio < 0.1 || volRatio > 1000) {
             if (item.volume && item.avgVolume) {

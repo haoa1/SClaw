@@ -145,4 +145,8 @@ export const api = {
 
   getLogs: (limit = 50) =>
     fetchJson<{ logs: LogEntry[] }>(`/user/logs?limit=${limit}`),
+
+  // Watch tasks
+  getWatchTasks: () =>
+    fetchJson<{ tasks: import('./types').WatchTaskSimple[] }>('/watch/tasks'),
 };
