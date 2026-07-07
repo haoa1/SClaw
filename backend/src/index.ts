@@ -42,6 +42,9 @@ import { createDataSyncRoutes } from "./routes/data-sync";
 import { createGarudaRoutes } from "./routes/garuda";
 import { createTradeRoutes } from "./routes/trade";
 
+// Trade routes (proxy to Garuda Trade Bridge on Mac:5001)
+import { createTradeRoutes } from "./routes/trade";
+
 // Chat (for saving AI analysis results)
 import { saveMessages, loadMessages, chatUpdateNotify } from "./routes/chat";
 
@@ -70,6 +73,9 @@ import { registerManageWatchTool } from "./tools/manage-watch-tool";
 import { createWatchStreamRoutes } from "./routes/watch-stream";
 import { registerTradeTools } from "./tools/trade";
 
+// Trade tools
+import { registerTradeTools } from "./tools/trade";
+
 // System prompt for AI agent
 const SYSTEM_PROMPT = `## Tool Overview
 You have data, screen, strategy, risk, schedule, memory, file, skill, script, fund, goal, and watch tools. Rely on the actual function definitions (below) for parameters and details.
@@ -82,7 +88,6 @@ You have data, screen, strategy, risk, schedule, memory, file, skill, script, fu
 - watch(sub_cmd="update") — Modify interval, conditions, or targets
 - watch(sub_cmd="stream") — Subscribe to real-time SSE alerts
 Supports cooldown dedup, per-stock state tracking, multi-condition (AND/OR) logic.
-
 
 ## Trade Tools (交易)
 - trade(sub_cmd="account") — 查询账户总资产、可用资金、持仓市值
@@ -172,6 +177,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     const { getCurrentUserId } = require("./request-context");
     return getCurrentUserId();
   });
+  registerTradeTools(toolRegistry);
 
   registerTradeTools(toolRegistry);
   // ===== Initialize agent manager =====
@@ -353,6 +359,10 @@ ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.
   // Garuda admin routes (POST /api/admin/garuda/exec, GET /api/admin/garuda/health)
   const garudaRoutes = createGarudaRoutes();
   app.use(garudaRoutes);
+  const tradeRoutes = createTradeRoutes();
+  app.use(tradeRoutes);
+
+  // Trade routes (proxy to Garuda Trade Bridge at 127.0.0.1:5001)
   const tradeRoutes = createTradeRoutes();
   app.use(tradeRoutes);
 
