@@ -75,7 +75,7 @@ function linkifyAnalysis(text: string): string {
 
 /** Build a beautiful re-scored results table (replaces the raw buildResultsTable) */
 function buildScreenResultsTable(results: FilterResult[], maxRows = 30): string {
-  if (!results || results.length === 0) return '<p style="color:#888;">无匹配结果</p>';
+  if (!results || results.length === 0) return '<p style="color:#aaa;">无匹配结果</p>';
   const top = results.slice(0, maxRows);
   let html = `
     <div style="overflow-x:auto;">
@@ -112,35 +112,35 @@ function buildScreenResultsTable(results: FilterResult[], maxRows = 30): string 
     // Signals summary
     const signalBadges = r.signals?.slice(0, 3).map(s => {
       const isGood = s.includes('✓') || s.includes('买点') || s.includes('背驰');
-      return `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;margin:1px 2px;background:${isGood ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.08)'};color:${isGood ? '#4ade80' : '#aaa'};">${s}</span>`;
+      return `<span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:13px;margin:1px 2px;background:${isGood ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.08)'};color:${isGood ? '#4ade80' : '#aaa'};">${s}</span>`;
     }).join('') || '';
 
     // Chan theory display
     let chanHtml = '';
     if (chanZhongshu > 0) {
-      chanHtml += `<span style="color:#a78bfa;font-size:11px;">中枢✓</span>`;
+      chanHtml += `<span style="color:#a78bfa;font-size:13px;">中枢✓</span>`;
     }
     if (chanBeichi > 0) {
-      chanHtml += `<span style="color:#4ade80;font-size:11px;margin-left:4px;">背驰✓</span>`;
+      chanHtml += `<span style="color:#4ade80;font-size:13px;margin-left:4px;">背驰✓</span>`;
     }
 
     html += `<tr style="background:${bg};">
-      <td style="border:1px solid #333;padding:6px 6px;text-align:center;color:#666;font-size:12px;">${i + 1}</td>
-      <td style="border:1px solid #333;padding:6px 6px;font-family:monospace;font-size:12px;">${stockLink(r.code)}</td>
-      <td style="border:1px solid #333;padding:6px 6px;color:#e0e0e0;font-size:13px;">${stockLink(r.code, r.name)}</td>
-      <td style="border:1px solid #333;padding:6px 6px;text-align:center;font-weight:bold;color:${scoreColor};">${r.score}</td>
-      <td style="border:1px solid #333;padding:6px 6px;text-align:right;color:${chg >= 0 ? '#f87171' : '#4ade80'};font-size:12px;">${typeof chg === 'number' ? (chg >= 0 ? '+' : '') + chg.toFixed(1) + '%' : '-'}</td>
-      <td style="border:1px solid #333;padding:6px 6px;text-align:right;font-size:12px;">${typeof volRatio === 'number' ? volRatio.toFixed(2) : '-'}</td>
-      <td style="border:1px solid #333;padding:6px 6px;text-align:right;font-size:12px;">${typeof tr === 'number' ? tr.toFixed(1) + '%' : '-'}</td>
-      <td style="border:1px solid #333;padding:6px 6px;text-align:right;font-size:12px;color:#888;">${typeof mcap === 'number' ? mcap.toFixed(0) + '亿' : '-'}</td>
-      <td style="border:1px solid #333;padding:6px 6px;font-size:11px;line-height:1.6;">${chanHtml || signalBadges || '<span style="color:#555;">-</span>'}</td>
+      <td style="border:1px solid #333;padding:8px;text-align:center;color:#999;font-size:14px;">${i + 1}</td>
+      <td style="border:1px solid #333;padding:8px;font-family:monospace;font-size:14px;">${stockLink(r.code)}</td>
+      <td style="border:1px solid #333;padding:8px;color:#e0e0e0;font-size:13px;">${stockLink(r.code, r.name)}</td>
+      <td style="border:1px solid #333;padding:8px;text-align:center;font-weight:bold;color:${scoreColor};">${r.score}</td>
+      <td style="border:1px solid #333;padding:8px;text-align:right;color:${chg >= 0 ? '#f87171' : '#4ade80'};font-size:14px;">${typeof chg === 'number' ? (chg >= 0 ? '+' : '') + chg.toFixed(1) + '%' : '-'}</td>
+      <td style="border:1px solid #333;padding:8px;text-align:right;font-size:14px;">${typeof volRatio === 'number' ? volRatio.toFixed(2) : '-'}</td>
+      <td style="border:1px solid #333;padding:8px;text-align:right;font-size:14px;">${typeof tr === 'number' ? tr.toFixed(1) + '%' : '-'}</td>
+      <td style="border:1px solid #333;padding:8px;text-align:right;font-size:14px;color:#aaa;">${typeof mcap === 'number' ? mcap.toFixed(0) + '亿' : '-'}</td>
+      <td style="border:1px solid #333;padding:8px;font-size:13px;line-height:1.6;">${chanHtml || signalBadges || '<span style="color:#555;">-</span>'}</td>
     </tr>`;
   }
 
   html += '</tbody></table></div>';
 
   if (results.length > maxRows) {
-    html += `<p style="color:#888;font-size:12px;margin-top:8px;">... 还有 ${results.length - maxRows} 只未显示</p>`;
+    html += `<p style="color:#aaa;font-size:14px;margin-top:8px;">... 还有 ${results.length - maxRows} 只未显示</p>`;
   }
 
   return html;
@@ -205,16 +205,16 @@ export async function sendBacktestReport(
   // Build trades table
   const topTrades = trades.slice(0, 20);
   const tradesTable = topTrades.length > 0 ? `
-    <table style="border-collapse:collapse;width:100%;font-size:12px;font-family:monospace;margin-top:12px;">
+    <table style="border-collapse:collapse;width:100%;font-size:14px;font-family:monospace;margin-top:12px;">
       <thead>
         <tr style="background:#1a1a2e;color:#e0e0e0;">
-          <th style="border:1px solid #333;padding:4px 8px;text-align:left;">日期</th>
-          <th style="border:1px solid #333;padding:4px 8px;text-align:left;">操作</th>
-          <th style="border:1px solid #333;padding:4px 8px;text-align:left;">代码</th>
-          <th style="border:1px solid #333;padding:4px 8px;text-align:left;">名称</th>
-          <th style="border:1px solid #333;padding:4px 8px;text-align:right;">价格</th>
-          <th style="border:1px solid #333;padding:4px 8px;text-align:right;">数量</th>
-          <th style="border:1px solid #333;padding:4px 8px;text-align:right;">金额</th>
+          <th style="border:1px solid #333;padding:6px 8px;text-align:left;">日期</th>
+          <th style="border:1px solid #333;padding:6px 8px;text-align:left;">操作</th>
+          <th style="border:1px solid #333;padding:6px 8px;text-align:left;">代码</th>
+          <th style="border:1px solid #333;padding:6px 8px;text-align:left;">名称</th>
+          <th style="border:1px solid #333;padding:6px 8px;text-align:right;">价格</th>
+          <th style="border:1px solid #333;padding:6px 8px;text-align:right;">数量</th>
+          <th style="border:1px solid #333;padding:6px 8px;text-align:right;">金额</th>
         </tr>
       </thead>
       <tbody>
@@ -222,19 +222,19 @@ export async function sendBacktestReport(
           const bg = i % 2 === 0 ? '#0d0d1a' : '#1a1a2e';
           const typeColor = t.type === 'buy' ? '#4ade80' : '#f87171';
           return `<tr style="background:${bg};color:#ccc;">
-            <td style="border:1px solid #333;padding:3px 8px;color:#888;">${t.date}</td>
-            <td style="border:1px solid #333;padding:3px 8px;color:${typeColor};">${t.type === 'buy' ? '买入' : '卖出'}</td>
-            <td style="border:1px solid #333;padding:3px 8px;">${t.code}</td>
-            <td style="border:1px solid #333;padding:3px 8px;color:#e0e0e0;">${t.name}</td>
-            <td style="border:1px solid #333;padding:3px 8px;text-align:right;">¥${t.price.toFixed(2)}</td>
-            <td style="border:1px solid #333;padding:3px 8px;text-align:right;">${t.shares.toLocaleString()}</td>
-            <td style="border:1px solid #333;padding:3px 8px;text-align:right;">¥${t.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+            <td style="border:1px solid #333;padding:5px 8px;color:#aaa;">${t.date}</td>
+            <td style="border:1px solid #333;padding:5px 8px;color:${typeColor};">${t.type === 'buy' ? '买入' : '卖出'}</td>
+            <td style="border:1px solid #333;padding:5px 8px;">${t.code}</td>
+            <td style="border:1px solid #333;padding:5px 8px;color:#e0e0e0;">${t.name}</td>
+            <td style="border:1px solid #333;padding:5px 8px;text-align:right;">¥${t.price.toFixed(2)}</td>
+            <td style="border:1px solid #333;padding:5px 8px;text-align:right;">${t.shares.toLocaleString()}</td>
+            <td style="border:1px solid #333;padding:5px 8px;text-align:right;">¥${t.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
           </tr>`;
         }).join('')}
       </tbody>
     </table>
-    ${trades.length > 20 ? `<p style="color:#888;font-size:11px;">... 还有 ${trades.length - 20} 笔交易未显示</p>` : ''}`
-    : '<p style="color:#888;">无交易记录</p>';
+    ${trades.length > 20 ? `<p style="color:#aaa;font-size:13px;">... 还有 ${trades.length - 20} 笔交易未显示</p>` : ''}`
+    : '<p style="color:#aaa;">无交易记录</p>';
 
   const html = `
     <div style="background:#0a0a1a;color:#ccc;padding:20px;font-family:sans-serif;">
@@ -242,38 +242,38 @@ export async function sendBacktestReport(
 
       <!-- Config Info -->
       <div style="margin-bottom:16px;padding:12px;background:#1a1a2e;border-radius:8px;border:1px solid #333;">
-        <p style="margin:4px 0;"><strong style="color:#888;">时间：</strong>${dateStr}</p>
-        <p style="margin:4px 0;"><strong style="color:#888;">策略：</strong>${strategyNames.join('、')}</p>
-        <p style="margin:4px 0;"><strong style="color:#888;">期间：</strong>${config.startDate} → ${config.endDate}</p>
-        <p style="margin:4px 0;"><strong style="color:#888;">再平衡：</strong>${config.rebalanceFrequency} | <strong style="color:#888;">基准：</strong>${config.benchmark}</p>
-        <p style="margin:4px 0;"><strong style="color:#888;">初始资金：</strong>¥${config.initialCapital.toLocaleString()}</p>
-        ${config.stopLoss !== undefined ? `<p style="margin:4px 0;"><strong style="color:#888;">止损：</strong>${config.stopLoss}%${config.takeProfit !== undefined ? ` | <strong style="color:#888;">止盈：</strong>${config.takeProfit}%` : ''}</p>` : ''}
+        <p style="margin:4px 0;"><strong style="color:#aaa;">时间：</strong>${dateStr}</p>
+        <p style="margin:4px 0;"><strong style="color:#aaa;">策略：</strong>${strategyNames.join('、')}</p>
+        <p style="margin:4px 0;"><strong style="color:#aaa;">期间：</strong>${config.startDate} → ${config.endDate}</p>
+        <p style="margin:4px 0;"><strong style="color:#aaa;">再平衡：</strong>${config.rebalanceFrequency} | <strong style="color:#aaa;">基准：</strong>${config.benchmark}</p>
+        <p style="margin:4px 0;"><strong style="color:#aaa;">初始资金：</strong>¥${config.initialCapital.toLocaleString()}</p>
+        ${config.stopLoss !== undefined ? `<p style="margin:4px 0;"><strong style="color:#aaa;">止损：</strong>${config.stopLoss}%${config.takeProfit !== undefined ? ` | <strong style="color:#aaa;">止盈：</strong>${config.takeProfit}%` : ''}</p>` : ''}
       </div>
 
       <!-- Summary Metrics -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
         <div style="background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:10px;text-align:center;">
-          <div style="color:#888;font-size:11px;">总收益率</div>
+          <div style="color:#aaa;font-size:13px;">总收益率</div>
           <div style="font-size:20px;font-weight:bold;color:${summary.totalReturn >= 0 ? '#4ade80' : '#f87171'};">${summary.totalReturn >= 0 ? '+' : ''}${summary.totalReturn.toFixed(2)}%</div>
         </div>
         <div style="background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:10px;text-align:center;">
-          <div style="color:#888;font-size:11px;">年化收益</div>
+          <div style="color:#aaa;font-size:13px;">年化收益</div>
           <div style="font-size:20px;font-weight:bold;color:${summary.annualizedReturn >= 0 ? '#4ade80' : '#f87171'};">${summary.annualizedReturn >= 0 ? '+' : ''}${summary.annualizedReturn.toFixed(2)}%</div>
         </div>
         <div style="background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:10px;text-align:center;">
-          <div style="color:#888;font-size:11px;">最大回撤</div>
+          <div style="color:#aaa;font-size:13px;">最大回撤</div>
           <div style="font-size:20px;font-weight:bold;color:#f87171;">${summary.maxDrawdown.toFixed(2)}%</div>
         </div>
         <div style="background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:10px;text-align:center;">
-          <div style="color:#888;font-size:11px;">Sharpe</div>
+          <div style="color:#aaa;font-size:13px;">Sharpe</div>
           <div style="font-size:20px;font-weight:bold;color:${summary.sharpeRatio >= 1 ? '#4ade80' : '#facc15'};">${summary.sharpeRatio.toFixed(2)}</div>
         </div>
         <div style="background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:10px;text-align:center;">
-          <div style="color:#888;font-size:11px;">胜率</div>
+          <div style="color:#aaa;font-size:13px;">胜率</div>
           <div style="font-size:20px;font-weight:bold;">${summary.winRate.toFixed(1)}%</div>
         </div>
         <div style="background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:10px;text-align:center;">
-          <div style="color:#888;font-size:11px;">交易次数</div>
+          <div style="color:#aaa;font-size:13px;">交易次数</div>
           <div style="font-size:20px;font-weight:bold;">${summary.totalTrades}</div>
         </div>
       </div>
@@ -281,19 +281,19 @@ export async function sendBacktestReport(
       <!-- Benchmark Comparison -->
       ${summary.benchmarkReturn !== undefined ? `
       <div style="margin-bottom:16px;padding:12px;background:#1a1a2e;border-radius:8px;border:1px solid #333;">
-        <p style="margin:4px 0;"><strong style="color:#888;">最终资金：</strong>¥${summary.finalCapital.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-        <p style="margin:4px 0;"><strong style="color:#888;">基准收益率：</strong><span style="color:${summary.benchmarkReturn >= 0 ? '#4ade80' : '#f87171'};">${summary.benchmarkReturn >= 0 ? '+' : ''}${summary.benchmarkReturn.toFixed(2)}%</span></p>
-        ${excessReturn !== null ? `<p style="margin:4px 0;"><strong style="color:#888;">超额收益：</strong><span style="color:${excessReturn >= 0 ? '#4ade80' : '#f87171'};">${excessReturn >= 0 ? '+' : ''}${excessReturn.toFixed(2)}%</span></p>` : ''}
+        <p style="margin:4px 0;"><strong style="color:#aaa;">最终资金：</strong>¥${summary.finalCapital.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+        <p style="margin:4px 0;"><strong style="color:#aaa;">基准收益率：</strong><span style="color:${summary.benchmarkReturn >= 0 ? '#4ade80' : '#f87171'};">${summary.benchmarkReturn >= 0 ? '+' : ''}${summary.benchmarkReturn.toFixed(2)}%</span></p>
+        ${excessReturn !== null ? `<p style="margin:4px 0;"><strong style="color:#aaa;">超额收益：</strong><span style="color:${excessReturn >= 0 ? '#4ade80' : '#f87171'};">${excessReturn >= 0 ? '+' : ''}${excessReturn.toFixed(2)}%</span></p>` : ''}
       </div>` : `
       <div style="margin-bottom:16px;padding:12px;background:#1a1a2e;border-radius:8px;border:1px solid #333;">
-        <p style="margin:4px 0;"><strong style="color:#888;">最终资金：</strong>¥${summary.finalCapital.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+        <p style="margin:4px 0;"><strong style="color:#aaa;">最终资金：</strong>¥${summary.finalCapital.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
       </div>`}
 
       <!-- Trades Table -->
       <h3 style="color:#e0e0e0;font-size:14px;margin:16px 0 8px;">交易明细 (${trades.length})</h3>
       ${tradesTable}
 
-      <p style="color:#555;font-size:11px;margin-top:16px;">由 股海操盘手 定时回测任务自动发送</p>
+      <p style="color:#555;font-size:13px;margin-top:16px;">由 股海操盘手 定时回测任务自动发送</p>
     </div>
   `;
 
@@ -316,35 +316,35 @@ export async function sendScreenReport(
     <div style="margin-bottom:16px;padding:16px;background:linear-gradient(135deg,#1a1a3e,#1a1a2e);border-radius:8px;border:1px solid #3a3a5e;">
       <h3 style="color:#a78bfa;margin:0 0 10px 0;font-size:15px;">🤖 AI 分析报告</h3>
       <div style="color:#ddd;line-height:1.8;font-size:14px;">${linkifyAnalysis(agentAnalysis.replace(/\n/g, '<br>'))}</div>
-      <p style="color:#6b6b8a;font-size:11px;margin:10px 0 0;border-top:1px solid #2a2a4a;padding-top:8px;">💡 点击股票代码查看东方财富详情页</p>
+      <p style="color:#6b6b8a;font-size:13px;margin:10px 0 0;border-top:1px solid #2a2a4a;padding-top:8px;">💡 点击股票代码查看东方财富详情页</p>
     </div>` : '';
   const html = `
     <div style="background:#0a0a1a;color:#ccc;padding:20px;font-family:'PingFang SC','Helvetica Neue',sans-serif;">
       <div style="max-width:680px;margin:0 auto;">
       <div style="text-align:center;padding:20px 0 16px;border-bottom:1px solid #1a1a2e;margin-bottom:16px;">
         <h1 style="color:#e0e0e0;margin:0;font-size:18px;font-weight:600;">📊 定时选股报告</h1>
-        <p style="color:#666;margin:4px 0 0;font-size:12px;">${dateStr}</p>
+        <p style="color:#999;margin:4px 0 0;font-size:14px;">${dateStr}</p>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
         <div style="flex:1;min-width:120px;padding:10px 14px;background:#1a1a2e;border-radius:8px;border:1px solid #333;text-align:center;">
-          <div style="color:#888;font-size:11px;">📈 策略</div>
+          <div style="color:#aaa;font-size:13px;">📈 策略</div>
           <div style="color:#e0e0e0;font-size:13px;font-weight:500;margin-top:2px;">${strategyNames.join('、')}</div>
         </div>
         <div style="flex:1;min-width:80px;padding:10px 14px;background:#1a1a2e;border-radius:8px;border:1px solid #333;text-align:center;">
-          <div style="color:#888;font-size:11px;">📊 扫描范围</div>
+          <div style="color:#aaa;font-size:13px;">📊 扫描范围</div>
           <div style="color:#e0e0e0;font-size:13px;font-weight:500;margin-top:2px;">${stats.totalStocks.toLocaleString()} 只</div>
         </div>
         <div style="flex:1;min-width:80px;padding:10px 14px;background:linear-gradient(135deg,#1a1a3e,#1a2a2e);border-radius:8px;border:1px solid #3a3a5e;text-align:center;">
-          <div style="color:#888;font-size:11px;">🎯 命中</div>
+          <div style="color:#aaa;font-size:13px;">🎯 命中</div>
           <div style="color:#60a5fa;font-size:20px;font-weight:bold;margin-top:2px;">${stats.matchedStocks.toLocaleString()}</div>
         </div>
       </div>
       ${analysisHtml}
       <div style="margin-bottom:8px;">
-        <h3 style="color:#e0e0e0;font-size:14px;margin:0;">🏆 精选榜单 <span style="color:#666;font-weight:400;font-size:12px;">（综合评分排名）</span></h3>
+        <h3 style="color:#e0e0e0;font-size:14px;margin:0;">🏆 精选榜单 <span style="color:#999;font-weight:400;font-size:14px;">（综合评分排名）</span></h3>
       </div>
       ${buildScreenResultsTable(results)}
-      <p style="color:#555;font-size:11px;margin-top:16px;text-align:center;border-top:1px solid #1a1a2e;padding-top:12px;">由 股海操盘手 定时任务自动发送 · 点击代码查看东方财富详情</p>
+      <p style="color:#555;font-size:13px;margin-top:16px;text-align:center;border-top:1px solid #1a1a2e;padding-top:12px;">由 股海操盘手 定时任务自动发送 · 点击代码查看东方财富详情</p>
       </div>
     </div>
   `;

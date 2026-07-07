@@ -70,21 +70,27 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
     const rawData = rawResult.data;
     if (!rawData || rawData.length === 0) return `ℹ️ No historical data found for ${code} (${market})`;
 
-    // Log data source feedback to console
-    if (rawResult.meta.warnings.length > 0) {
-      console.log(`[KLine ${code}] ${rawResult.meta.warnings.join('; ')}`);
+    // Build data quality note from meta, surfaced to the AI agent
+    const meta = rawResult.meta;
+    const sourceNames = meta.sources.map(s => `${s.source}(${s.count}条)`).join(', ');
+    let qualityNote = '';
+    if (meta.warnings.length > 0) {
+      qualityNote = `\n\n📋 **数据质量说明:** ${meta.warnings.join('; ')}`;
+    }
+    if (meta.sources.length > 0) {
+      qualityNote += `\n📦 **数据来源:** ${sourceNames}`;
     }
 
     // 用 Tencent 快照补充最新价（可选）
     // 先 enrich 计算 changePct
     const data = enrichKLineData(rawData);
 
-    if (format === 'json') return JSON.stringify({ code, market, days: data.length, data });
+    if (format === 'json') return JSON.stringify({ code, market, days: data.length, data, meta_warnings: meta.warnings, meta_sources: meta.sources });
     if (format === 'compact') {
       const lines = data.map(d =>
         `${d.date} O:${d.open.toFixed(2)} H:${d.high.toFixed(2)} L:${d.low.toFixed(2)} C:${d.close.toFixed(2)} V:${d.volume}`
       );
-      return `📊 ${code} (${market}) — ${data.length} trading days\n\n${lines.join('\n')}`;
+      return `📊 ${code} (${market}) — ${data.length} trading days\n\n${lines.join('\n')}${qualityNote}`;
     }
 
     // Default: table format
@@ -112,6 +118,7 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
       ``,
       header, sep, ...lines,
       data.length > 60 ? `\n... 还有 ${data.length - 60} 天数据未显示（共 ${data.length} 天），设 format=compact 或 format=json 查看全部` : '',
+      qualityNote,
     ].filter(Boolean).join('\n');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

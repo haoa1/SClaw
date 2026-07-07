@@ -149,7 +149,37 @@ export class DataFetcher {
         });
       }
 
-      // Step 2: Get today's data from stock_cache for the most recent day
+      // Step 2: If SQLite data has a gap or insufficient data, fetch from Tencent online API
+      // This fills the missing periods (like 5月-6月 gap) with forward-adjusted prices
+      const lastDbDate = dbRows.length > 0 ? dbRows[dbRows.length - 1].date : '';
+      const needsOnline = allData.length < Math.min(days, 20) || 
+        (lastDbDate && this.daysBetween(lastDbDate, todayStr) > 7);
+      
+      if (needsOnline) {
+        const onlineDays = days + 30; // Fetch extra for coverage
+        const onlineData = await this.fetchOnlineKLine(code, market, onlineDays);
+        
+        if (onlineData.length > 0) {
+          // Track online data count (all of it, since it's forward-adjusted and more reliable)
+          sources.push({
+            source: 'tencent_online',
+            count: onlineData.length,
+            range: `${onlineData[0].date} to ${onlineData[onlineData.length - 1].date}`,
+          });
+          
+          // Online data (forward-adjusted) takes priority over local SQLite.
+          // Merge: start with online data, then add SQLite-only dates that online didn't cover.
+          const onlineDates = new Set(onlineData.map(d => d.date));
+          const sqliteOnly = allData.filter(d => !onlineDates.has(d.date));
+          
+          allData = [...onlineData, ...sqliteOnly];
+          console.log(`[DataFetcher] fetchKLine: using ${onlineData.length} online + ${sqliteOnly.length} SQLite-only entries for ${code}`);
+        } else {
+          console.warn(`[DataFetcher] fetchKLine: online API returned no data for ${code}`);
+        }
+      }
+
+      // Step 3: Get today's data from stock_cache for the most recent day
       const hasToday = allData.length > 0 && allData[allData.length - 1].date >= todayStr;
       if (!hasToday) {
         const todayData = this.getTodayFromCache(code);
@@ -163,18 +193,29 @@ export class DataFetcher {
         }
       }
 
-      // Step 3: Sort and trim
+      // Step 4: Sort, deduplicate (keep last entry per date), and trim
+      // Dedup: if same date has entries from multiple sources, keep the last one (online/cache > SQLite)
+      const dateMap = new Map<string, KLineData>();
+      // Sort first, then iterate to keep last entry per date
       allData.sort((a, b) => a.date.localeCompare(b.date));
+      for (const d of allData) dateMap.set(d.date, d);
+      allData = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
       allData = allData.slice(-days);
 
       // --- Build warnings ---
 
-      // Check data completeness: DB data ended before cache period
+      // Check data completeness
+      const hasOnlineSource = sources.some(s => s.source === 'tencent_online');
+      
       if (dbRows.length > 0) {
         const lastDbDate = dbRows[dbRows.length - 1].date;
         const expectedEnd = todayStr;
         if (lastDbDate < expectedEnd) {
-          warnings.push(`本地数据库仅包含至 ${lastDbDate} 的历史数据，缺失 ${expectedEnd} 前的最近交易日数据（已通过缓存补充）`);
+          if (hasOnlineSource) {
+            warnings.push(`本地数据库仅包含至 ${lastDbDate} 的历史数据，已通过腾讯在线API补充${todayStr}前的缺失数据（前复权）`);
+          } else {
+            warnings.push(`本地数据库仅包含至 ${lastDbDate} 的历史数据，缺失 ${expectedEnd} 前的最近交易日数据（已通过缓存补充）`);
+          }
         }
       }
 
@@ -186,10 +227,13 @@ export class DataFetcher {
       }
 
       // Check for missing trading days (gap > 7 calendar days)
-      for (let i = 1; i < allData.length; i++) {
-        const gapDays = this.daysBetween(allData[i - 1].date, allData[i].date);
-        if (gapDays > 7) {
-          warnings.push(`数据不连续：${allData[i - 1].date} 至 ${allData[i].date} 之间有 ${gapDays} 天缺口`);
+      // Skip if we used online source (it should have filled the gaps)
+      if (!hasOnlineSource) {
+        for (let i = 1; i < allData.length; i++) {
+          const gapDays = this.daysBetween(allData[i - 1].date, allData[i].date);
+          if (gapDays > 7) {
+            warnings.push(`数据不连续：${allData[i - 1].date} 至 ${allData[i].date} 之间有 ${gapDays} 天缺口`);
+          }
         }
       }
 
@@ -255,6 +299,53 @@ export class DataFetcher {
       }
     } catch (err) {
       console.warn(`[DataFetcher] queryLocalKLine error for ${code}:`, err);
+      return [];
+    }
+  }
+
+  /**
+   * 从腾讯在线API获取前复权日K线数据
+   * https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sz000001,day,,,365,qfq
+   * 返回格式: [date, open, close, high, low, volume]
+   * 所有价格为前复权（forward-adjusted），解决除权除息数据偏差问题
+   */
+  private async fetchOnlineKLine(code: string, market: 'SH' | 'SZ', days: number): Promise<KLineData[]> {
+    try {
+      const symbol = market === 'SH' ? 'sh' + code : 'sz' + code;
+      const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${days},qfq`;
+      
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        const text = await res.text();
+        if (!text || text.startsWith('<')) {
+          console.warn(`[DataFetcher] fetchOnlineKLine: HTML response for ${code}`);
+          return [];
+        }
+        const j = JSON.parse(text);
+        const stockData = j?.data?.[symbol] || {};
+        // qfqday = 前复权日K, 优先使用
+        const dayData: any[][] = stockData.qfqday || stockData.day || [];
+        if (!Array.isArray(dayData) || dayData.length === 0) return [];
+        
+        return dayData.map((row: any[]) => ({
+          date: String(row[0]),
+          open: parseFloat(row[1]) || 0,
+          close: parseFloat(row[2]) || 0,
+          high: parseFloat(row[3]) || 0,
+          low: parseFloat(row[4]) || 0,
+          volume: parseFloat(row[5]) || 0,
+        })).filter(d => d.date && d.close > 0);
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      console.warn(`[DataFetcher] fetchOnlineKLine error for ${code}:`, err);
       return [];
     }
   }
