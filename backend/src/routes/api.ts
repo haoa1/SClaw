@@ -163,7 +163,7 @@ export function createRoutes(
   /** 获取个股K线数据 */
   router.get('/api/stock/:code/kline', async (req: Request, res: Response) => {
     const { code } = req.params;
-    const market = (req.query.market as 'SH' | 'SZ') || 'SH';
+    const market = (req.query.market as 'SH' | 'SZ' | 'BJ') || 'SH';
     const days = parseInt(req.query.days as string) || 120;
 
     try {

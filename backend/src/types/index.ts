@@ -89,7 +89,7 @@ export interface KLineMeta {
 /** KLine API response with optional rollback feedback */
 export interface KLineResponse {
   code: string;
-  market: 'SH' | 'SZ';
+  market: 'SH' | 'SZ' | 'BJ';
   data: KLineData[];
   meta: KLineMeta;
 }

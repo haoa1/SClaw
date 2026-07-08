@@ -33,13 +33,13 @@ function enrichKLineData(data: Array<{ date: string; open: number; high: number;
     return {
       ...d,
       changePct: parseFloat(changePct.toFixed(2)),
-      amount: 0,          // Sina API 不提供成交额
-      turnoverRate: 0,    // Sina API 不提供换手率
+      amount: 0,          // Tencent API 不提供成交额
+      turnoverRate: 0,    // Tencent API 不提供换手率
     };
   });
 }
 
-// ===== Historical K-line fetch (Sina API + retry, no Tushare) =====
+// ===== Historical K-line fetch (Tencent API + retry, no Tushare) =====
 
 const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
   const code = (args.code as string || "").trim();
@@ -56,15 +56,12 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
     else market = 'SZ';
   }
 
-  // BJ 暂不支持 K 线，退回 SH/SZ
-  if (market === 'BJ') market = 'SH';
-
   const days = Math.min(Math.max(1, (args.days as number) || 120), 1000);
   const format = (args.format as string || 'table').toLowerCase();
 
   try {
     const rawResult = await withRetry(
-      () => fetcher.fetchKLine(code, market as 'SH' | 'SZ', days),
+      () => fetcher.fetchKLine(code, market, days),
       3, 1000, `History ${code}`
     );
     const rawData = rawResult.data;

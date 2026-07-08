@@ -5,7 +5,7 @@ import { StockData, KLineData, KLineMeta } from '../types';
 
 // ===== Local Database (direct SQLite for K-line) =====
 const DB_PATH = path.resolve(__dirname, '../../data/stock_history.db');
-const CACHE_FILE = path.resolve(__dirname, '../../data/stock_cache.json');
+// 磁盘缓存已移除：用户需要实时数据，直接走网络刷新
 
 /**
  * Tencent QQ 股票行情 API
@@ -80,44 +80,37 @@ interface StockListItem {
 }
 
 export class DataFetcher {
-  private memoryCache: { stocks: StockData[] | null; timestamp: number } = { stocks: null, timestamp: 0 };
-  private readonly MEMORY_TTL = 10_000;  // 10s (match stock-info CACHE_TTL)
-  private refreshPromise: Promise<void> | null = null;
+  // 个股循环缓存（最大 20 条，10s TTL）
+  private quotesCache: Map<string, { data: StockSnapshot; timestamp: number }> = new Map();
+  private cacheOrder: string[] = [];
+  private static readonly CACHE_MAX = 20;
+  private static readonly CACHE_TTL = 10_000;  // 10s
+
+  // fetchAllStocks 请求去重（避免并发重复请求，但不缓存结果）
+  private fetchAllPromise: Promise<StockData[]> | null = null;
   private stockListPromise: Promise<StockListItem[]> | null = null;
 
   // ===== Public API =====
 
-  /** 获取全市场数据：从内存 → 磁盘 → 网络刷新（后台） */
+  /** 获取全市场数据：每次实时从网络拉取，不做缓存 */
   async fetchAllStocks(markets: ('SH' | 'SZ' | 'BJ')[] = ['SH', 'SZ', 'BJ']): Promise<StockData[]> {
-    // 1. 内存缓存
-    if (this.memoryCache.stocks && (Date.now() - this.memoryCache.timestamp) < this.MEMORY_TTL) {
-      return this.memoryCache.stocks;
+    // 请求去重：同一时间多个并发请求共享一次网络拉取
+    if (this.fetchAllPromise) {
+      return await this.fetchAllPromise;
     }
-
-    // 2. 磁盘缓存
-    if (!this.memoryCache.stocks) {
-      const loaded = this.loadFromDisk();
-      if (loaded) {
-        this.memoryCache = { stocks: loaded, timestamp: Date.now() };
-      }
+    this.fetchAllPromise = this.refreshFromNetwork(markets);
+    try {
+      return await this.fetchAllPromise;
+    } finally {
+      this.fetchAllPromise = null;
     }
-
-    // 有缓存就先返回，后台刷新
-    if (this.memoryCache.stocks) {
-      this.refreshInBackground(markets);
-      return this.memoryCache.stocks;
-    }
-
-    // 3. 首次启动，同步等待网络拉取
-    await this.refreshFromNetwork(markets);
-    return this.memoryCache.stocks || [];
   }
 
   /**
    * 获取个股K线数据（本地SQLite + 缓存补充）
    * 返回 { data, meta } 结构，meta 包含数据来源、质量反馈和回滚告警
    */
-  async fetchKLine(code: string, market: 'SH' | 'SZ', days: number = 120): Promise<{
+  async fetchKLine(code: string, market: 'SH' | 'SZ' | 'BJ', days: number = 120): Promise<{
     data: KLineData[];
     meta: KLineMeta;
   }> {
@@ -157,43 +150,29 @@ export class DataFetcher {
       
       if (needsOnline) {
         const onlineDays = days + 30; // Fetch extra for coverage
-        const onlineData = await this.fetchOnlineKLine(code, market, onlineDays);
+        const { data: onlineData, source: onlineSource } = await this.fetchOnlineKLine(code, market, onlineDays);
         
         if (onlineData.length > 0) {
-          // Track online data count (all of it, since it's forward-adjusted and more reliable)
+          // Track online data count (dynamic source label: tencent_online or sina_online)
           sources.push({
-            source: 'tencent_online',
+            source: onlineSource,
             count: onlineData.length,
             range: `${onlineData[0].date} to ${onlineData[onlineData.length - 1].date}`,
           });
           
-          // Online data (forward-adjusted) takes priority over local SQLite.
+          // Online data takes priority over local SQLite.
           // Merge: start with online data, then add SQLite-only dates that online didn't cover.
           const onlineDates = new Set(onlineData.map(d => d.date));
           const sqliteOnly = allData.filter(d => !onlineDates.has(d.date));
           
           allData = [...onlineData, ...sqliteOnly];
-          console.log(`[DataFetcher] fetchKLine: using ${onlineData.length} online + ${sqliteOnly.length} SQLite-only entries for ${code}`);
+          console.log(`[DataFetcher] fetchKLine: using ${onlineData.length} ${onlineSource} + ${sqliteOnly.length} SQLite-only entries for ${code}`);
         } else {
           console.warn(`[DataFetcher] fetchKLine: online API returned no data for ${code}`);
         }
       }
 
-      // Step 3: Get today's data from stock_cache for the most recent day
-      const hasToday = allData.length > 0 && allData[allData.length - 1].date >= todayStr;
-      if (!hasToday) {
-        const todayData = this.getTodayFromCache(code);
-        if (todayData) {
-          allData.push(todayData);
-          sources.push({
-            source: 'stock_cache',
-            count: 1,
-            range: todayStr,
-          });
-        }
-      }
-
-      // Step 4: Sort, deduplicate (keep last entry per date), and trim
+      // Step 3: Sort, deduplicate (keep last entry per date), and trim
       // Dedup: if same date has entries from multiple sources, keep the last one (online/cache > SQLite)
       const dateMap = new Map<string, KLineData>();
       // Sort first, then iterate to keep last entry per date
@@ -205,14 +184,14 @@ export class DataFetcher {
       // --- Build warnings ---
 
       // Check data completeness
-      const hasOnlineSource = sources.some(s => s.source === 'tencent_online');
+      const hasOnlineSource = sources.some(s => s.source === 'tencent_online' || s.source === 'sina_online');
       
       if (dbRows.length > 0) {
         const lastDbDate = dbRows[dbRows.length - 1].date;
         const expectedEnd = todayStr;
         if (lastDbDate < expectedEnd) {
           if (hasOnlineSource) {
-            warnings.push(`本地数据库仅包含至 ${lastDbDate} 的历史数据，已通过腾讯在线API补充${todayStr}前的缺失数据（前复权）`);
+            warnings.push(`本地数据库仅包含至 ${lastDbDate} 的历史数据，已通过在线API补充${todayStr}前的缺失数据`);
           } else {
             warnings.push(`本地数据库仅包含至 ${lastDbDate} 的历史数据，缺失 ${expectedEnd} 前的最近交易日数据（已通过缓存补充）`);
           }
@@ -241,14 +220,7 @@ export class DataFetcher {
       console.error(`[DataFetcher] Failed to fetch KLine for ${code}:`, err);
       usedFallback = true;
 
-      // Fallback: try to get whatever we can from cache
-      const todayData = this.getTodayFromCache(code);
-      if (todayData) {
-        allData = [todayData];
-        sources.push({ source: 'stock_cache', count: 1, range: todayStr });
-      }
-
-      warnings.push(`数据库查询异常，降级至缓存数据：${err instanceof Error ? err.message : String(err)}`);
+      warnings.push(`数据库查询异常：${err instanceof Error ? err.message : String(err)}`);
     }
 
     // Final warning if fallback was used
@@ -304,14 +276,36 @@ export class DataFetcher {
   }
 
   /**
-   * 从腾讯在线API获取前复权日K线数据
-   * https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sz000001,day,,,365,qfq
-   * 返回格式: [date, open, close, high, low, volume]
-   * 所有价格为前复权（forward-adjusted），解决除权除息数据偏差问题
+   * 从在线API获取日K线数据
+   * 优先使用腾讯前复权 API (支持 SH/SZ)，失败时降级到新浪 API (支持 BJ)
+   * 返回 { data, source } 结构，source 标识实际使用的数据源
    */
-  private async fetchOnlineKLine(code: string, market: 'SH' | 'SZ', days: number): Promise<KLineData[]> {
+  private async fetchOnlineKLine(code: string, market: 'SH' | 'SZ' | 'BJ', days: number): Promise<{
+    data: KLineData[];
+    source: string;
+  }> {
+    // Step 1: Try Tencent API first
+    const tencentData = await this.fetchTencentFQKLine(code, market, days);
+    if (tencentData.length > 1) {
+      return { data: tencentData, source: 'tencent_online' }; // Only use Tencent if we got meaningful data (> 1 row)
+    }
+    // Step 2: Fall back to Sina API (especially for BJ stocks where Tencent has no K-line)
+    if (tencentData.length <= 1) {
+      const sinaData = await this.fetchSinaKLine(code, market, days);
+      if (sinaData.length > 0) {
+        return { data: sinaData, source: 'sina_online' };
+      }
+    }
+    // Step 3: Return whatever Tencent gave us (might be 0 or 1 row)
+    return { data: tencentData, source: 'tencent_online' };
+  }
+
+  /**
+   * 腾讯 PC 端 K 线 API (前复权日K)
+   */
+  private async fetchTencentFQKLine(code: string, market: 'SH' | 'SZ' | 'BJ', days: number): Promise<KLineData[]> {
     try {
-      const symbol = market === 'SH' ? 'sh' + code : 'sz' + code;
+      const symbol = market === 'SH' ? 'sh' + code : market === 'BJ' ? 'bj' + code : 'sz' + code;
       const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${days},qfq`;
       
       const controller = new AbortController();
@@ -324,12 +318,12 @@ export class DataFetcher {
         });
         const text = await res.text();
         if (!text || text.startsWith('<')) {
-          console.warn(`[DataFetcher] fetchOnlineKLine: HTML response for ${code}`);
+          console.warn(`[DataFetcher] fetchTencentFQKLine: HTML response for ${code}`);
           return [];
         }
         const j = JSON.parse(text);
         const stockData = j?.data?.[symbol] || {};
-        // qfqday = 前复权日K, 优先使用
+        // qfqday = 前复权日K, 优先使用; day = 未复权日K (降级)
         const dayData: any[][] = stockData.qfqday || stockData.day || [];
         if (!Array.isArray(dayData) || dayData.length === 0) return [];
         
@@ -345,98 +339,138 @@ export class DataFetcher {
         clearTimeout(timeout);
       }
     } catch (err) {
-      console.warn(`[DataFetcher] fetchOnlineKLine error for ${code}:`, err);
+      console.warn(`[DataFetcher] fetchTencentFQKLine error for ${code}:`, err);
       return [];
     }
   }
 
-  /** 从 stock_cache.json 获取今日K线（open/high/low/price -> close） */
-  private getTodayFromCache(code: string): KLineData | null {
+  /**
+   * 新浪财经 K 线 API (备用数据源，支持 BJ 股票)
+   * https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData
+   * params: symbol=bj{code}&scale=240&ma=no&datalen={days}
+   * 返回格式: { day, open, high, low, close, volume } (字符串字段)
+   * 注意：新浪返回的是未复权原始价格
+   */
+  private async fetchSinaKLine(code: string, market: 'SH' | 'SZ' | 'BJ', days: number): Promise<KLineData[]> {
     try {
-      if (!fs.existsSync(CACHE_FILE)) return null;
-      const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')) as Array<{
-        code: string; open?: number; high?: number; low?: number; price: number; volume?: number;
-      }>;
-      const stock = cache.find(s => s.code === code);
-      if (!stock || !stock.price) return null;
+      const prefix = market === 'SH' ? 'sh' : market === 'BJ' ? 'bj' : 'sz';
+      const symbol = prefix + code;
+      const url = 'https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData';
+      const params = new URLSearchParams({
+        symbol,
+        scale: '240',
+        ma: 'no',
+        datalen: String(Math.min(days, 1000)),
+      });
 
-      const today = new Date().toISOString().slice(0, 10);
-      return {
-        date: today,
-        open: stock.open ?? stock.price,
-        high: stock.high ?? stock.price,
-        low: stock.low ?? stock.price,
-        close: stock.price,
-        volume: stock.volume ?? 0,
-      };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const res = await fetch(`${url}?${params}`, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0',
+            'Referer': 'https://finance.sina.com.cn',
+          },
+        });
+        const text = await res.text();
+        if (!text || text === 'null' || text.startsWith('<')) {
+          console.warn(`[DataFetcher] fetchSinaKLine: invalid response for ${symbol}`);
+          return [];
+        }
+        const rows = JSON.parse(text);
+        if (!Array.isArray(rows) || rows.length === 0) return [];
+
+        return rows.map((row: any) => ({
+          date: String(row.day || '').slice(0, 10),
+          open: parseFloat(row.open) || 0,
+          high: parseFloat(row.high) || 0,
+          low: parseFloat(row.low) || 0,
+          close: parseFloat(row.close) || 0,
+          volume: parseInt(row.volume, 10) || 0,
+        })).filter(d => d.date && d.close > 0);
+      } finally {
+        clearTimeout(timeout);
+      }
     } catch (err) {
-      console.warn(`[DataFetcher] getTodayFromCache error for ${code}:`, err);
-      return null;
+      console.warn(`[DataFetcher] fetchSinaKLine error for ${code}:`, err);
+      return [];
     }
   }
 
-  /** 获取指定股票的实时快照（盯盘用） */
-  async fetchQuotes(codes: string[]): Promise<Record<string, StockSnapshot>> {
+  /**
+   * 获取个股行情：使用循环 buffer 缓存（最多 20 只，10s TTL）
+   * 返回结构包含 cache 字段，AI 可通过它判断数据是否来自缓存
+   */
+  async fetchQuotes(codes: string[], options?: { skipCache?: boolean }): Promise<{
+    quotes: Record<string, StockSnapshot>;
+    source: 'cache' | 'network' | 'mixed';
+    cached_count: number;
+    fresh_count: number;
+  }> {
     const result: Record<string, StockSnapshot> = {};
-    if (!codes.length) return result;
+    if (!codes.length) return { quotes: result, source: 'network', cached_count: 0, fresh_count: 0 };
 
-    for (let i = 0; i < codes.length; i += TENCENT_BATCH_SIZE) {
-      const batch = codes.slice(i, i + TENCENT_BATCH_SIZE);
-      if (i > 0) await new Promise(r => setTimeout(r, TENCENT_DELAY_MS));
+    let cachedCount = 0;
+    let freshCount = 0;
 
-      const items = batch.map(c => this.codeToTencentSymbol(c)).join(',');
-      try {
-        await withRetry(async () => {
-          const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
-            signal: AbortSignal.timeout(15000),
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-          });
-          const rawBuf = await res.arrayBuffer();
-          const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
-          const lines = text.split(';');
-
-          for (const line of lines) {
-            if (!line.includes('~')) continue;
-            const snap = this.parseTencentSnapshot(line);
-            if (snap && snap.code) {
-              result[snap.code] = snap;
-            }
-          }
-        }, 3, 1000, `Quotes batch ${i}`);
-      } catch (err) {
-        console.error(`[DataFetcher] fetchQuotes batch at offset ${i} failed after 3 retries:`, err);
-        // 不抛错，继续处理下一批
+    // 1. 先查缓存
+    const uncached: string[] = [];
+    for (const code of codes) {
+      if (options?.skipCache) {
+        uncached.push(code);
+        continue;
+      }
+      const key = this.codeToCacheKey(code);
+      const cached = this.quotesCache.get(key);
+      if (cached && (Date.now() - cached.timestamp) < DataFetcher.CACHE_TTL) {
+        result[code] = cached.data;
+        cachedCount++;
+        // 移到末尾（最近使用）
+        this.touchCacheKey(key);
+      } else {
+        uncached.push(code);
       }
     }
 
-    return result;
+    // 2. 缓存未命中的从网络拉取
+    if (uncached.length > 0) {
+      await this.fetchQuotesFromNetwork(uncached, result);
+      freshCount = uncached.length;
+
+      // 缓存新拉取的数据
+      for (const code of uncached) {
+        if (result[code]) {
+          this.setQuoteCache(code, result[code]);
+        }
+      }
+    }
+
+    const source = cachedCount > 0 && freshCount > 0 ? 'mixed'
+      : freshCount > 0 ? 'network' : 'cache';
+
+    return { quotes: result, source, cached_count: cachedCount, fresh_count: freshCount };
   }
 
+  /** 清空循环缓存 */
   clearCache(): void {
-    this.memoryCache = { stocks: null, timestamp: 0 };
-    try { if (fs.existsSync(CACHE_FILE)) fs.unlinkSync(CACHE_FILE); } catch {}
+    this.quotesCache.clear();
+    this.cacheOrder = [];
   }
 
   // ===== Private: Refresh from Tencent API =====
 
-  private refreshInBackground(markets: ('SH' | 'SZ' | 'BJ')[]): void {
-    if (this.refreshPromise) return;
-    this.refreshPromise = this.refreshFromNetwork(markets).finally(() => {
-      this.refreshPromise = null;
-    });
-  }
-
   /** 从腾讯 API 拉取全市场数据 */
-  private async refreshFromNetwork(markets: ('SH' | 'SZ' | 'BJ')[]): Promise<void> {
+  private async refreshFromNetwork(markets: ('SH' | 'SZ' | 'BJ')[]): Promise<StockData[]> {
     console.log('[DataFetcher] Fetching all stocks from Tencent API...');
     const startTime = Date.now();
 
     // 1. 获取股票代码列表
     const allCodes = await this.getStockList();
     if (!allCodes.length) {
-      console.error('[DataFetcher] No stock list available, using disk cache if present');
-      this.memoryCache = { stocks: this.memoryCache.stocks || [], timestamp: Date.now() };
-      return;
+      console.error('[DataFetcher] No stock list available');
+      return [];
     }
 
     // 2. 过滤市场
@@ -478,18 +512,79 @@ export class DataFetcher {
         }, 3, 1000, `Tencent batch ${i}`);
       } catch (err) {
         console.error(`[DataFetcher] Tencent batch ${i} failed after 3 retries:`, err);
-        // 不抛错，继续处理下一批
       }
     }
 
     console.log(`[DataFetcher] Parsed ${allStocks.length} stocks from Tencent API`);
 
-    // 4. 更新内存缓存 + 写入磁盘
-    this.memoryCache = { stocks: allStocks, timestamp: Date.now() };
-    this.saveToDisk(allStocks);
-
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[DataFetcher] Done in ${elapsed}s`);
+    return allStocks;
+  }
+
+  // ===== Cyclic Buffer Cache Helpers =====
+
+  /** 生成缓存 key */
+  private codeToCacheKey(code: string): string {
+    const market = this.detectMarketByCode(code);
+    return `${market}:${code}`;
+  }
+
+  /** 将 key 移到 cacheOrder 末尾（LRU） */
+  private touchCacheKey(key: string): void {
+    const idx = this.cacheOrder.indexOf(key);
+    if (idx !== -1) {
+      this.cacheOrder.splice(idx, 1);
+      this.cacheOrder.push(key);
+    }
+  }
+
+  /** 写入个股缓存（循环 buffer 淘汰） */
+  private setQuoteCache(code: string, data: StockSnapshot): void {
+    const key = this.codeToCacheKey(code);
+    // 删除已有记录（更新位置）
+    const existingIdx = this.cacheOrder.indexOf(key);
+    if (existingIdx !== -1) {
+      this.cacheOrder.splice(existingIdx, 1);
+    }
+    // 淘汰最旧的
+    while (this.cacheOrder.length >= DataFetcher.CACHE_MAX) {
+      const oldest = this.cacheOrder.shift()!;
+      this.quotesCache.delete(oldest);
+    }
+    this.quotesCache.set(key, { data, timestamp: Date.now() });
+    this.cacheOrder.push(key);
+  }
+
+  /** 从网络批量拉取个股行情 */
+  private async fetchQuotesFromNetwork(codes: string[], result: Record<string, StockSnapshot>): Promise<void> {
+    for (let i = 0; i < codes.length; i += TENCENT_BATCH_SIZE) {
+      const batch = codes.slice(i, i + TENCENT_BATCH_SIZE);
+      if (i > 0) await new Promise(r => setTimeout(r, TENCENT_DELAY_MS));
+
+      const items = batch.map(c => this.codeToTencentSymbol(c)).join(',');
+      try {
+        await withRetry(async () => {
+          const res = await fetch(`http://qt.gtimg.cn/q=${items}`, {
+            signal: AbortSignal.timeout(15000),
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+          });
+          const rawBuf = await res.arrayBuffer();
+          const text = iconv.decode(Buffer.from(rawBuf), 'gbk');
+          const lines = text.split(';');
+
+          for (const line of lines) {
+            if (!line.includes('~')) continue;
+            const snap = this.parseTencentSnapshot(line);
+            if (snap && snap.code) {
+              result[snap.code] = snap;
+            }
+          }
+        }, 3, 1000, `Quotes batch ${i}`);
+      } catch (err) {
+        console.error(`[DataFetcher] fetchQuotes batch at offset ${i} failed after 3 retries:`, err);
+      }
+    }
   }
 
   // ===== Tencent Data Parsing =====
@@ -587,9 +682,12 @@ export class DataFetcher {
 
   /** 根据代码前缀判断市场 */
   private detectMarketByCode(code: string): 'SH' | 'SZ' | 'BJ' | null {
+    // BJ: 92xxxx, 8xxxxx, 4xxxxx
+    if (code.startsWith('8') || code.startsWith('4') || code.startsWith('92')) return 'BJ';
+    // SH: 6xxxxx, 9xxxxx (but NOT 92xxxx — handled above)
     if (code.startsWith('6') || code.startsWith('9')) return 'SH';
+    // SZ: 0xxxxx, 3xxxxx
     if (code.startsWith('0') || code.startsWith('3')) return 'SZ';
-    if (code.startsWith('8') || code.startsWith('4')) return 'BJ';
     return null;
   }
 
@@ -600,8 +698,10 @@ export class DataFetcher {
 
   /** 代码 → 腾讯符号 */
   private codeToTencentSymbol(code: string): string {
+    // BJ: 92xxxx, 8xxxxx, 4xxxxx
+    if (code.startsWith('8') || code.startsWith('4') || code.startsWith('92')) return 'bj' + code;
+    // SH: 6xxxxx, 9xxxxx
     if (code.startsWith('6') || code.startsWith('9')) return 'sh' + code;
-    if (code.startsWith('8') || code.startsWith('4')) return 'bj' + code;
     return 'sz' + code;
   }
 
@@ -628,33 +728,6 @@ export class DataFetcher {
       console.warn('[DataFetcher] Failed to load stock_list.json:', err);
     }
     return [];
-  }
-
-  // ===== Disk Cache =====
-
-  private loadFromDisk(): StockData[] | null {
-    try {
-      if (fs.existsSync(CACHE_FILE)) {
-        const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
-        const data = JSON.parse(raw);
-        console.log(`[DataFetcher] Loaded ${data.length} stocks from disk cache`);
-        return data;
-      }
-    } catch (err) {
-      console.warn('[DataFetcher] Disk cache load failed:', err);
-    }
-    return null;
-  }
-
-  private saveToDisk(stocks: StockData[]): void {
-    try {
-      const dir = path.dirname(CACHE_FILE);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(CACHE_FILE, JSON.stringify(stocks), 'utf-8');
-      console.log(`[DataFetcher] Saved ${stocks.length} stocks to disk cache`);
-    } catch (err) {
-      console.warn('[DataFetcher] Disk cache save failed:', err);
-    }
   }
 }
 

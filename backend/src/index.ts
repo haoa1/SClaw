@@ -146,7 +146,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   const watchEngine = new WatchEngine(
     path.resolve(dataDir, 'watch-tasks.json'),
     {
-      fetchQuotes: (codes) => dataFetcher.fetchQuotes(codes),
+      fetchQuotes: (codes) => dataFetcher.fetchQuotes(codes).then(r => r.quotes),
     },
   );
 

@@ -155,9 +155,9 @@ export class DataManager {
         for (const item of data.items) {
           const tsCode: string = item[fTsCode];
           const code = tsCode.split('.')[0];
-          const market = tsCode.split('.').pop() as 'SH' | 'SZ';
+          const market = tsCode.split('.').pop() as 'SH' | 'SZ' | 'BJ';
 
-          if (!['SH', 'SZ'].includes(market)) continue;
+          if (!['SH', 'SZ', 'BJ'].includes(market)) continue;
 
           klines.push({
             code,
