@@ -135,6 +135,18 @@ export class TencentAPIError extends Error {
 
 const STALE_THRESHOLD_MS = 15000; // 15s: too old
 
+/**
+ * 查单只股票实时行情（不走全量缓存，直查腾讯 API）
+ * 避免 detail 等场景拉取 5165 只造成浪费
+ */
+export async function getStockByCode(code: string): Promise<any | null> {
+  const symbol = codeToTencentSymbol(code);
+  const text = await fetchTencentBatch(symbol);
+  const line = text.split(';')[0];
+  if (!line || !line.includes('~')) return null;
+  return parseTencentData(line);
+}
+
 function stampCacheAge(data: any[], cacheTime: number): any[] {
   const ageMs = Date.now() - cacheTime;
   return data.map(stock => ({ ...stock, _cacheAge: Math.round(ageMs / 1000) }));

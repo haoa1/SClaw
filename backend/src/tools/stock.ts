@@ -6,7 +6,7 @@
  */
 
 import { Tool, ToolParamDef, ToolRegistry } from "./registry";
-import { getStocks, TencentAPIError } from "./stock-info";
+import { getStocks, getStockByCode, TencentAPIError } from "./stock-info";
 import { DataFetcher, withRetry } from "../data/data-fetcher";
 
 const fetcher = new DataFetcher();
@@ -127,13 +127,21 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
 
 const stockHandler = async (args: Record<string, unknown>): Promise<string> => {
   const subCmd = (args.sub_cmd as string || "").toLowerCase().trim();
-  if (!subCmd) return "❌ Error: sub_cmd is required. Options: search, detail, overview, history";
+  if (!subCmd) return "❌ Error: sub_cmd is required. Options: search, overview, history";
 
   try {
     switch (subCmd) {
       case "search": {
+        // 精确查：code="600519" → getStockByCode 直查 1 只
+        const code = (args.code as string || "").trim();
+        if (code) {
+          const found = await getStockByCode(code);
+          if (!found) return `⚠️ 未找到股票 ${code}，请检查代码是否正确`;
+          return JSON.stringify(found);
+        }
+        // 模糊查：query="茅台" → getStocks 全量 .includes 匹配
         const q = (args.query as string || "").toLowerCase();
-        if (!q) return "❌ Error: query is required for search";
+        if (!q) return "❌ Error: 请提供 code（精确查）或 query（模糊搜）";
         const stocks = await getStocks();
         if (!stocks || stocks.length === 0) {
           return "❌ 实时数据暂时不可用（腾讯行情API未返回数据），等几秒后重试(sub_cmd=\"overview\")即可";
@@ -146,20 +154,6 @@ const stockHandler = async (args: Record<string, unknown>): Promise<string> => {
         }
         if (cacheWarn) return cacheWarn + "\n" + JSON.stringify(results);
         return JSON.stringify(results);
-      }
-
-      case "detail": {
-        const code = (args.code as string || "").trim();
-        if (!code) return "❌ Error: code is required for detail";
-        const stocks = await getStocks();
-        if (!stocks || stocks.length === 0) {
-          return "❌ 实时数据暂时不可用（腾讯行情API未返回数据），等几秒后重试(sub_cmd=\"overview\")即可";
-        }
-        const cacheWarn = checkStaleCache(stocks);
-        const found = stocks.find((s: any) => s.code === code);
-        if (!found) return `⚠️ 未找到股票 ${code}，请检查代码是否正确`;
-        if (cacheWarn) return cacheWarn + "\n" + JSON.stringify(found);
-        return JSON.stringify(found);
       }
 
       case "overview": {
@@ -184,7 +178,7 @@ const stockHandler = async (args: Record<string, unknown>): Promise<string> => {
       }
 
       default:
-        return `❌ Unknown sub_cmd: "${subCmd}". Options: search, detail, overview, history`;
+        return `❌ Unknown sub_cmd: "${subCmd}". Options: search, overview, history`;
     }
   } catch (err: unknown) {
     if (err instanceof TencentAPIError) {
@@ -201,19 +195,19 @@ const stockParams: ToolParamDef[] = [
   {
     name: "sub_cmd",
     type: "string",
-    description: `Sub-command: search / detail / overview / history
+    description: `Sub-command: search / overview / history
 
-search(query, limit?) — Search stocks by code or name
-detail(code) — Get detailed info for a stock
-overview — Market overview (up/down counts)
-history(code, days?, format?) — Fetch historical K-line data (format: table|json|compact)
+search(code?) — 精确查：code="600519" → 直查 1 只实时行情
+search(query, limit?) — 模糊搜：query="茅台" → 全量匹配返回数组
+overview — 大盘总览（涨跌家数）
+history(code, days?, format?) — 历史 K 线 (format: table|json|compact)
 `,
   },
   // search
-  { name: "query", type: "string", description: "Search query (code or name) — required for sub_cmd=search", required: false },
-  { name: "limit", type: "number", description: "Max results for search (default: 50)", required: false },
-  // detail / history
-  { name: "code", type: "string", description: "Stock code — required for sub_cmd=detail or history", required: false },
+  { name: "query", type: "string", description: "模糊搜索词（code/name）— 用于 search(query=)", required: false },
+  { name: "limit", type: "number", description: "模糊搜索最大返回条数 (default: 50)", required: false },
+  // search / history
+  { name: "code", type: "string", description: "股票代码 — 用于 search(code=)精确查 或 history(code=)", required: false },
   // history only
   { name: "market", type: "string", description: "Market: SH/SZ/BJ (default: auto-detect) — for sub_cmd=history", required: false },
   { name: "days", type: "number", description: "Number of trading days (default: 120, max: 1000) — for sub_cmd=history", required: false },
@@ -226,16 +220,16 @@ export const stockTool = new Tool(
   "stock",
   `Unified stock data tool. Use sub_cmd to choose operation.
 
-search(query, limit?) → Search stocks by code or name
-detail(code) → Get full detail for one stock
-overview → Market summary (up/down counts)
-history(code, days?, format?) → Fetch historical K-line data
+search(code) → 精确查 1 只实时行情
+search(query, limit?) → 模糊搜索（code/name）
+overview → 大盘总览（涨跌家数）
+history(code, days?, format?) → 历史 K 线 (format: table|json|compact)
 
 Returned stock fields: code, name, market(SH/SZ), price, open, high, low, close, changePercent(涨跌幅%), volume(成交量手), amount(成交额), turnoverRate(换手率%), pe, pb, marketCap(总市值元), circulatingMarketCap, volumeRatio(量比), priceAboveVwap(分时在均价线上)
 
 Examples:
+  stock(sub_cmd="search", code="600519")
   stock(sub_cmd="search", query="茅台")
-  stock(sub_cmd="detail", code="600519")
   stock(sub_cmd="overview")
   stock(sub_cmd="history", code="600519", days=60)
 `,
