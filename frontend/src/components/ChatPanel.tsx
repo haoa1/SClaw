@@ -661,13 +661,13 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         {/* Content area */}
         <div
           ref={scrollRef}
-          className="px-3 py-2 space-y-1.5"
+          className="px-3 py-2 space-y-1"
           style={isStreaming ? { maxHeight: '200px', overflowY: 'auto' } : {}}
         >
           {segments.length === 0 && isStreaming && (
             <div className="text-xs animate-pulse" style={{ color: '#5a5a6a' }}>等待 Agent 输出...</div>
           )}
-          {segments.map((seg, i) => renderProcessSegment(seg, i))}
+          {renderProcessContent(segments)}
           {isStreaming && (
             <span className="inline-block w-1.5 h-3 ml-0.5 animate-pulse" style={{ background: '#e8b84b', boxShadow: '0 0 4px #e8b84b66' }} />
           )}
@@ -676,21 +676,40 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     )
   }
 
+  /* ===== Merge consecutive reasoning + content segments into flowing text ===== */
+  function renderProcessContent(segs: Segment[]) {
+    // Group: merge consecutive text segments (reasoning/content), keep tool blocks separate
+    const blocks: { type: 'text' | 'tool'; data: string; segs: Segment[] }[] = []
+    for (const seg of segs) {
+      if (seg.type === 'reasoning' || seg.type === 'content') {
+        const last = blocks[blocks.length - 1]
+        if (last?.type === 'text') {
+          last.data += '\n' + seg.data
+          last.segs.push(seg)
+        } else {
+          blocks.push({ type: 'text', data: seg.data, segs: [seg] })
+        }
+      } else {
+        blocks.push({ type: 'tool', data: '', segs: [seg] })
+      }
+    }
+
+    return blocks.map((block, bi) => {
+      if (block.type === 'text') {
+        return <div key={bi} className="text-xs leading-relaxed py-0.5" style={{ color: '#c8c090' }}>{block.data}</div>
+      }
+      // Tool blocks: render each tool segment individually
+      return block.segs.map((seg, si) => renderProcessSegment(seg, si))
+    })
+  }
+
   /* ===== Render a single process segment (terminal agent style) ===== */
   function renderProcessSegment(seg: Segment, idx: number) {
     switch (seg.type) {
       case 'reasoning':
-        return (
-          <div key={idx} className="text-xs leading-relaxed py-0.5" style={{ color: '#7a7a8a' }}>
-            {seg.data}
-          </div>
-        )
       case 'content':
-        return (
-          <div key={idx} className="text-xs leading-relaxed py-0.5" style={{ color: '#c8c090' }}>
-            {seg.data}
-          </div>
-        )
+        // Merge consecutive content/reasoning into one flowing block
+        return null  // handled by ProcessBlock directly
       case 'tool_call': {
         let tc: ToolCallInfo
         try { tc = JSON.parse(seg.data) } catch { tc = { id: '', name: seg.data, arguments: '' } }
@@ -706,23 +725,25 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         )
       }
       case 'tool_result': {
-        let display = seg.data
-        let isJson = false
+        // Compact one-line summary — don't show raw tool output
+        let summary = '[Tool result]'
         try {
           const parsed = JSON.parse(seg.data)
           if (parsed && typeof parsed === 'object') {
-            display = JSON.stringify(parsed, null, 2)
-            isJson = true
+            // Try to get a meaningful summary from common patterns
+            if (Array.isArray(parsed)) summary = `→ returned ${parsed.length} items`
+            else if (parsed.matchedCount !== undefined) summary = `→ Matched: ${parsed.matchedCount} stocks`
+            else if (parsed.totalStocks !== undefined) summary = `→ ${parsed.matchedStocks}/${parsed.totalStocks} matched (${parsed.executionTime}ms)`
+            else summary = `→ ${Object.keys(parsed).length} fields`
           }
-        } catch {}
-        const isLong = display.length > 150
-        const snippet = isLong ? display.slice(0, 150) + '...' : display
+        } catch {
+          const s = seg.data.slice(0, 80)
+          summary = `→ ${s}`
+        }
         return (
-          <div key={idx} className="rounded border px-2.5 py-1.5" style={{ borderColor: 'rgba(74,222,128,0.1)', background: 'rgba(74,222,128,0.04)' }}>
-            <div className="text-xs font-mono leading-relaxed" style={{ color: '#6a7a6a' }}>
-              <span className="mr-1">&#9654;</span>
-              <span>{snippet}</span>
-            </div>
+          <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono" style={{ color: '#6a7a6a' }}>
+            <span className="text-[10px]">&#9654;</span>
+            <span>{summary}</span>
           </div>
         )
       }
