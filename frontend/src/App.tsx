@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { api, LoginResponse, ScreenRecord, LogEntry } from './api'
 import { PluginInfo, FilterResult, SelectedStrategy } from './types'
 import PluginPanel from './components/PluginPanel'
@@ -7,15 +7,17 @@ import ResultsTable from './components/ResultsTable'
 import LoadingSpinner from './components/LoadingSpinner'
 import ChatPanel from './components/ChatPanel'
 import ResultsModal from './components/ResultsModal'
-import BacktestPanel from './components/BacktestPanel'
-import DebugPanel from './components/DebugPanel'
-import GarudaTerminal from './components/GarudaTerminal'
-import { useWatchAlertSSE } from './hooks/useWatchAlertSSE'
 import WatchAlertToast from './components/WatchAlertToast'
 import WatchAlertPanel from './components/WatchAlertPanel'
-import SchedulerPanel from './components/SchedulerPanel'
-import WatchTaskPanel from './components/WatchTaskPanel'
+import { useWatchAlertSSE } from './hooks/useWatchAlertSSE'
 import { WatchAlert } from './types'
+
+// 懒加载重组件（recharts ~150KB, xterm ~80KB）
+const BacktestPanel = lazy(() => import('./components/BacktestPanel'))
+const DebugPanel = lazy(() => import('./components/DebugPanel'))
+const GarudaTerminal = lazy(() => import('./components/GarudaTerminal'))
+const SchedulerPanel = lazy(() => import('./components/SchedulerPanel'))
+const WatchTaskPanel = lazy(() => import('./components/WatchTaskPanel'))
 
 type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'watch' | 'scheduler' | 'debug' | 'garuda'
 
@@ -482,11 +484,15 @@ export default function App() {
       {/* Main content */}
       {tab === 'debug' && user.role === 'admin' ? (
         <div className="h-[calc(100vh-73px)] overflow-y-auto">
-          <DebugPanel onBack={() => setTab('config')} />
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-stock-text-secondary text-sm p-8">Loading Debug...</div>}>
+            <DebugPanel onBack={() => setTab('config')} />
+          </Suspense>
         </div>
       ) : tab === 'garuda' && user.role === 'admin' ? (
         <div className="h-[calc(100vh-73px)] overflow-hidden">
-          <GarudaTerminal onBack={() => setTab('config')} />
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-stock-text-secondary text-sm p-8">Loading Terminal...</div>}>
+            <GarudaTerminal onBack={() => setTab('config')} />
+          </Suspense>
         </div>
       ) : (
       <div className="flex h-[calc(100vh-73px)] overflow-hidden">
@@ -599,19 +605,25 @@ export default function App() {
 
           {tab === 'backtest' && (
             <div className="max-w-5xl mx-auto">
-              <BacktestPanel plugins={plugins} />
+              <Suspense fallback={<div className="text-stock-text-secondary text-sm p-8 text-center">Loading backtest...</div>}>
+                <BacktestPanel plugins={plugins} />
+              </Suspense>
             </div>
           )}
 
           {tab === 'scheduler' && (
             <div className="max-w-5xl mx-auto">
-              <SchedulerPanel />
+              <Suspense fallback={<div className="text-stock-text-secondary text-sm p-8 text-center">Loading scheduler...</div>}>
+                <SchedulerPanel />
+              </Suspense>
             </div>
           )}
 
           {tab === 'watch' && token && (
             <div className="max-w-5xl mx-auto">
-              <WatchTaskPanel token={token} />
+              <Suspense fallback={<div className="text-stock-text-secondary text-sm p-8 text-center">Loading watch tasks...</div>}>
+                <WatchTaskPanel token={token} />
+              </Suspense>
             </div>
           )}
         </div>
