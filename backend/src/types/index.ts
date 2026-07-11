@@ -54,6 +54,7 @@ export interface StockData {
   priceAboveVwap?: boolean; // 分时是否在均价线上方
   // K线数据（用于技术指标计算）
   kline?: KLineData[];
+  kline30min?: KLineData[];
 }
 
 export interface KLineData {

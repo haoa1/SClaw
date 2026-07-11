@@ -617,7 +617,7 @@ export default function App() {
         </div>
 
         {/* Right: AI Chat */}
-        <div className="w-[420px] min-w-[350px] border-l border-stock-border flex flex-col min-h-0">
+        <div className="w-1/2 border-l border-stock-border flex flex-col min-h-0">
           <ChatPanel
             onHighlight={setAgentHighlight}
             highlightTimeout={highlightTimeout}

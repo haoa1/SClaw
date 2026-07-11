@@ -128,6 +128,70 @@ export function createRoutes(
 
       console.log(`[API Screen] Pre-filter: ${allStocks.length} → ${candidates.length} candidates, enriched + merged`);
 
+      // === 缠论策略：自动预取K线数据 ===
+      const hasChanStrategy = request.strategies.some(s =>
+        s.pluginId === 'chan-buy-points' ||
+        s.strategyId === 'chan-first-buy' ||
+        s.strategyId === 'chan-second-buy' ||
+        s.pluginId === 'chan-theory-screener'
+      );
+      const needs30min = request.strategies.some(s =>
+        s.strategyId === 'chan-second-buy'
+      );
+
+      if (hasChanStrategy && candidates.length > 0) {
+        const t0 = Date.now();
+        console.log(`[API Screen] Chan theory detected, fetching K-line for ${candidates.length} candidates...`);
+
+        // Helper: detect market
+        const detectMkt = (code: string) =>
+          (code.startsWith('6') || code.startsWith('9')) ? 'SH' as const : 'SZ' as const;
+
+        // Step 1: 批量拉日K线（SQLite快，高并发20）
+        const CONCURRENCY = 20;
+        for (let i = 0; i < candidates.length; i += CONCURRENCY) {
+          await Promise.all(candidates.slice(i, i + CONCURRENCY).map(async (stock: any) => {
+            const mkt = detectMkt(stock.code);
+            try {
+              const { data: daily } = await dataFetcher.fetchKLine(stock.code, mkt, 120);
+              stock.kline = daily;
+            } catch { stock.kline = []; }
+          }));
+        }
+
+        // Step 2: 30分K线（网络调用，独立分批）
+        if (needs30min) {
+          console.log(`[API Screen] Fetching 30min K-line for ${candidates.length} candidates...`);
+          const CONCURRENCY_30 = 10;
+          for (let i = 0; i < candidates.length; i += CONCURRENCY_30) {
+            await Promise.all(candidates.slice(i, i + CONCURRENCY_30).map(async (stock: any) => {
+              try {
+                const { data: m30 } = await dataFetcher.fetchKLineByPeriod(stock.code, detectMkt(stock.code), 200, 30);
+                stock.kline30min = m30;
+              } catch { stock.kline30min = []; }
+            }));
+          }
+        }
+        // Sync to all stocks
+        const klineMap = new Map(candidates.map(s => [s.code, { kline: s.kline, kline30min: s.kline30min }]));
+        for (const stock of allStocks) {
+          const kl = klineMap.get(stock.code);
+          if (kl) {
+            stock.kline = kl.kline;
+            stock.kline30min = kl.kline30min;
+          } else {
+            stock.kline = [];
+            stock.kline30min = [];
+          }
+        }
+        console.log(`[API Screen] K-line attached: ${candidates.length} candidates, needs30min=${needs30min}`);
+      } else if (hasChanStrategy) {
+        for (const stock of allStocks) {
+          stock.kline = [];
+          stock.kline30min = [];
+        }
+      }
+
       // 执行策略
       const { results } = await strategyEngine.execute(allStocks, request);
 

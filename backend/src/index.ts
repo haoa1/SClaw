@@ -40,7 +40,6 @@ import { createDataSyncRoutes } from "./routes/data-sync";
 
 // Garuda admin routes
 import { createGarudaRoutes } from "./routes/garuda";
-import { createTradeRoutes } from "./routes/trade";
 
 // Trade routes (proxy to Garuda Trade Bridge on Mac:5001)
 import { createTradeRoutes } from "./routes/trade";
@@ -71,9 +70,6 @@ import { registerGoalTool } from "./tools/goal-tools";
 import { WatchEngine } from "./watch-engine";
 import { registerManageWatchTool } from "./tools/manage-watch-tool";
 import { createWatchStreamRoutes } from "./routes/watch-stream";
-import { registerTradeTools } from "./tools/trade";
-
-// Trade tools
 import { registerTradeTools } from "./tools/trade";
 
 // System prompt for AI agent
@@ -177,8 +173,6 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     const { getCurrentUserId } = require("./request-context");
     return getCurrentUserId();
   });
-  registerTradeTools(toolRegistry);
-
   registerTradeTools(toolRegistry);
   // ===== Initialize agent manager =====
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir);
@@ -356,13 +350,9 @@ ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.
   const dataSyncRoutes = createDataSyncRoutes(localDb, dataDir, tushareToken);
   app.use('/api/data', dataSyncRoutes);
 
-  // Garuda admin routes (POST /api/admin/garuda/exec, GET /api/admin/garuda/health)
+  // Garuda admin routes + Trade routes (proxy to Garuda Trade Bridge at 127.0.0.1:5001)
   const garudaRoutes = createGarudaRoutes();
   app.use(garudaRoutes);
-  const tradeRoutes = createTradeRoutes();
-  app.use(tradeRoutes);
-
-  // Trade routes (proxy to Garuda Trade Bridge at 127.0.0.1:5001)
   const tradeRoutes = createTradeRoutes();
   app.use(tradeRoutes);
 

@@ -400,6 +400,64 @@ export class DataFetcher {
   }
 
   /**
+   * Fetch K-line data with configurable period (scale)
+   * period: 240 = daily, 60 = 60min, 30 = 30min, 15 = 15min, 5 = 5min
+   * Uses Sina API directly (supports all scale values for intraday charts)
+   */
+  async fetchKLineByPeriod(code: string, market: 'SH' | 'SZ' | 'BJ', days: number = 120, period: number = 240): Promise<{
+    data: KLineData[];
+    period: number;
+  }> {
+    try {
+      const prefix = market === 'SH' ? 'sh' : market === 'BJ' ? 'bj' : 'sz';
+      const symbol = prefix + code;
+      const url = 'https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData';
+      const params = new URLSearchParams({
+        symbol,
+        scale: String(period),
+        ma: 'no',
+        datalen: String(Math.min(days, 1000)),
+      });
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const res = await fetch(`${url}?${params}`, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0',
+            'Referer': 'https://finance.sina.com.cn',
+          },
+        });
+        const text = await res.text();
+        if (!text || text === 'null' || text.startsWith('<')) {
+          console.warn(`[DataFetcher] fetchKLineByPeriod: invalid response for ${symbol} period=${period}`);
+          return { data: [], period };
+        }
+        const rows = JSON.parse(text);
+        if (!Array.isArray(rows) || rows.length === 0) return { data: [], period };
+
+        const data = rows.map((row: any) => ({
+          date: String(row.day || '').slice(0, 10),
+          open: parseFloat(row.open) || 0,
+          high: parseFloat(row.high) || 0,
+          low: parseFloat(row.low) || 0,
+          close: parseFloat(row.close) || 0,
+          volume: parseInt(row.volume, 10) || 0,
+        })).filter(d => d.date && d.close > 0);
+
+        return { data, period };
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      console.warn(`[DataFetcher] fetchKLineByPeriod error for ${code} period ${period}:`, err);
+      return { data: [], period };
+    }
+  }
+
+  /**
    * 获取个股行情：使用循环 buffer 缓存（最多 20 只，10s TTL）
    * 返回结构包含 cache 字段，AI 可通过它判断数据是否来自缓存
    */
