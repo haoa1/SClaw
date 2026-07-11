@@ -331,7 +331,7 @@ export function createChatRoutes(
     });
   });
 
-  /** GET /api/messages — load saved messages */
+  /** GET /api/messages — load saved messages (last 50 only) */
   router.get("/api/messages", (req: Request, res: Response) => {
     const userId = getUserId(req);
     if (!userId) {
@@ -342,7 +342,10 @@ export function createChatRoutes(
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    const messages = loadMessages(userId);
+    const allMessages = loadMessages(userId);
+    // Only return last 50 messages — chat history can grow to 2000+ (~1MB)
+    // which slows initial page load significantly
+    const messages = allMessages.slice(-50);
     res.json({ messages });
   });
 
