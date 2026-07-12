@@ -40,6 +40,7 @@ function enrichKLineData(data: Array<{ date: string; open: number; high: number;
 }
 
 // ===== Historical K-line fetch (Tencent API + retry, no Tushare) =====
+// Period: 240=日线, 60=60分钟, 30=30分钟, 15=15分钟, 5=5分钟
 
 const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
   const code = (args.code as string || "").trim();
@@ -57,45 +58,63 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
   }
 
   const days = Math.min(Math.max(1, (args.days as number) || 120), 1000);
+  const period = (args.period as number) || 240;
+  const VALID_PERIODS = [240, 60, 30, 15, 5];
+  if (!VALID_PERIODS.includes(period)) {
+    return `❌ Error: period must be one of: ${VALID_PERIODS.join(', ')}`;
+  }
+  const periodLabel = period === 240 ? '日线' : period === 60 ? '60分钟' : period === 30 ? '30分钟' : period === 15 ? '15分钟' : period === 5 ? '5分钟' : `${period}分钟`;
   const format = (args.format as string || 'table').toLowerCase();
 
   try {
-    const rawResult = await withRetry(
-      () => fetcher.fetchKLine(code, market, days),
-      3, 1000, `History ${code}`
-    );
-    const rawData = rawResult.data;
-    if (!rawData || rawData.length === 0) return `ℹ️ No historical data found for ${code} (${market})`;
-
-    // Build data quality note from meta, surfaced to the AI agent
-    const meta = rawResult.meta;
-    const sourceNames = meta.sources.map(s => `${s.source}(${s.count}条)`).join(', ');
+    let rawData: any[];
+    let meta: any = null;
     let qualityNote = '';
-    if (meta.warnings.length > 0) {
-      qualityNote = `\n\n📋 **数据质量说明:** ${meta.warnings.join('; ')}`;
-    }
-    if (meta.sources.length > 0) {
-      qualityNote += `\n📦 **数据来源:** ${sourceNames}`;
+
+    if (period === 240) {
+      // 日线：走既有路径（SQLite缓存 + Tencent/Sina补充）
+      const rawResult = await withRetry(
+        () => fetcher.fetchKLine(code, market, days),
+        3, 1000, `History ${code}`
+      );
+      rawData = rawResult.data;
+      meta = rawResult.meta;
+      if (meta) {
+        const sourceNames = meta.sources.map((s: any) => `${s.source}(${s.count}条)`).join(', ');
+        if (meta.warnings.length > 0) {
+          qualityNote = `\n\n📋 **数据质量说明:** ${meta.warnings.join('; ')}`;
+        }
+        qualityNote += `\n📦 **数据来源:** ${sourceNames}`;
+      }
+    } else {
+      // 分钟线：走 Sina API (fetchKLineByPeriod)
+      const result = await withRetry(
+        () => fetcher.fetchKLineByPeriod(code, market, days, period),
+        3, 1000, `${periodLabel} ${code}`
+      );
+      rawData = result.data;
     }
 
-    // 用 Tencent 快照补充最新价（可选）
+    if (!rawData || rawData.length === 0) return `ℹ️ No ${periodLabel} data found for ${code} (${market})`;
+
     // 先 enrich 计算 changePct
     const data = enrichKLineData(rawData);
 
-    if (format === 'json') return JSON.stringify({ code, market, days: data.length, data, meta_warnings: meta.warnings, meta_sources: meta.sources });
+    if (format === 'json') return JSON.stringify({ code, market, period, periodLabel, days: data.length, data, meta_warnings: meta?.warnings || [], meta_sources: meta?.sources || [] });
     if (format === 'compact') {
       const lines = data.map(d =>
         `${d.date} O:${d.open.toFixed(2)} H:${d.high.toFixed(2)} L:${d.low.toFixed(2)} C:${d.close.toFixed(2)} V:${d.volume}`
       );
-      return `📊 ${code} (${market}) — ${data.length} trading days\n\n${lines.join('\n')}${qualityNote}`;
+      return `📊 ${code} (${market}) ${periodLabel} — ${data.length} 根K线\n\n${lines.join('\n')}${qualityNote}`;
     }
 
     // Default: table format
-    const header = `${'日期'.padEnd(12)} ${'开盘'.padEnd(8)} ${'收盘'.padEnd(8)} ${'最高'.padEnd(8)} ${'最低'.padEnd(8)} ${'涨跌幅'.padEnd(8)} ${'成交量'.padEnd(12)}`;
+    const header = `${'时间'.padEnd(12)} ${'开盘'.padEnd(8)} ${'收盘'.padEnd(8)} ${'最高'.padEnd(8)} ${'最低'.padEnd(8)} ${'涨跌幅'.padEnd(8)} ${'成交量'.padEnd(12)}`;
     const sep = '─'.repeat(12) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(7) + ' ─' + '─'.repeat(11);
     const lines = data.slice(-60).map((d: any) => {
       const changeStr = d.changePct >= 0 ? `+${d.changePct.toFixed(2)}%` : `${d.changePct.toFixed(2)}%`;
-      return `${d.date.padEnd(12)} ${d.open.toFixed(2).padEnd(8)} ${d.close.toFixed(2).padEnd(8)} ${d.high.toFixed(2).padEnd(8)} ${d.low.toFixed(2).padEnd(8)} ${changeStr.padEnd(8)} ${d.volume.toLocaleString().padEnd(12)}`;
+      const dt = d.date.length > 10 ? d.date.slice(5, 16) : d.date; // 短格式：MM-DD HH:MM
+      return `${dt.padEnd(12)} ${d.open.toFixed(2).padEnd(8)} ${d.close.toFixed(2).padEnd(8)} ${d.high.toFixed(2).padEnd(8)} ${d.low.toFixed(2).padEnd(8)} ${changeStr.padEnd(8)} ${d.volume.toLocaleString().padEnd(12)}`;
     });
     const closes = data.map((d: any) => d.close);
     const maxClose = Math.max(...closes);
@@ -108,13 +127,14 @@ const fetchKLineFn = async (args: Record<string, unknown>): Promise<string> => {
     const prev = data.length > 1 ? data[data.length - 2] : null;
     const latestChange = prev ? ((latest.close - prev.close) / prev.close * 100).toFixed(2) : 'N/A';
 
+    const unit = period === 240 ? '天' : '根';
     return [
-      `📊 ${code} (${market}) — 最近 ${data.length} 个交易日`,
+      `📊 ${code} (${market}) ${periodLabel} — 最近 ${data.length} ${unit}`,
       `   最新: ${latest.close.toFixed(2)} (${latestChange}%) | 最高: ${maxClose.toFixed(2)} | 最低: ${minClose.toFixed(2)} | 均价: ${avgClose.toFixed(2)}`,
-      `   区间涨幅: ${((closes[closes.length - 1] - closes[0]) / closes[0] * 100).toFixed(2)}% | 上涨: ${upDays}天 | 下跌: ${downDays}天 | 总成交量: ${(totalVolume / 1e8).toFixed(2)}亿`,
+      `   区间涨幅: ${((closes[closes.length - 1] - closes[0]) / closes[0] * 100).toFixed(2)}% | 上涨: ${upDays}${unit} | 下跌: ${downDays}${unit} | 总成交量: ${(totalVolume / 1e8).toFixed(2)}亿`,
       ``,
       header, sep, ...lines,
-      data.length > 60 ? `\n... 还有 ${data.length - 60} 天数据未显示（共 ${data.length} 天），设 format=compact 或 format=json 查看全部` : '',
+      data.length > 60 ? `\n... 还有 ${data.length - 60} ${unit}数据未显示（共 ${data.length} ${unit}），设 format=compact 或 format=json 查看全部` : '',
       qualityNote,
     ].filter(Boolean).join('\n');
   } catch (err: unknown) {
@@ -200,7 +220,7 @@ const stockParams: ToolParamDef[] = [
 search(code?) — 精确查：code="600519" → 直查 1 只实时行情
 search(query, limit?) — 模糊搜：query="茅台" → 全量匹配返回数组
 overview — 大盘总览（涨跌家数）
-history(code, days?, format?) — 历史 K 线 (format: table|json|compact)
+history(code, days?, period?, format?) — K 线 (format: table|json|compact)
 `,
   },
   // search
@@ -211,6 +231,7 @@ history(code, days?, format?) — 历史 K 线 (format: table|json|compact)
   // history only
   { name: "market", type: "string", description: "Market: SH/SZ/BJ (default: auto-detect) — for sub_cmd=history", required: false },
   { name: "days", type: "number", description: "Number of trading days (default: 120, max: 1000) — for sub_cmd=history", required: false },
+  { name: "period", type: "number", description: "K线周期: 240=日线(default), 60=60分钟, 30=30分钟, 15=15分钟, 5=5分钟 — for sub_cmd=history", required: false },
   { name: "format", type: "string", description: "Output format: table|json|compact (default: table) — for sub_cmd=history", required: false },
 ];
 
@@ -223,7 +244,7 @@ export const stockTool = new Tool(
 search(code) → 精确查 1 只实时行情
 search(query, limit?) → 模糊搜索（code/name）
 overview → 大盘总览（涨跌家数）
-history(code, days?, format?) → 历史 K 线 (format: table|json|compact)
+history(code, days?, period?, format?) → K 线 (format: table|json|compact, period: 240=日线 60=60min 30=30min 15=15min 5=5min)
 
 Returned stock fields: code, name, market(SH/SZ), price, open, high, low, close, changePercent(涨跌幅%), volume(成交量手), amount(成交额), turnoverRate(换手率%), pe, pb, marketCap(总市值元), circulatingMarketCap, volumeRatio(量比), priceAboveVwap(分时在均价线上)
 
@@ -232,6 +253,7 @@ Examples:
   stock(sub_cmd="search", query="茅台")
   stock(sub_cmd="overview")
   stock(sub_cmd="history", code="600519", days=60)
+  stock(sub_cmd="history", code="600519", period=30, days=200)  ← 30分钟K线
 `,
   stockParams,
   stockHandler,

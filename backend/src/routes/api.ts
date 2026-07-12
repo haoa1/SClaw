@@ -224,17 +224,39 @@ export function createRoutes(
     }
   });
 
-  /** 获取个股K线数据 */
+  /** 获取个股K线数据（支持日线/分钟线） */
   router.get('/api/stock/:code/kline', async (req: Request, res: Response) => {
     const { code } = req.params;
-    const market = (req.query.market as 'SH' | 'SZ' | 'BJ') || 'SH';
+    // 市场自动检测
+    const rawMarket = (req.query.market as string || '').toUpperCase();
+    let market: 'SH' | 'SZ' | 'BJ';
+    if (['SH', 'SZ', 'BJ'].includes(rawMarket)) {
+      market = rawMarket as 'SH' | 'SZ' | 'BJ';
+    } else {
+      if (code.startsWith('6') || code.startsWith('9')) market = 'SH';
+      else if (code.startsWith('8')) market = 'BJ';
+      else market = 'SZ';
+    }
     const days = parseInt(req.query.days as string) || 120;
+    const period = parseInt(req.query.period as string) || 240;
+    const VALID_PERIODS = [240, 60, 30, 15, 5];
+    if (!VALID_PERIODS.includes(period)) {
+      res.status(400).json({ error: `Invalid period. Must be one of: ${VALID_PERIODS.join(', ')}` });
+      return;
+    }
+
+    const periodLabel = period === 240 ? '日线' : period === 60 ? '60分钟' : period === 30 ? '30分钟' : period === 15 ? '15分钟' : period === 5 ? '5分钟' : `${period}分钟`;
 
     try {
-      const { data, meta } = await dataFetcher.fetchKLine(code, market, days);
-      res.json({ code, market, data, meta });
+      if (period === 240) {
+        const { data, meta } = await dataFetcher.fetchKLine(code, market, days);
+        res.json({ code, market, period, periodLabel, data, meta });
+      } else {
+        const result = await dataFetcher.fetchKLineByPeriod(code, market, days, period);
+        res.json({ code, market, period, periodLabel, data: result.data });
+      }
     } catch (err) {
-      res.status(500).json({ error: 'Failed to fetch K-line data', detail: String(err) });
+      res.status(500).json({ error: `Failed to fetch ${periodLabel} data`, detail: String(err) });
     }
   });
 
