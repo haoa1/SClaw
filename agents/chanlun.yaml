@@ -81,9 +81,6 @@ tools:
     - compact
     - goal
     - agent_tool
-    - task_get
-    - task_stop
-    - web_search
     - web_fetch
 
 max_turns: 30

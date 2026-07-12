@@ -55,11 +55,6 @@ export const CHANLUN_AGENT: AgentDefinition = {
     "memory_recall",
     "compact",
     "goal",
-    "agent_tool",
-    "task_get",
-    "task_stop",
-    "web_search",
-    "web_fetch",
   ],
   systemPrompt: `${SHARED_PREAMBLE}
 

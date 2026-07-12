@@ -53,6 +53,7 @@ import { saveMessages, loadMessages, chatUpdateNotify } from "./routes/chat";
 // Register all tools
 import { registerFileTools, bashTool } from "./tools/file-tools";
 import { registerStockTool } from "./tools/stock";
+import { registerStockIndicatorsTool } from "./tools/stock-indicators";
 import { registerScreenTool } from "./tools/screen";
 import { registerStrategyTool } from "./tools/strategy";
 import { registerRiskTool } from "./tools/risk";
@@ -76,7 +77,6 @@ import { registerTradeTools } from "./tools/trade";
 import { SubAgentManager } from "./agent/sub-agent-manager";
 import { SubAgentYamlLoader } from "./agent/subagent-yaml-loader";
 import { registerSubAgentTool } from "./tools/subagent-tool";
-import { registerSubAgentTaskTools } from "./tools/subagent-task-tools";
 import { createSubAgentRoutes } from "./routes/subagent";
 
 // System prompt for AI agent — keep it simple, delegate complexity to sub-agents
@@ -148,6 +148,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   registerFileTools(toolRegistry);
   toolRegistry.register(bashTool);
   registerStockTool(toolRegistry);
+  registerStockIndicatorsTool(toolRegistry);
   registerScreenTool(toolRegistry);
   registerStrategyTool(toolRegistry);
 
@@ -186,7 +187,6 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     const { getCurrentUserId } = require("./request-context");
     return getCurrentUserId();
   });
-  registerSubAgentTaskTools(toolRegistry, subAgentManager);
 
   // ===== Initialize agent manager =====
   const MAIN_AGENT_TOOLS = [
@@ -206,8 +206,8 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     "manage_schedule", "manage_watch",
     // Trade
     "trade",
-    // Sub-agent delegation
-    "agent_tool", "task_get", "task_stop", "task_list",
+    // Sub-agent delegation (unified: spawn/get/stop/list via sub_cmd)
+    "agent_tool",
     // Skills
     "skill", "list_skills", "load_skill", "unload_skill",
     // Deep analysis

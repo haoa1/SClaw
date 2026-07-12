@@ -218,6 +218,68 @@ const globParams: ToolParamDef[] = [
   { name: "path", type: "string", description: "Directory to search (must be within project directory)", required: false, default: "." },
 ];
 
+/**
+ * Simple glob implementation using fs + pattern matching (no external dependency).
+ * Supports: *, **, ?, {a,b} patterns.
+ */
+function simpleGlob(pattern: string, cwd: string): string[] {
+  // Convert glob pattern to regex
+  let regexStr = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')   // escape regex special chars
+    .replace(/\*\*/g, '<<DOUBLESTAR>>')       // placeholder for **
+    .replace(/\*/g, '[^/]*')                   // * → any non-slash chars
+    .replace(/<<DOUBLESTAR>>/g, '.*')          // ** → any chars (including /)
+    .replace(/\?/g, '[^/]')                    // ? → single non-slash char
+    .replace(/\\\{([^}]+)\\\}/g, (_, group) =>  // {a,b} → (a|b)
+      '(' + group.split(',').map((s: string) => s.trim().replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('|') + ')'
+    );
+  const regex = new RegExp('^' + regexStr + '$');
+
+  const results: string[] = [];
+
+  // Determine base directory (up to first wildcard)
+  const wildcardIdx = pattern.search(/[*?{]/);
+  const baseDir = wildcardIdx >= 0
+    ? path.resolve(cwd, pattern.substring(0, wildcardIdx).replace(/[\\/]+$/, ''))
+    : path.resolve(cwd, pattern);
+
+  // If no wildcard, return exact match
+  if (wildcardIdx < 0) {
+    try {
+      if (fs.existsSync(baseDir)) return [baseDir];
+    } catch { /* ignore */ }
+    return [];
+  }
+
+  // Walk and match
+  function walk(dir: string): void {
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch { return; }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry);
+      const relPath = path.relative(cwd, fullPath);
+      const baseName = path.basename(fullPath);
+      const withDot = './' + relPath;
+      try {
+        // Match against: relPath (e.g. "file.ts"), fullPath, basename, or with ./ prefix
+        if (regex.test(relPath) || regex.test(fullPath) || regex.test(baseName) || regex.test(withDot)) {
+          results.push(fullPath);
+        }
+      } catch { /* regex fail */ }
+      try {
+        if (fs.statSync(fullPath).isDirectory()) {
+          walk(fullPath);
+        }
+      } catch { /* permission denied */ }
+    }
+  }
+  walk(baseDir);
+
+  return [...new Set(results)].sort();
+}
+
 const globFn = (args: Record<string, unknown>): string => {
   const pattern = args.pattern as string;
   const searchPath = (args.path as string) || ".";
@@ -229,8 +291,7 @@ const globFn = (args: Record<string, unknown>): string => {
   if (denied) cwd = PROJECT_ROOT; // fall back to project root
 
   try {
-    const { globSync } = require("glob");
-    const results = globSync(pattern, { cwd, absolute: true });
+    const results = simpleGlob(pattern, cwd);
     return results.length > 0 ? results.join("\n") : "No matches found";
   } catch (e: unknown) {
     return `Error: ${e instanceof Error ? e.message : String(e)}`;
