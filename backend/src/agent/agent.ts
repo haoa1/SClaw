@@ -14,6 +14,7 @@ export interface AgentConfig {
   soulPath?: string;
   debug?: boolean;       // dump prompt to file before each LLM call
   debugDir?: string;     // where to dump debug files
+  allowedToolNames?: string[];  // if set, only these tools are exposed to the LLM
 }
 
 export class Agent {
@@ -21,13 +22,23 @@ export class Agent {
   private llm: LLMClient;
   private tools: ToolRegistry;
   private memory: Memory;
-  private config: Required<AgentConfig>;
+  private config: Required<Omit<AgentConfig, 'allowedToolNames'>> & { allowedToolNames?: string[] };
   private totalInputTokens = 0;
   private totalOutputTokens = 0;
   /** Loaded skills: name → markdown content */
   private loadedSkills = new Map<string, string>();
   /** Abort flag: set to true to stop the agent on next loop check */
   public aborted = false;
+
+  /** Allowed tool names (undefined = all tools allowed) */
+  private allowedToolNames?: Set<string>;
+
+  /** Filter tools based on allowedToolNames whitelist */
+  private getFilteredTools(): Record<string, unknown>[] {
+    const allTools = this.tools.toOpenAITools();
+    if (!this.allowedToolNames) return allTools;
+    return allTools.filter((t: any) => this.allowedToolNames!.has(t?.function?.name));
+  }
 
   /** Signal the agent to stop. Next loop iteration will exit early. */
   public abort(): void {
@@ -44,6 +55,9 @@ export class Agent {
     this.tools = tools;
     this.memory = memory;
     this.llm = new LLMClient();
+    this.allowedToolNames = config.allowedToolNames
+      ? new Set(config.allowedToolNames)
+      : undefined;
     this.config = {
       systemPrompt:
         config.systemPrompt ??
@@ -57,6 +71,7 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       soulPath: config.soulPath ?? path.join(os.homedir(), '.sclaw', 'workspace', 'SOUL.md'),
       debug: config.debug ?? false,
       debugDir: config.debugDir ?? path.join(os.homedir(), '.sclaw', 'debug'),
+      allowedToolNames: config.allowedToolNames ?? undefined,
     };
     // Inject system prompt as first message so the LLM actually receives it
     this.messages.push({ role: "system", content: this.config.systemPrompt });
@@ -117,7 +132,7 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       const llmResponse = onToken
         ? await this.llm.chatStream(
             this.messages,
-            this.tools.toOpenAITools(),
+            this.getFilteredTools(),
             onToken,
             this.config.model,
             onReasoning,
@@ -125,7 +140,7 @@ Use tools when you need to perform actions. Be concise and helpful.`,
           )
         : await this.llm.chat(
             this.messages,
-            this.tools.toOpenAITools(),
+            this.getFilteredTools(),
             this.config.model
           );
 

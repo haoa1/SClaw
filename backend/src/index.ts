@@ -72,34 +72,31 @@ import { registerManageWatchTool } from "./tools/manage-watch-tool";
 import { createWatchStreamRoutes } from "./routes/watch-stream";
 import { registerTradeTools } from "./tools/trade";
 
-// System prompt for AI agent
-const SYSTEM_PROMPT = `## Tool Overview
-You have data, screen, strategy, risk, schedule, memory, file, skill, script, fund, goal, and watch tools. Rely on the actual function definitions (below) for parameters and details.
+// SubAgent system
+import { SubAgentManager } from "./agent/sub-agent-manager";
+import { SubAgentYamlLoader } from "./agent/subagent-yaml-loader";
+import { registerSubAgentTool } from "./tools/subagent-tool";
+import { registerSubAgentTaskTools } from "./tools/subagent-task-tools";
+import { createSubAgentRoutes } from "./routes/subagent";
 
-## Watch Tools (盯盘)
-- watch(sub_cmd="add") — Create a watch task with conditions (price_change %, volume_spike ratio, price_cross levels, new_high_low)
-- watch(sub_cmd="list") — View active watch tasks
-- watch(sub_cmd="remove") — Delete a watch task
-- watch(sub_cmd="toggle") — Enable/disable a task
-- watch(sub_cmd="update") — Modify interval, conditions, or targets
-- watch(sub_cmd="stream") — Subscribe to real-time SSE alerts
-Supports cooldown dedup, per-stock state tracking, multi-condition (AND/OR) logic.
+// System prompt for AI agent — keep it simple, delegate complexity to sub-agents
+const SYSTEM_PROMPT = `You are the **main agent** — a coordinator for SClaw stock analysis platform.
 
-## Trade Tools (交易)
-- trade(sub_cmd="account") — 查询账户总资产、可用资金、持仓市值
-- trade(sub_cmd="positions") — 查询持仓列表
-- trade(sub_cmd="buy", code="600519", price=150.0, qty=100) — 买入股票（需用户确认）
-- trade(sub_cmd="sell", code="600519", price=155.0, qty=100) — 卖出股票（需用户确认）
+## Your Role
+1. Handle **simple requests** directly (quotes, K-line, screens, account, schedules)
+2. **Delegate complex work** to sub-agents via \`agent_tool\`
+
+## Delegate When
+- Task needs 3+ tool calls, deep analysis (缠论/筹码/深度), complex research, or you're uncertain
+- Available sub-agent types: general-purpose, coder, analyzer, debugger, researcher, planner, reviewer, integrator, chanlun
 
 ## Safety
-- Never give financial advice ("buy this", "sell that"). Present data, let the user decide.
-- **账户查询和持仓查询可以直接执行** — 用户问“查账户”“查持仓”时直接调用 trade(account) / trade(positions)，不需要额外确认。
-- **买入/卖出必须用户明确确认** — 用户说“帮我买/卖XXX”时，必须先展示详情让用户确认，确认后才调用 trade(buy/sell)。
-- Never fabricate data or invent tool names.
-- When a tool fails, state the problem and suggest next steps. Don't apologize profusely.
-- screen(sub_cmd="run") is preferred for screening (it also pushes results to frontend).
-## Deep Analysis
-- run_deep_analysis(strategy_id?, limit?) \u2014 One-shot deep stock analysis. Runs screening, fetches K-line, pre-computes technical metrics. Use this when the user asks for \u6df1\u5ea6\u5206\u6790 / \u7f20\u8bba\u5206\u6790 / \u7b79\u7801\u5206\u6790 / 5\u6761\u4ef6\u505aT or any comprehensive stock analysis. After calling, analyze each stock's data to identify Chan Theory buy/sell signals and re-score.`;
+- Present data; let user decide. Never say "buy this/sell that".
+- Account/position queries: execute directly.
+- Buy/sell: always show details, get user confirmation first.
+- Never fabricate data. If a tool fails, explain clearly.
+- Rely on tool function definitions for parameter details.
+`;
 
 /**
  * Create and configure the Express app — no side effects, no listening.
@@ -174,8 +171,49 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     return getCurrentUserId();
   });
   registerTradeTools(toolRegistry);
+
+  // ===== Initialize SubAgent system =====
+  const subAgentManager = new SubAgentManager(toolRegistry);
+
+  // YAML agent loader (hot-reloadable agents from agents/ directory)
+  const yamlAgentLoader = new SubAgentYamlLoader(
+    path.resolve(__dirname, "../agents"),
+  );
+  yamlAgentLoader.init();
+  subAgentManager.setYamlLoader(yamlAgentLoader);
+
+  registerSubAgentTool(toolRegistry, subAgentManager, () => {
+    const { getCurrentUserId } = require("./request-context");
+    return getCurrentUserId();
+  });
+  registerSubAgentTaskTools(toolRegistry, subAgentManager);
+
   // ===== Initialize agent manager =====
-  const agentManager = new PerUserAgentManager(toolRegistry, dataDir);
+  const MAIN_AGENT_TOOLS = [
+    // Core file/command
+    "read_file", "write_file", "bash", "glob", "grep",
+    // Stock data
+    "stock", "stock_indicators",
+    // Screening
+    "screen", "run_screen",
+    // Strategy
+    "strategy", "list_strategies", "run_multi_strategy",
+    // Risk
+    "risk", "assess_portfolio_risk", "assess_stock_risk",
+    // Memory & context
+    "memory_recall", "compact", "goal",
+    // Schedule & watch
+    "manage_schedule", "manage_watch",
+    // Trade
+    "trade",
+    // Sub-agent delegation
+    "agent_tool", "task_get", "task_stop", "task_list",
+    // Skills
+    "skill", "list_skills", "load_skill", "unload_skill",
+    // Deep analysis
+    "run_deep_analysis",
+  ];
+  const agentManager = new PerUserAgentManager(toolRegistry, dataDir, MAIN_AGENT_TOOLS);
   // Override system prompt
   agentManager.systemPrompt = SYSTEM_PROMPT;
 
@@ -359,6 +397,10 @@ ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.
   // Watch stream SSE route (GET /api/watch/stream)
   const watchStreamRoutes = createWatchStreamRoutes(watchEngine);
   app.use(watchStreamRoutes);
+
+  // SubAgent management routes
+  const subAgentRoutes = createSubAgentRoutes(subAgentManager);
+  app.use("/api/subagent", subAgentRoutes);
 
   // Wire scheduler to run backtest tasks
   scheduler.runBacktest = async (config) => {

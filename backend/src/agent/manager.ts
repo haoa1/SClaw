@@ -34,11 +34,13 @@ export class PerUserAgentManager {
   private registry: ToolRegistry;
   private dataDir: string;
   public systemPrompt: string = "";
+  public allowedToolNames?: string[];
   public pendingNotifications = new Map<string, ScheduleNotification[]>();
 
-  constructor(registry: ToolRegistry, dataDir: string) {
+  constructor(registry: ToolRegistry, dataDir: string, allowedToolNames?: string[]) {
     this.registry = registry;
     this.dataDir = dataDir;
+    this.allowedToolNames = allowedToolNames;
   }
 
   /** Get or create an agent for a specific user. */
@@ -53,6 +55,7 @@ export class PerUserAgentManager {
     agent = new Agent(this.registry, memory, {
       verbose: process.argv.includes("--verbose"),
       systemPrompt: this.systemPrompt,
+      allowedToolNames: this.allowedToolNames,
     });
 
     this.agents.set(userId, agent);

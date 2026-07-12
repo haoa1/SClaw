@@ -199,7 +199,7 @@ export default function SchedulerPanel() {
                       <div className="text-xs text-stock-text-secondary mt-1 space-x-3">
                         <span>{cronToHuman(t.cronExpr)}</span>
                         <span>|</span>
-                        {(t.taskType === 'agent') ? (
+                        {(String(t.taskType) === 'agent') ? (
                           <span className="text-cyan-400">AI分析</span>
                         ) : (
                           <span className={t.aiMode === 'both' ? 'text-bronze' : 'text-green-400'}>

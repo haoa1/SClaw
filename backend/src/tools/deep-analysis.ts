@@ -44,7 +44,7 @@ async function httpGet(path: string): Promise<any> {
   });
 }
 
-interface KLinePoint {
+export interface KLinePoint {
   date: string;
   open: number;
   high: number;
@@ -55,7 +55,40 @@ interface KLinePoint {
   turnoverRate?: number;
 }
 
-function computeMetrics(klineData: KLinePoint[]): Record<string, unknown> {
+// ===== EMA (Exponential Moving Average) =====
+function ema(data: number[], period: number): number[] {
+  if (data.length < period) return [];
+  const multiplier = 2 / (period + 1);
+  const result: number[] = [];
+  let emaValue = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  result.push(emaValue);
+  for (let i = period; i < data.length; i++) {
+    emaValue = (data[i] - emaValue) * multiplier + emaValue;
+    result.push(emaValue);
+  }
+  return result;
+}
+
+// ===== Chan Theory Pivot Detection =====
+function findPivots(closes: number[], left: number, right: number): { high: number[]; low: number[] } {
+  const highs: number[] = [];
+  const lows: number[] = [];
+  for (let i = left; i < closes.length - right; i++) {
+    // Pivot high: center is higher than both left and right neighbors
+    let isHigh = true;
+    for (let j = 1; j <= left; j++) { if (closes[i] <= closes[i - j]) { isHigh = false; break; } }
+    if (isHigh) for (let j = 1; j <= right; j++) { if (closes[i] <= closes[i + j]) { isHigh = false; break; } }
+    if (isHigh) highs.push(i);
+    // Pivot low: center is lower than both left and right neighbors
+    let isLow = true;
+    for (let j = 1; j <= left; j++) { if (closes[i] >= closes[i - j]) { isLow = false; break; } }
+    if (isLow) for (let j = 1; j <= right; j++) { if (closes[i] >= closes[i + j]) { isLow = false; break; } }
+    if (isLow) lows.push(i);
+  }
+  return { high: highs, low: lows };
+}
+
+export function computeMetrics(klineData: KLinePoint[]): Record<string, unknown> {
   const closes = klineData.map(d => d.close).filter(c => c > 0);
   const volumes = klineData.map(d => d.volume).filter(v => v > 0);
   const highs = klineData.map(d => d.high).filter(h => h > 0);
@@ -102,6 +135,166 @@ function computeMetrics(klineData: KLinePoint[]): Record<string, unknown> {
   // Count up/down days
   const upDays = closes.slice(1).filter((c, i) => c > closes[i]).length;
   const downDays = closes.slice(1).filter((c, i) => c < closes[i]).length;
+
+  // ===== MACD =====
+  let macd: { dif: number; dea: number; histogram: number } | null = null;
+  if (closes.length >= 26) {
+    const ema12 = ema(closes, 12);
+    const ema26 = ema(closes, 26);
+    const minLen = Math.min(ema12.length, ema26.length);
+    if (minLen >= 1) {
+      const difs: number[] = [];
+      for (let i = 0; i < minLen; i++) {
+        difs.push(ema12[ema12.length - minLen + i] - ema26[ema26.length - minLen + i]);
+      }
+      const deaValues = ema(difs, 9);
+      const dif = difs[difs.length - 1];
+      const dea = deaValues.length > 0 ? deaValues[deaValues.length - 1] : dif;
+      macd = {
+        dif: Math.round(dif * 100) / 100,
+        dea: Math.round(dea * 100) / 100,
+        histogram: Math.round(2 * (dif - dea) * 100) / 100,
+      };
+    }
+  }
+
+  // ===== Chan Theory: Pivot + Divergence + Zhongshu =====
+  let chanDivergence: { topDivergence: number; bottomDivergence: number; lastPivotType: string; zhongshuCount: number } | null = null;
+  if (closes.length >= 30 && macd) {
+    const pivots = findPivots(closes, 2, 2);
+    const { high: pivotHighs, low: pivotLows } = pivots;
+
+    // Merge pivots in chronological order as alternating high/low sequence
+    // Chan theory: sequence of pivots should alternate (high → low → high → low)
+    type PivotPoint = { index: number; price: number; type: 'high' | 'low' };
+    const merged: PivotPoint[] = [];
+    let hi = 0, li = 0;
+    // Find first pivot — whichever comes first
+    let nextIdx = -1;
+    if (pivotHighs.length > 0 && pivotLows.length > 0) {
+      nextIdx = pivotHighs[0] < pivotLows[0] ? pivotHighs[hi++] : pivotLows[li++];
+      merged.push({ index: nextIdx, price: closes[nextIdx], type: pivotHighs[0] < pivotLows[0] ? 'high' : 'low' });
+    } else if (pivotHighs.length > 0) {
+      nextIdx = pivotHighs[hi++];
+      merged.push({ index: nextIdx, price: closes[nextIdx], type: 'high' });
+    } else if (pivotLows.length > 0) {
+      nextIdx = pivotLows[li++];
+      merged.push({ index: nextIdx, price: closes[nextIdx], type: 'low' });
+    }
+    // Alternate: if last was high, next must be low, etc.
+    while (hi < pivotHighs.length || li < pivotLows.length) {
+      const lastType = merged.length > 0 ? merged[merged.length - 1].type : 'low';
+      if (lastType === 'high') {
+        // Need a low next
+        while (li < pivotLows.length && pivotLows[li] <= merged[merged.length - 1].index) li++;
+        if (li < pivotLows.length) {
+          // Check for better low (lower price) before taking the next available
+          let bestLi = li;
+          for (let j = li + 1; j < pivotLows.length; j++) {
+            if (closes[pivotLows[j]] < closes[pivotLows[bestLi]]) bestLi = j;
+          }
+          merged.push({ index: pivotLows[bestLi], price: closes[pivotLows[bestLi]], type: 'low' });
+          li = bestLi + 1;
+        } else break;
+      } else {
+        // Need a high next
+        while (hi < pivotHighs.length && pivotHighs[hi] <= merged[merged.length - 1].index) hi++;
+        if (hi < pivotHighs.length) {
+          let bestHi = hi;
+          for (let j = hi + 1; j < pivotHighs.length; j++) {
+            if (closes[pivotHighs[j]] > closes[pivotHighs[bestHi]]) bestHi = j;
+          }
+          merged.push({ index: pivotHighs[bestHi], price: closes[pivotHighs[bestHi]], type: 'high' });
+          hi = bestHi + 1;
+        } else break;
+      }
+    }
+
+    // Compute MACD histogram area for each segment between pivots
+    // Need full histogram array for area calculation
+    // Recompute DIFs and DEA aligned to closes
+    const ema12All = ema(closes, 12);
+    const ema26All = ema(closes, 26);
+    const len = Math.min(ema12All.length, ema26All.length);
+    const allDifs: number[] = [];
+    for (let i = 0; i < len; i++) {
+      allDifs.push(ema12All[ema12All.length - len + i] - ema26All[ema26All.length - len + i]);
+    }
+    const deaAll = ema(allDifs, 9);
+    const histAll: number[] = allDifs.map((d, i) => 2 * (d - (deaAll[i] ?? d)));
+    // Align histAll to closes: histAll starts at index (closes.length - len) in closes space
+    const histOffset = closes.length - len;
+
+    // Function to get MACD柱 area (sum of absolute histogram values) between two close indices
+    const histArea = (startIdx: number, endIdx: number): number => {
+      let area = 0;
+      for (let i = startIdx; i < endIdx && i < closes.length; i++) {
+        const hi = i - histOffset;
+        if (hi >= 0 && hi < histAll.length) area += Math.abs(histAll[hi]);
+      }
+      return area;
+    };
+
+    // Count zhongshu (中枢): overlapping zones between consecutive up-down segments
+    // A 中枢 is formed when 3 consecutive segments overlap
+    let zhongshuCount = 0;
+    if (merged.length >= 4) {
+      for (let i = 0; i <= merged.length - 4; i += 2) {
+        const seg1High = Math.max(merged[i].price, merged[i + 1].price);
+        const seg1Low = Math.min(merged[i].price, merged[i + 1].price);
+        const seg2High = Math.max(merged[i + 2].price, merged[i + 3].price);
+        const seg2Low = Math.min(merged[i + 2].price, merged[i + 3].price);
+        // Check overlap
+        const overlapHigh = Math.min(seg1High, seg2High);
+        const overlapLow = Math.max(seg1Low, seg2Low);
+        if (overlapHigh > overlapLow) zhongshuCount++;
+      }
+    }
+
+    // Divergence detection: compare last 2 same-direction segments
+    let topDivergence = 0;
+    let bottomDivergence = 0;
+    let lastPivotType = merged.length > 0 ? merged[merged.length - 1].type : 'none';
+
+    if (merged.length >= 4) {
+      // Top divergence: compare last 2 up moves (high[i-2]→high[i] vs high[i]→high[i+2])
+      const lastUpSegEnd = merged[merged.length - 1].type === 'high' ? merged.length - 1 : merged.length - 2;
+      if (lastUpSegEnd >= 3) {
+        const upSeg1Start = merged[lastUpSegEnd - 3];
+        const upSeg1End = merged[lastUpSegEnd - 1];
+        const upSeg2Start = merged[lastUpSegEnd - 1];
+        const upSeg2End = merged[lastUpSegEnd];
+        const price1 = upSeg1End.price - upSeg1Start.price;
+        const price2 = upSeg2End.price - upSeg2Start.price;
+        const area1 = histArea(upSeg1Start.index, upSeg1End.index);
+        const area2 = histArea(upSeg2Start.index, upSeg2End.index);
+        // Top divergence: price2 > price1 but area2 < area1 * 0.8
+        if (price2 > price1 * 0.9 && area2 < area1 * 0.8 && area1 > 0) topDivergence = 1;
+      }
+
+      // Bottom divergence: compare last 2 down moves
+      const lastDownSegEnd = merged[merged.length - 1].type === 'low' ? merged.length - 1 : merged.length - 2;
+      if (lastDownSegEnd >= 3) {
+        const downSeg1Start = merged[lastDownSegEnd - 3];
+        const downSeg1End = merged[lastDownSegEnd - 1];
+        const downSeg2Start = merged[lastDownSegEnd - 1];
+        const downSeg2End = merged[lastDownSegEnd];
+        const price1 = downSeg1Start.price - downSeg1End.price;
+        const price2 = downSeg2Start.price - downSeg2End.price;
+        const area1 = histArea(downSeg1Start.index, downSeg1End.index);
+        const area2 = histArea(downSeg2Start.index, downSeg2End.index);
+        // Bottom divergence: price2 > price1 but area2 < area1 * 0.8
+        if (price2 > price1 * 0.9 && area2 < area1 * 0.8 && area1 > 0) bottomDivergence = 1;
+      }
+    }
+
+    chanDivergence = {
+      topDivergence,
+      bottomDivergence,
+      lastPivotType,
+      zhongshuCount,
+    };
+  }
 
   // Highest high and lowest low in recent 20 days
   const recent20 = klineData.slice(-20);
@@ -242,6 +435,17 @@ function computeMetrics(klineData: KLinePoint[]): Record<string, unknown> {
       topBottomRatio: Math.round(topBottomRatio * 100) / 100,  // 顶底成交量比
       divergenceSignal,    // 量价背离信号 0/1
       bottomVolumeSignal,  // 底部放量信号 0/1
+
+      // ===== MACD =====
+      macdDif: macd?.dif ?? null,
+      macdDea: macd?.dea ?? null,
+      macdHistogram: macd?.histogram ?? null,
+
+      // ===== 缠论 =====
+      chanTopDivergence: chanDivergence?.topDivergence ?? null,    // 顶背驰 0/1
+      chanBottomDivergence: chanDivergence?.bottomDivergence ?? null, // 底背驰 0/1
+      chanLastPivotType: chanDivergence?.lastPivotType ?? null,   // 最后拐点方向 high/low/none
+      chanZhongshuCount: chanDivergence?.zhongshuCount ?? null,    // 中枢数量
     };
   }
 
@@ -268,6 +472,17 @@ function computeMetrics(klineData: KLinePoint[]): Record<string, unknown> {
     recentHigh: Math.round(recentHigh * 100) / 100,
     recentLow: Math.round(recentLow * 100) / 100,
     totalDays: closes.length,
+
+    // ===== MACD =====
+    macdDif: macd?.dif ?? null,
+    macdDea: macd?.dea ?? null,
+    macdHistogram: macd?.histogram ?? null,
+
+    // ===== 缠论 =====
+    chanTopDivergence: chanDivergence?.topDivergence ?? null,
+    chanBottomDivergence: chanDivergence?.bottomDivergence ?? null,
+    chanLastPivotType: chanDivergence?.lastPivotType ?? null,
+    chanZhongshuCount: chanDivergence?.zhongshuCount ?? null,
   };
 }
 
