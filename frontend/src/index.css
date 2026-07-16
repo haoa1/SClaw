@@ -9,6 +9,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Chat markdown reset — force zero margin on all children */
+.md-reset * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
 /* ===== Bronze Divider — signature element ===== */
 @layer components {
   .bronze-divider {
@@ -100,6 +106,15 @@ body {
 ::selection {
   background: rgba(196, 154, 108, 0.3);
   color: #E8E6E3;
+}
+
+/* Hide scrollbar for tab bar on mobile */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* ===== Watch Task Panel ===== */

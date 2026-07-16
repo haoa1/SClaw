@@ -501,79 +501,53 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     }
   }
 
-  /* ===== Markdown renderer (OpenClaw terminal style) ===== */
+  /* ===== Markdown renderer (zero margin on all block elements) ===== */
   const mdComponents: any = {
-    h1: ({ children }: any) => <h1 className="text-yellow-400 text-base font-bold mt-2 mb-1 leading-normal">{children}</h1>,
-    h2: ({ children }: any) => <h2 className="text-yellow-400 text-sm font-bold mt-1.5 mb-1 leading-normal">{children}</h2>,
-    h3: ({ children }: any) => <h3 className="text-cyan-400 text-sm font-semibold mt-1 mb-0.5 leading-normal">{children}</h3>,
-    h4: ({ children }: any) => <h4 className="text-cyan-400 text-xs font-semibold mt-1 mb-0.5 leading-normal">{children}</h4>,
-    p: ({ children }: any) => <p className="text-gray-200 text-sm mb-0.5 leading-normal last:mb-0">{children}</p>,
+    h1: ({ children }: any) => <h1 className="m-0 text-base font-bold text-yellow-400">{children}</h1>,
+    h2: ({ children }: any) => <h2 className="m-0 text-sm font-bold text-yellow-400">{children}</h2>,
+    h3: ({ children }: any) => <h3 className="m-0 text-xs font-semibold text-cyan-400">{children}</h3>,
+    h4: ({ children }: any) => <h4 className="m-0 text-xs font-semibold text-cyan-400">{children}</h4>,
+    p: ({ children }: any) => <p className="m-0 text-gray-200 text-sm leading-relaxed">{children}</p>,
     strong: ({ children }: any) => <strong className="text-gray-100 font-bold">{children}</strong>,
     em: ({ children }: any) => <em className="italic text-gray-300">{children}</em>,
     code: ({ children, className, inline }: any) => {
       if (inline) {
-        return <code className="bg-gray-800 text-yellow-200 text-xs px-1 py-0.5 rounded font-mono">{children}</code>
+        return <code className="bg-gray-800 text-yellow-200 text-xs px-1 py-0.5 rounded font-mono m-0">{children}</code>
       }
-      const lang = className?.replace('language-', '') || ''
-      if (lang === 'diff') {
-        // Render diff lines with color coding
-        const text = String(children).replace(/\n$/, '')
-        const lines = text.split('\n')
-        return (
-          <pre className="bg-[#0d1117] text-[13px] font-['JetBrains_Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] p-3 rounded border border-gray-700 overflow-auto leading-snug whitespace-pre-wrap">
-            {lines.map((line, i) => {
-              const trimmed = line
-              let bgClass = ''
-              let prefix = ''
-              let colorClass = 'text-gray-300'
-              if (trimmed.startsWith('+') && !trimmed.startsWith('+++')) {
-                bgClass = 'bg-green-900/30'
-                colorClass = 'text-green-300'
-                prefix = '+'
-              } else if (trimmed.startsWith('-') && !trimmed.startsWith('---')) {
-                bgClass = 'bg-red-900/30'
-                colorClass = 'text-red-300'
-                prefix = '-'
-              } else if (trimmed.startsWith('@@')) {
-                bgClass = 'bg-cyan-900/20'
-                colorClass = 'text-cyan-400'
-                prefix = '  '
-              } else {
-                prefix = '  '
-              }
-              return (
-                <div key={i} className={`${bgClass} px-1 -mx-3`}>
-                  <span className={`${colorClass}`}>{prefix}{trimmed.slice(prefix.length)}</span>
-                </div>
-              )
-            })}
-          </pre>
-        )
-      }
-      return <pre className="bg-[#1a1a2e] text-gray-200 text-[13px] font-['JetBrains_Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] p-3 rounded border border-gray-700 overflow-auto leading-snug whitespace-pre">{children}</pre>
+      return <pre className="bg-[#1a1a2e] text-gray-200 text-[13px] font-mono p-3 rounded border border-gray-700 overflow-auto leading-snug whitespace-pre m-0"><code>{children}</code></pre>
     },
-    pre: ({ children }: any) => <div className="mb-2">{children}</div>,
+    pre: ({ children }: any) => <pre className="m-0">{children}</pre>,
     table: ({ children }: any) => (
-      <div className="overflow-x-auto mb-2">
-        <table className="border-collapse w-full text-xs">{children}</table>
-      </div>
+      <table className="m-0 border-collapse w-full text-xs">{children}</table>
     ),
     thead: ({ children }: any) => <thead className="bg-gray-800/80">{children}</thead>,
-    th: ({ children }: any) => <th className="border border-gray-700 px-2.5 py-1.5 text-gray-200 font-semibold text-left whitespace-nowrap">{children}</th>,
-    td: ({ children }: any) => <td className="border border-gray-700 px-2.5 py-1.5 text-gray-300">{children}</td>,
+    th: ({ children }: any) => <th className="m-0 border border-gray-700 px-2.5 py-1.5 text-gray-200 font-semibold text-left whitespace-nowrap">{children}</th>,
+    td: ({ children }: any) => <td className="m-0 border border-gray-700 px-2.5 py-1.5 text-gray-300">{children}</td>,
     tr: ({ children }: any) => <tr className="even:bg-gray-900/40">{children}</tr>,
-    ul: ({ children }: any) => <ul className="list-disc pl-4 mb-1 text-gray-200 text-sm space-y-0.5">{children}</ul>,
-    ol: ({ children }: any) => <ol className="list-decimal pl-4 mb-1 text-gray-200 text-sm space-y-0.5">{children}</ol>,
-    li: ({ children }: any) => <li className="leading-normal">{children}</li>,
+    ul: ({ children }: any) => <ul className="m-0 list-disc pl-4 text-gray-200 text-sm">{children}</ul>,
+    ol: ({ children }: any) => <ol className="m-0 list-decimal pl-4 text-gray-200 text-sm">{children}</ol>,
+    li: ({ children }: any) => <li className="m-0 leading-normal">{children}</li>,
     blockquote: ({ children }: any) => (
-      <blockquote className="border-l-2 border-cyan-800 pl-3 my-1.5 text-gray-400 text-sm italic">{children}</blockquote>
+      <blockquote className="m-0 border-l-2 border-cyan-800 pl-3 text-gray-400 text-sm italic">{children}</blockquote>
     ),
     a: ({ href, children }: any) => (
-      <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline">
-        {children}
-      </a>
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline m-0">{children}</a>
     ),
-    hr: () => <hr className="border-gray-800 my-2" />,
+    hr: () => <hr className="m-0 border-gray-800" />,
+  }
+
+  /** Strip inline margin styles from raw HTML in markdown content */
+  function stripInlineMargins(text: string): string {
+    return text.replace(/style="([^"]*)"/g, (_m: string, styles: string) => {
+      const cleaned = styles
+        .replace(/\bmargin\s*:\s*[^;]+;?/gi, '')
+        .replace(/\bmargin-top\s*:\s*[^;]+;?/gi, '')
+        .replace(/\bmargin-bottom\s*:\s*[^;]+;?/gi, '')
+        .replace(/\bmargin-left\s*:\s*[^;]+;?/gi, '')
+        .replace(/\bmargin-right\s*:\s*[^;]+;?/gi, '')
+        .trim()
+      return cleaned ? `style="${cleaned}"` : ''
+    })
   }
 
   /** Markdown content with long-content collapsible wrapper */
@@ -581,19 +555,27 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     const [expanded, setExpanded] = useState(false)
     const isLong = data.length > 5000
     const displayData = isLong && !expanded ? data.slice(0, 5000) + '\n...' : data
+    // Strip inline margins from AI-generated HTML before rendering
+    const sanitized = stripInlineMargins(displayData)
+
     return (
-      <div>
-        <div className="max-w-none">
+      <div className="leading-[0] md-content-wrap">
+        <style>{`.md-content-wrap [style] { margin: 0 !important; }
+.md-content-wrap h1,.md-content-wrap h2,.md-content-wrap h3,.md-content-wrap h4,
+.md-content-wrap p,.md-content-wrap table,.md-content-wrap pre,
+.md-content-wrap ul,.md-content-wrap ol,.md-content-wrap blockquote,
+.md-content-wrap hr { margin-top: 0 !important; margin-bottom: 0 !important; }`}</style>
+        <div className="max-w-none leading-normal">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-            {displayData}
+            {sanitized}
           </ReactMarkdown>
         </div>
         {isLong && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-gray-600 hover:text-gray-400 text-xs mt-1 outline-none"
+            className="text-gray-600 hover:text-gray-400 text-xs mt-0.5 outline-none"
           >
-            {expanded ? '▲ Collapse' : '▼ Expand all (' + (data.length / 1000).toFixed(1) + 'K)'}
+            {expanded ? '\u25b2 Collapse' : '\u25bc Expand all (' + (data.length / 1000).toFixed(1) + 'K)'}
           </button>
         )}
       </div>
@@ -622,7 +604,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     if (!isStreaming && collapsed) {
       const toolCount = segments.filter(s => s.type === 'tool_call').length
       return (
-        <div className="mb-2">
+        <div className="mb-0.5">
           <button
             onClick={() => setCollapsed(false)}
             className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg border"
@@ -637,7 +619,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     }
 
     return (
-      <div className="mb-2 rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(180,130,70,0.12)', background: '#0d0d14' }}>
+      <div className="mb-0.5 rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(180,130,70,0.12)', background: '#0d0d14' }}>
         {/* Header bar */}
         <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'rgba(180,130,70,0.06)', borderBottom: '1px solid rgba(180,130,70,0.08)' }}>
           <div className="flex items-center gap-2">
@@ -786,14 +768,14 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
       <div>
         {/* Process block (reasoning + tools) */}
         {processBlock && (
-          <div className="mb-2">
+          <div className="mb-0.5">
             <ProcessBlock segments={processBlock} isStreaming={isStreaming} />
           </div>
         )}
 
         {/* Final answer */}
         {finalContent.length > 0 && (
-          <div className="mb-1">
+          <div className="mb-0.5">
             {finalContent.map((seg, j) => (
               <div key={j} className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-normal">
                 {seg.type === 'content' ? <MarkdownContent data={seg.data} /> : null}
@@ -808,7 +790,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   /* ===== Agent header: SClaw identity strip ===== */
   function AgentHeader() {
     return (
-      <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-bronze/20">
+      <div className="flex items-center gap-2 mb-1 pb-1 border-b border-bronze/20">
         <span className="text-lg leading-none">🦀</span>
         <span className="text-bronze font-bold text-xs tracking-wider uppercase">SClaw</span>
         <span className="text-gray-600 text-[10px] font-mono hidden sm:inline">· market hunter</span>
@@ -824,7 +806,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   function UserMessageBlock({ content }: { content: string }) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] bg-gray-900/80 border border-cyan-800/50 rounded-lg px-3 py-2">
+        <div className="max-w-[85%] bg-gray-900/80 border border-cyan-800/50 rounded-lg px-3 py-1">
           <div className="text-gray-200 text-sm whitespace-pre-wrap break-words leading-normal">
             {content}
           </div>
@@ -837,7 +819,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   function AssistantBubble({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex justify-start">
-        <div className="max-w-[92%] bg-[rgba(196,154,108,0.04)] border border-bronze/20 rounded-lg px-3 py-2.5">
+        <div className="max-w-[92%] bg-[rgba(196,154,108,0.04)] border border-bronze/20 rounded-lg px-3 py-1.5">
           <AgentHeader />
           {children}
         </div>
@@ -847,12 +829,16 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
   // Memoize message rendering — typing in input should NOT re-render messages
   const messagesList = useMemo(() => (
-    <div ref={chatRef} className="flex-1 overflow-y-auto px-4 py-3">
+    <div ref={chatRef} className="flex-1 overflow-y-auto px-4 py-3" onClick={() => {
+      if (chatRef.current) {
+        chatRef.current.scrollTop = chatRef.current.scrollHeight
+      }
+    }}>
       {messages.map((msg, i) => {
         const isEditing = editingIndex === i && msg.role === 'user'
         const msgContent = msg.segments?.find(s => s.type === 'content')?.data || msg.content || ''
         return (
-        <div key={i} className="group mb-2 leading-normal relative">
+        <div key={i} className="group mb-0.5 leading-normal relative">
           {/* Hover actions: recall + edit (not during streaming, not on last assistant msg) */}
           {!streaming && !isEditing && (
             <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">

@@ -62,6 +62,7 @@ export default function App() {
     dismissAlert,
   } = useWatchAlertSSE()
   const [showWatchPanel, setShowWatchPanel] = useState(false)
+  const [showMobileChat, setShowMobileChat] = useState(() => window.innerWidth >= 768)
   const [toastAlert, setToastAlert] = useState<WatchAlert | null>(null)
   const prevAlertCountRef = useRef(0)
 
@@ -384,19 +385,19 @@ export default function App() {
   return (
     <div className="min-h-screen bg-stock-bg">
       {/* Header */}
-      <header className="border-b border-stock-border bg-stock-card px-6 py-3">
+      <header className="sticky top-0 z-50 border-b border-stock-border bg-stock-card px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="font-display text-2xl tracking-wide text-stock-text">
               <span className="text-bronze">S</span>Claw
             </span>
-            <span className="text-xs text-stock-text-secondary bg-stock-hover px-2 py-0.5 rounded">
+            <span className="text-xs text-stock-text-secondary bg-stock-hover px-2 py-0.5 rounded hidden md:inline">
               {plugins.length} plugins
             </span>
           </div>
-          <div className="flex items-center gap-4">
-            {/* Tabs — bronze active diamond */}
-            <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* Tabs — bronze active diamond — scrollable on mobile */}
+            <div className="flex items-center gap-0.5 overflow-x-auto overflow-y-hidden scrollbar-hide max-w-[40vw] md:max-w-none">
               {(['config', 'results', 'history', 'logs', 'backtest'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
@@ -439,8 +440,8 @@ export default function App() {
               )}
             </div>
 
-            {/* User info */}
-            <div className="flex items-center gap-2 text-sm">
+            {/* User info — hide on mobile */}
+            <div className="hidden md:flex items-center gap-2 text-sm">
               <span className="text-stock-text-secondary">{user.displayName}</span>
               <span className="text-xs text-stock-text-secondary/60 bg-stock-hover px-1.5 py-0.5 rounded">{user.role}</span>
               <button onClick={handleLogout} className="text-xs text-stock-text-secondary hover:text-red-400 transition">Logout</button>
@@ -460,8 +461,8 @@ export default function App() {
               )}
             </button>
 
-            {/* AI indicator — bronze */}
-            <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-all duration-500 ${
+            {/* AI indicator — hide on mobile */}
+            <div className={`hidden md:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-all duration-500 ${
               agentHighlight
                 ? 'bg-bronze-glow text-bronze-light border border-bronze/50 shadow-bronze-sm'
                 : 'bg-stock-hover text-stock-text-secondary border border-stock-border'
@@ -469,6 +470,15 @@ export default function App() {
               <span className={`w-1.5 h-1.5 rounded-full ${agentHighlight ? 'bg-bronze animate-pulse' : 'bg-stock-text-secondary/40'}`} />
               <span>🧠 AI</span>
             </div>
+
+            {/* Chat toggle — all screens */}
+            <button
+              onClick={() => { setShowMobileChat(p => !p); setModalData(null); }}
+              className={`relative hover:opacity-80 transition text-lg ${showMobileChat ? 'text-bronze' : 'text-stock-text-secondary'}`}
+              title={showMobileChat ? 'Hide AI Chat' : 'Show AI Chat'}
+            >
+              💬
+            </button>
 
             <button
               onClick={runScreen}
@@ -495,8 +505,8 @@ export default function App() {
           </Suspense>
         </div>
       ) : (
-      <div className="flex h-[calc(100vh-73px)] overflow-hidden">
-        <div className={`flex-1 overflow-y-auto p-6 transition-all duration-300 ${agentHighlight ? 'ring-2 ring-bronze/40 ring-inset' : ''}`}>
+      <div className="flex flex-col md:flex-row h-[calc(100vh-73px)] overflow-hidden">
+        <div className={`flex-1 overflow-y-auto p-3 md:p-6 transition-all duration-300 ${agentHighlight ? 'ring-2 ring-bronze/40 ring-inset' : ''} ${showMobileChat ? 'hidden md:block' : ''}`}>
           {error && (
             <div className="bg-red-900/50 border border-red-800 px-4 py-3 text-sm text-red-200 text-center rounded-lg mb-4 flex items-center justify-center gap-2">
               <span>{error}</span>
@@ -628,8 +638,10 @@ export default function App() {
           )}
         </div>
 
-        {/* Right: AI Chat */}
-        <div className="w-1/2 border-l border-stock-border flex flex-col min-h-0">
+        {/* Right: AI Chat — sidebar on desktop, overlay on mobile */}
+        <div className={`w-full md:w-1/2 border-t md:border-t-0 md:border-l border-stock-border flex flex-col min-h-0 bg-stock-bg md:bg-transparent ${
+          showMobileChat ? 'fixed inset-0 top-[57px] z-50 md:static md:inset-auto md:flex' : 'hidden'
+        }`}>
           <ChatPanel
             onHighlight={setAgentHighlight}
             highlightTimeout={highlightTimeout}

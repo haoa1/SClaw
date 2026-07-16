@@ -73,6 +73,66 @@ function linkifyAnalysis(text: string): string {
   });
 }
 
+/**
+ * Linkify stock codes in pre-formatted HTML content.
+ * Does NOT escape HTML — the AI agent generates structured HTML per the prompt template.
+ * Only linkifies 6-digit stock codes to Eastmoney pages.
+ */
+function linkifyAnalysisHtml(html: string): string {
+  return html.replace(/\b([0-9]{6})\b/g, (match, code) => {
+    return stockLink(code);
+  });
+}
+
+/**
+ * Transform AI-generated light-theme inline styles to dark-theme compatible ones.
+ * The AI outputs structured HTML with inline styles like `background:#fff; color:#333`
+ * that clash with our dark email template.
+ *
+ * Instead of stripping all styles (which loses layout), we:
+ * 1. Replace light background colors → remove them (inherit dark parent)
+ * 2. Replace dark text colors → light theme equivalents
+ * 3. Keep structural styles (padding, margin, border, display, flex, grid, etc.)
+ */
+function darkenInlineStyles(html: string): string {
+  return html.replace(
+    /\s*style="([^"]*)"/gi,
+    (_match, styleContent: string) => {
+      const rules = styleContent.split(';').filter(Boolean);
+      const kept: string[] = [];
+      for (const rule of rules) {
+        const trimmed = rule.trim();
+        const lower = trimmed.toLowerCase();
+
+        // Skip light background colors (inherit parent's dark background)
+        if (
+          /^background(-color)?\s*:\s*(#fff|#ffffff|white|#f\d|#e\w{5}|#f\w{5}|#d\w{5}|rgb\(255|rgba\(255)/i.test(trimmed)
+        ) {
+          continue;
+        }
+
+        // Transform dark text to light
+        if (/^color\s*:\s*(#333|#333333|#000|#000000|black|#222|#444|#555|#666)/i.test(trimmed)) {
+          kept.push('color:#ddd');
+          continue;
+        }
+        if (/^color\s*:\s*(#111|#222222)/i.test(trimmed)) {
+          kept.push('color:#e0e0e0');
+          continue;
+        }
+        if (/^color\s*:\s*(#777|#888|#999)/i.test(trimmed)) {
+          kept.push('color:#aaa');
+          continue;
+        }
+
+        // Keep everything else
+        kept.push(trimmed);
+      }
+      return kept.length > 0 ? ` style="${kept.join('; ')}"` : '';
+    }
+  );
+}
+
 /** Build a beautiful re-scored results table (replaces the raw buildResultsTable) */
 function buildScreenResultsTable(results: FilterResult[], maxRows = 30): string {
   if (!results || results.length === 0) return '<p style="color:#aaa;">无匹配结果</p>';
@@ -315,10 +375,39 @@ export async function sendScreenReport(
   const analysisHtml = agentAnalysis ? `
     <div style="margin-bottom:16px;padding:16px;background:linear-gradient(135deg,#1a1a3e,#1a1a2e);border-radius:8px;border:1px solid #3a3a5e;">
       <h3 style="color:#a78bfa;margin:0 0 10px 0;font-size:15px;">🤖 AI 分析报告</h3>
-      <div style="color:#ddd;line-height:1.8;font-size:14px;">${linkifyAnalysis(agentAnalysis.replace(/\n/g, '<br>'))}</div>
+      <!-- The AI analysis section uses a dark-themed container with cascading styles for generated HTML elements -->
+      <div style="color:#ddd;line-height:1.8;font-size:14px;">
+        <div style="margin:0;padding:0;">
+          ${linkifyAnalysisHtml(darkenInlineStyles(agentAnalysis))}
+        </div>
+      </div>
       <p style="color:#6b6b8a;font-size:13px;margin:10px 0 0;border-top:1px solid #2a2a4a;padding-top:8px;">💡 点击股票代码查看东方财富详情页</p>
     </div>` : '';
   const html = `
+    <style>
+      body { font-family: 'PingFang SC','Helvetica Neue','Microsoft YaHei',sans-serif; background:#0a0a1a; color:#ccc; margin:0; padding:20px; }
+      .section { background:#1e293b; border-radius:12px; padding:16px; margin-bottom:16px; border:1px solid #334155; }
+      .section h2 { color:#fbbf24; font-size:16px; margin:0 0 12px; padding-bottom:8px; border-bottom:1px solid #334155; }
+      .card { background:#0f172a; border-radius:8px; padding:14px; margin-bottom:10px; border:1px solid #334155; }
+      .card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #334155; flex-wrap:wrap; gap:4px; }
+      .card-header .name { font-size:15px; font-weight:bold; color:#fbbf24; }
+      .card-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+      .card-item { background:#1e293b; border-radius:6px; padding:10px; }
+      .card-item .label { color:#94a3b8; font-size:10px; margin-bottom:4px; }
+      .card-item .value { font-size:13px; font-weight:600; }
+      table { border-collapse:collapse; width:100%; font-size:13px; margin:12px 0; border:1px solid #334155; }
+      th { border:1px solid #334155; padding:8px 10px; background:#1a1a3e; color:#e0e0e0; text-align:center; font-weight:600; }
+      td { border:1px solid #334155; padding:8px 10px; color:#ddd; text-align:center; }
+      tr:nth-child(even) td { background:#0d0d1a80; }
+      h1 { color:#fbbf24; font-size:22px; margin:18px 0 10px; padding-bottom:6px; border-bottom:2px solid #fbbf2440; }
+      h2 { color:#a78bfa; font-size:18px; margin:14px 0 8px; padding-bottom:4px; border-bottom:1px solid #a78bfa30; }
+      h3 { color:#60a5fa; font-size:16px; margin:12px 0 6px; }
+      h4 { color:#94a3b8; font-size:14px; margin:10px 0 4px; }
+      hr { border:none; border-top:1px solid #334155; margin:16px 0; }
+      p { margin:10px 0; line-height:1.8; }
+      strong { color:#e0e0e0; }
+      code { background:#1e293b; color:#fbbf24; padding:2px 6px; border-radius:4px; font-size:13px; font-family:monospace; }
+    </style>
     <div style="background:#0a0a1a;color:#ccc;padding:20px;font-family:'PingFang SC','Helvetica Neue',sans-serif;">
       <div style="max-width:680px;margin:0 auto;">
       <div style="text-align:center;padding:20px 0 16px;border-bottom:1px solid #1a1a2e;margin-bottom:16px;">

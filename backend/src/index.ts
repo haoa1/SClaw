@@ -212,6 +212,10 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     "skill", "list_skills", "load_skill", "unload_skill",
     // Deep analysis
     "run_deep_analysis",
+    // Email
+    "send_email",
+    "send_screen_report",
+    "send_backtest_report",
   ];
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir, MAIN_AGENT_TOOLS);
   // Override system prompt
