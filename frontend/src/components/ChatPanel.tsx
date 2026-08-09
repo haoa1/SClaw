@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -122,6 +122,43 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [loaded, setLoaded] = useState(false)
 
+  // Model switching state
+  const [currentModel, setCurrentModel] = useState<string>('deepseek-v4-flash')
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string }>>([])
+  const [modelSwitchMsg, setModelSwitchMsg] = useState<string | null>(null)
+
+  // Fetch model info on mount
+  useEffect(() => {
+    authFetch('/api/model/list')
+      .then(r => r.json())
+      .then(data => {
+        if (data.models) setAvailableModels(data.models.map((m: any) => ({ id: m.id, name: m.name })))
+      })
+      .catch(() => {})
+    authFetch('/api/model')
+      .then(r => r.json())
+      .then(data => {
+        if (data.model) setCurrentModel(data.model)
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleModelSwitch = async (modelId: string) => {
+    if (modelId === currentModel) return
+    try {
+      const res = await authFetch('/api/model', {
+        method: 'POST',
+        body: JSON.stringify({ model: modelId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCurrentModel(modelId)
+        setModelSwitchMsg(`Switched to ${modelId}`)
+        setTimeout(() => setModelSwitchMsg(null), 2500)
+      }
+    } catch {}
+  }
+
   // Recall/Edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
@@ -184,20 +221,68 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
     }
   }, [messages, loaded])
 
+  // Track if user has scrolled up (to show/hide scroll-to-bottom button)
+  const [isNearBottom, setIsNearBottom] = useState(true)
+  // Ref mirror of isNearBottom — lets queued setTimeout scroll callbacks read the LATEST
+  // value instead of the stale one captured when the effect ran.
+  const isNearBottomRef = useRef(true)
+  const setNearBottom = useCallback((v: boolean) => {
+    isNearBottomRef.current = v
+    setIsNearBottom(v)
+  }, [])
+
   // Auto-scroll to bottom, throttled during streaming to avoid layout thrashing
   useEffect(() => {
     if (!chatRef.current) return
+    if (!isNearBottomRef.current) return  // Don't auto-scroll if user scrolled up
     const now = Date.now()
     // Throttle: skip scroll if we just scrolled <200ms ago AND still streaming
     if (streaming && now - lastScrollTime.current < SCROLL_THROTTLE_MS) return
     lastScrollTime.current = now
-    requestAnimationFrame(() => {
-      if (chatRef.current) {
+    // Use setTimeout(0) instead of requestAnimationFrame to ensure DOM is committed.
+    // Re-check isNearBottomRef INSIDE the callback: if the user pressed mouse / double-clicked
+    // to select text after this effect queued, the pending scroll must be cancelled — otherwise
+    // the viewport yanks to bottom mid-selection and breaks copy.
+    setTimeout(() => {
+      if (chatRef.current && isNearBottomRef.current) {
         chatRef.current.scrollTop = chatRef.current.scrollHeight
       }
-    })
+    }, 0)
     // Also depend on streaming: when streaming ends (false), always scroll final content
-  }, [messages, streaming])
+  }, [messages, streaming, isNearBottom])
+
+  // Detect if user scrolls away from bottom
+  const handleChatScroll = useCallback(() => {
+    if (!chatRef.current) return
+    const el = chatRef.current
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    setNearBottom(nearBottom)
+  }, [setNearBottom])
+
+  // Scroll to bottom and re-enable auto-scroll
+  const scrollToBottom = useCallback(() => {
+    if (!chatRef.current) return
+    chatRef.current.scrollTop = chatRef.current.scrollHeight
+    setNearBottom(true)
+  }, [setNearBottom])
+
+  // Freeze auto-scroll as soon as the mouse goes DOWN in the message area (left button).
+  // Covers single-click, double-click word selection and drag selection. Freezing on
+  // mouseup alone is too late: a queued streaming scroll can fire between the two clicks
+  // and yank the viewport to bottom mid-selection.
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return  // left button only; ignore right/middle clicks
+    setNearBottom(false)
+  }, [setNearBottom])
+
+  // Belt-and-braces: if selection appears after mouseup (some browsers select late),
+  // freeze too. Double-clicking text will hit this path.
+  const handleMouseUp = useCallback(() => {
+    const sel = window.getSelection()
+    if (sel && sel.toString().trim().length > 0) {
+      setNearBottom(false)
+    }
+  }, [setNearBottom])
 
   useEffect(() => {
     if (!streaming && inputRef.current) {
@@ -678,7 +763,11 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
     return blocks.map((block, bi) => {
       if (block.type === 'text') {
-        return <div key={bi} className="text-xs leading-relaxed py-0.5" style={{ color: '#c8c090' }}>{block.data}</div>
+        return (
+          <div key={bi} className="text-xs leading-relaxed py-0.5" style={{ color: '#c8c090' }}>
+            <MarkdownContent data={block.data} />
+          </div>
+        )
       }
       // Tool blocks: render each tool segment individually
       return block.segs.map((seg, si) => renderProcessSegment(seg, si))
@@ -829,16 +918,12 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
   // Memoize message rendering — typing in input should NOT re-render messages
   const messagesList = useMemo(() => (
-    <div ref={chatRef} className="flex-1 overflow-y-auto px-4 py-3" onClick={() => {
-      if (chatRef.current) {
-        chatRef.current.scrollTop = chatRef.current.scrollHeight
-      }
-    }}>
+    <div ref={chatRef} className="flex-1 overflow-y-auto px-4 py-3 relative" onScroll={handleChatScroll} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp}>
       {messages.map((msg, i) => {
         const isEditing = editingIndex === i && msg.role === 'user'
         const msgContent = msg.segments?.find(s => s.type === 'content')?.data || msg.content || ''
         return (
-        <div key={i} className="group mb-0.5 leading-normal relative">
+        <div key={i} className="group mb-4 leading-normal relative">
           {/* Hover actions: recall + edit (not during streaming, not on last assistant msg) */}
           {!streaming && !isEditing && (
             <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">
@@ -903,11 +988,22 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         </div>
       )})}
     </div>
-  ), [messages, streaming, editingIndex, editText])
+  ), [messages, streaming, editingIndex, editText, isNearBottom])
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-black font-mono">
+    <div className="flex flex-col flex-1 min-h-0 bg-black font-mono relative">
       {messagesList}
+
+      {/* Floating scroll-to-bottom button — outside scroll container */}
+      {!isNearBottom && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-16 right-4 z-30 bg-bronze/20 hover:bg-bronze/40 border border-bronze/40 rounded-full px-3 py-1.5 text-bronze text-xs font-mono cursor-pointer transition-all shadow-lg backdrop-blur-sm"
+          title="Scroll to bottom"
+        >
+          ↓ Bottom
+        </button>
+      )}
 
       {/* Debug panel — shows recent prompt dumps */}
       {debugCount > 0 && (
@@ -937,6 +1033,29 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
       {/* Input bar — terminal style */}
       <div className="border-t border-gray-800 bg-black px-4 py-2.5">
+        {/* Model selector mini-bar */}
+        <div className="flex items-center gap-2 mb-1.5 px-0.5">
+          <span className="text-[10px] text-gray-600 font-mono">🧠</span>
+          <select
+            value={currentModel}
+            onChange={e => handleModelSwitch(e.target.value)}
+            disabled={streaming}
+            className="bg-transparent text-gray-500 hover:text-gray-300 text-[10px] font-mono border border-gray-800 rounded px-1.5 py-0.5 outline-none cursor-pointer disabled:opacity-30 appearance-none"
+            style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'8\' viewBox=\'0 0 8 8\'%3E%3Cpath fill=\'%236b7280\' d=\'M2 2l2 2 2-2z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 4px center', paddingRight: '16px' }}
+          >
+            {availableModels.map(m => (
+              <option key={m.id} value={m.id} className="bg-black text-gray-300">{m.name}</option>
+            ))}
+          </select>
+          {modelSwitchMsg && (
+            <span className="text-[10px] text-bronze font-mono animate-pulse">{modelSwitchMsg}</span>
+          )}
+          {!modelSwitchMsg && availableModels.length > 0 && (
+            <span className="text-[9px] text-gray-700 font-mono ml-auto">
+              {currentModel === 'deepseek-v4-pro' ? '⚡ Pro' : '⚡ Flash'}
+            </span>
+          )}
+        </div>
         <div className="flex gap-2 items-center">
           <textarea
             ref={inputRef}
