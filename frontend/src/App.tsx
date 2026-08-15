@@ -18,8 +18,9 @@ const DebugPanel = lazy(() => import('./components/DebugPanel'))
 const GarudaTerminal = lazy(() => import('./components/GarudaTerminal'))
 const SchedulerPanel = lazy(() => import('./components/SchedulerPanel'))
 const WatchTaskPanel = lazy(() => import('./components/WatchTaskPanel'))
+const ChanPanel = lazy(() => import('./components/ChanPanel'))
 
-type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'watch' | 'scheduler' | 'debug' | 'garuda'
+type Tab = 'config' | 'results' | 'history' | 'logs' | 'backtest' | 'watch' | 'scheduler' | 'debug' | 'garuda' | 'chan'
 
 const RESULTS_KEY = 'stock-screen-results'
 const TAB_KEY = 'stock-screen-tab'
@@ -43,6 +44,7 @@ export default function App() {
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [selected, setSelected] = useState<SelectedStrategy[]>([])
   const [results, setResults] = useState<FilterResult[]>(() => loadJson(RESULTS_KEY, []))
+  const [chanCode, setChanCode] = useState<string>('600519')
   const [stats, setStats] = useState(() => loadJson('stock-screen-stats', { totalStocks: 0, matchedStocks: 0, executionTime: 0 }))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -410,6 +412,12 @@ export default function App() {
                   {t === 'results' && results.length > 0 && <span className="ml-1.5 text-xs bg-stock-hover text-bronze px-1.5 py-0.5 rounded">{results.length}</span>}
                 </button>
               ))}
+              <button onClick={() => setTab('chan')}
+                  className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
+                    tab === 'chan' ? 'tab-active text-bronze' : 'text-stock-text-secondary hover:text-stock-text'
+                  }`}>
+                  📐 缠论
+                </button>
               <button onClick={() => setTab('watch')}
                   className={`px-3 py-1.5 text-sm font-medium transition rounded-md ${
                     tab === 'watch' ? 'tab-active text-bronze' : 'text-stock-text-secondary hover:text-stock-text'
@@ -504,6 +512,12 @@ export default function App() {
             <GarudaTerminal onBack={() => setTab('config')} />
           </Suspense>
         </div>
+      ) : tab === 'chan' ? (
+        <div className="h-[calc(100vh-73px)] overflow-y-auto">
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-stock-text-secondary text-sm p-8">Loading Chan...</div>}>
+            <ChanPanel onBack={() => setTab('config')} initialCode={chanCode} />
+          </Suspense>
+        </div>
       ) : (
       <div className="flex flex-col md:flex-row h-[calc(100vh-73px)] overflow-hidden">
         <div className={`flex-1 overflow-y-auto p-3 md:p-6 transition-all duration-300 ${agentHighlight ? 'ring-2 ring-bronze/40 ring-inset' : ''} ${showMobileChat ? 'hidden md:block' : ''}`}>
@@ -526,7 +540,8 @@ export default function App() {
           )}
 
           {tab === 'results' && (
-            <ResultsTable results={results} stats={stats} loading={loading} />
+            <ResultsTable results={results} stats={stats} loading={loading}
+              onStockClick={(code, name) => { setChanCode(code); setTab('chan') }} />
           )}
 
           {tab === 'history' && (

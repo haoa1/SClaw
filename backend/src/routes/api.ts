@@ -4,6 +4,7 @@ import { StrategyEngine } from '../strategies/strategy-engine';
 import { DataFetcher } from '../data/data-fetcher';
 import { ScreenRequest, PluginInfo, StrategyInfo, ScreenResponse } from '../types';
 import { enrichWithHistory } from '../tools/strategy-validator';
+import { analyzeStock, quickSummary } from '../chan/service';
 
 export function createRoutes(
   pluginManager: PluginManager,
@@ -81,18 +82,21 @@ export function createRoutes(
 
       /** 用策略参数做预过滤（条件1-4：涨跌幅、量比、换手、市值） */
       function preFilterConds1to4(stocks: any[], strategies: ScreenRequest['strategies']): any[] {
-        // 从请求中提取 dt-filter 的参数
+        // 从请求中提取过滤参数（dt-filter / chip-structure 等自定义策略）
         const dtCfg = strategies.find(s =>
           s.pluginId === 'sclaw-dt-filter' || s.strategyId === 'dt-filter'
         );
-        const p = dtCfg?.params || {};
-        const minChg = p.minChange ?? 3;
-        const maxChg = p.maxChange ?? 5;
-        const minVolRatio = p.minVolumeRatio ?? 1;
-        const minTr = p.minTurnover ?? 5;
-        const maxTr = p.maxTurnover ?? 10;
-        const minMcapYi = p.minMcap ?? 50;
-        const maxMcapYi = p.maxMcap ?? 300;
+        const chipCfg = strategies.find(s =>
+          s.pluginId === 'chip-structure' || s.strategyId === 'chip-structure-best' || s.pluginId === 'chip-score' || s.strategyId === 'chip-score-main'
+        );
+        const p = { ...(dtCfg?.params || {}), ...(chipCfg?.params || {}) };
+        const minChg = p.minChange ?? (chipCfg ? 0 : 3);
+        const maxChg = p.maxChange ?? (chipCfg ? 5 : 5);
+        const minVolRatio = p.minVolumeRatio ?? (chipCfg ? 0.8 : 1);
+        const minTr = p.minTurnover ?? (chipCfg ? 2 : 5);
+        const maxTr = p.maxTurnover ?? (chipCfg ? 15 : 10);
+        const minMcapYi = p.minMcap ?? (chipCfg ? 0 : 50);
+        const maxMcapYi = p.maxMcap ?? (chipCfg ? 10000 : 300);
 
         return stocks.filter(stock => {
           const chg = stock.changePercent ?? 0;
@@ -133,7 +137,8 @@ export function createRoutes(
         s.pluginId === 'chan-buy-points' ||
         s.strategyId === 'chan-first-buy' ||
         s.strategyId === 'chan-second-buy' ||
-        s.pluginId === 'chan-theory-screener'
+        s.pluginId === 'chan-theory-screener' ||
+        s.pluginId === 'chip-structure' || s.pluginId === 'chip-score'
       );
       const needs30min = request.strategies.some(s =>
         s.strategyId === 'chan-second-buy'
@@ -258,6 +263,35 @@ export function createRoutes(
     } catch (err) {
       res.status(500).json({ error: `Failed to fetch ${periodLabel} data`, detail: String(err) });
     }
+  });
+
+  /** 缠论分析 API */
+  /** GET /api/chan/:code?level=daily|m30|m60&limit=300 — 完整缠论标注 */
+  router.get('/api/chan/:code', (req: Request, res: Response) => {
+    const { code } = req.params;
+    const level = (req.query.level as string || 'daily') as 'daily' | 'm30' | 'm60';
+    const limit = parseInt(req.query.limit as string) || 300;
+    if (!['daily', 'm30', 'm60'].includes(level)) {
+      res.status(400).json({ error: `Invalid level. Must be one of: daily, m30, m60` });
+      return;
+    }
+    try {
+      const analysis = analyzeStock(code, level, limit);
+      res.json(analysis);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  /** GET /api/chan/summary/:code?level=daily|m30|m60 — 简易摘要（批量扫描用） */
+  router.get('/api/chan/summary/:code', (req: Request, res: Response) => {
+    const { code } = req.params;
+    const level = (req.query.level as string || 'daily') as 'daily' | 'm30' | 'm60';
+    if (!['daily', 'm30', 'm60'].includes(level)) {
+      res.status(400).json({ error: `Invalid level. Must be one of: daily, m30, m60` });
+      return;
+    }
+    res.json(quickSummary(code, level));
   });
 
   /** 健康检查 */

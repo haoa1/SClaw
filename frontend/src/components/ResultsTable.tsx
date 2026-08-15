@@ -7,9 +7,10 @@ interface Props {
   results: FilterResult[]
   stats: { totalStocks: number; matchedStocks: number; executionTime: number }
   loading: boolean
+  onStockClick?: (code: string, name: string) => void
 }
 
-export default function ResultsTable({ results, stats, loading }: Props) {
+export default function ResultsTable({ results, stats, loading, onStockClick }: Props) {
   const [page, setPage] = useState(1)
 
   if (loading) {
@@ -111,7 +112,7 @@ export default function ResultsTable({ results, stats, loading }: Props) {
             </thead>
             <tbody className="divide-y divide-gray-800/50">
               {pageResults.map((r, i) => (
-                <tr key={`${r.code}-${i}`} className="hover:bg-stock-hover/30 transition">
+                <tr key={`${r.code}-${i}`} className="hover:bg-stock-hover/30 transition cursor-pointer" onClick={() => onStockClick?.(r.code, r.name)} title={`查看 ${r.name} (${r.code}) 缠论分析`}>
                   <td className="px-4 py-2.5 text-xs text-gray-500">{startIdx + i + 1}</td>
                   <td className="px-4 py-2.5 font-mono text-xs text-gray-300">{r.code}</td>
                   <td className="px-4 py-2.5 text-sm font-medium text-gray-200">{r.name}</td>
