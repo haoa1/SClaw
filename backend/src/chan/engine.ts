@@ -202,6 +202,17 @@ export function buildSegments(bis: Bi[]): Segment[] {
 export function findZhongShus(bis: Bi[], level: string): ZhongShu[] {
   const zhongshus: ZhongShu[] = [];
   if (bis.length < 3) return zhongshus;
+  // 笔端点显著离开中枢区间的判定（离开幅度 > 50% 箱宽 → 中枢被破坏）
+  // 避免"擦边"笔（端点略出区间）误杀中枢，只有明显突破/跌破才结束中枢
+  const escapeThresh = 0.5;
+  const isEscape = (b: Bi, zd: number, zg: number): boolean => {
+    const w = zg - zd;
+    if (w <= 0) return false;
+    if (b.endPrice < zd && zd - b.endPrice > w * escapeThresh) return true;
+    if (b.endPrice > zg && b.endPrice - zg > w * escapeThresh) return true;
+    return false;
+  };
+  const MIN_1BI_LEN = 10; // 1 笔中枢需足够长（K线数）才有意义，否则是单边行情的噪音
   for (let i = 0; i <= bis.length - 3; i++) {
     const b1 = bis[i];
     const b2 = bis[i + 1];
@@ -211,25 +222,41 @@ export function findZhongShus(bis: Bi[], level: string): ZhongShu[] {
     const zg = Math.min(b1.high, b2.high, b3.high); // 上沿
     const zd = Math.max(b1.low, b2.low, b3.low);    // 下沿
     if (zg > zd) {
-      // 中枢延伸：检查后续笔是否在中枢区间内波动
       let endIdx = i + 2;
       let endKIdx = b3.endIdx;
-      for (let j = i + 3; j < bis.length; j++) {
+      // 形成阶段：b3 端点显著离开（突破上沿/跌破下沿）→ 中枢在离开处结束
+      if (isEscape(b3, zd, zg)) {
+        if (isEscape(b2, zd, zg)) {
+          // b2、b3 都显著离开 → 仅 b1 一段：长度足够才保留为 1 笔中枢
+          const len = b1.endIdx - b1.startIdx + 1;
+          if (len >= MIN_1BI_LEN) {
+            zhongshus.push({
+              zg, zd,
+              gg: b1.high, dd: b1.low,
+              startIdx: b1.startIdx, endIdx: b1.endIdx,
+              startPrice: b1.startPrice, endPrice: b1.endPrice,
+              segmentStart: i, segmentEnd: i, level, direction: 'side',
+            });
+          }
+          continue; // b1 已处理，从 b2 继续（for 循环 i++）
+        } else {
+          endIdx = i + 1; endKIdx = b2.endIdx; // b1,b2 两笔形成有效中枢
+        }
+      }
+      // 中枢延伸：笔与区间重叠 且 端点未显著离开 → 延伸（最多 6 段，防止框过长）
+      for (let j = endIdx + 1; j < bis.length; j++) {
+        if (endIdx - i + 1 >= 6) break; // 3 段形成 + 3 段延伸（缠论标准最多 9 段，视觉上 6 段更紧凑）
         const b = bis[j];
-        // 笔的波动范围与中枢区间有重叠 → 延伸
-        if (b.high >= zd && b.low <= zg) {
+        if (b.high >= zd && b.low <= zg && !isEscape(b, zd, zg)) {
           endIdx = j;
           endKIdx = b.endIdx;
         } else {
           break;
         }
       }
-      const gg = Math.max(
-        ...bis.slice(i, endIdx + 1).map(b => b.high),
-      );
-      const dd = Math.min(
-        ...bis.slice(i, endIdx + 1).map(b => b.low),
-      );
+      const segBis = bis.slice(i, endIdx + 1);
+      const gg = Math.max(...segBis.map(b => b.high));
+      const dd = Math.min(...segBis.map(b => b.low));
       zhongshus.push({
         zg, zd, gg, dd,
         startIdx: b1.startIdx,
@@ -241,7 +268,7 @@ export function findZhongShus(bis: Bi[], level: string): ZhongShu[] {
         level,
         direction: 'side',
       });
-      i = endIdx - 1; // 从中枢末端继续（允许重叠）
+      i = endIdx; // 不共享笔：for 循环 i++ 后从 endIdx+1 继续
     }
   }
   return zhongshus;
@@ -319,6 +346,7 @@ function macdArea(macd: MacdPoint[], fromIdx: number, toIdx: number, sign: 'pos'
  * B2/S2: 二买/二卖（一买后回调不破前低 / 一卖后反弹不破前高）
  * B3/S3: 三买/三卖（突破中枢后回踩不进中枢 / 跌破中枢后反弹不进中枢）
  */
+
 export function findTradePoints(
   klines: KLine[], fractals: Fractal[], bis: Bi[], zhongshus: ZhongShu[],
   divergences: Divergence[],

@@ -50,20 +50,28 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  // 视口缩放：显示最近 viewN 根（滚轮/按钮调整，不重新请求）
+  const [viewN, setViewN] = useState(200)
   const svgRef = useRef<SVGSVGElement>(null)
+  // 请求序号：防止快速切换级别/股票时旧响应覆盖新响应（竞态）
+  const fetchSeq = useRef(0)
 
   const fetchData = useCallback(async () => {
     if (!code.trim()) return
+    const seq = ++fetchSeq.current
     setLoading(true); setError(''); setData(null)
     try {
       const res = await fetch(`/api/chan/${code.trim()}?level=${level}&limit=${limit}`)
       const json = await res.json()
+      if (seq !== fetchSeq.current) return // 过期响应丢弃
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
       setData(json)
+      setViewN(json.klines?.length || 200)
     } catch (e: any) {
+      if (seq !== fetchSeq.current) return
       setError(e.message || String(e))
     } finally {
-      setLoading(false)
+      if (seq === fetchSeq.current) setLoading(false)
     }
   }, [code, level, limit])
 
@@ -84,20 +92,32 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
   // 计算价格/指标映射
   const view = useMemo(() => {
     if (!data || data.klines.length === 0) return null
-    const klines = data.klines
+    const klines = data.klines.slice(-viewN)
     const n = klines.length
+    const offset = data.klines.length - viewN
+    const inView = (absIdx: number) => absIdx >= offset && absIdx < offset + viewN
+    const inViewRange = (start: number, end: number) => end >= offset && start < offset + viewN
     let minP = Infinity, maxP = -Infinity
     for (const k of klines) {
       minP = Math.min(minP, k.low); maxP = Math.max(maxP, k.high)
     }
-    // 给中枢/买卖点留边距
-    for (const z of data.zhongshus) { minP = Math.min(minP, z.zd); maxP = Math.max(maxP, z.zg) }
-    for (const tp of data.tradePoints) { minP = Math.min(minP, tp.price); maxP = Math.max(maxP, tp.price) }
+    // 只考虑视图内的中枢/买卖点——视图外的会撑大价格轴，导致中枢矩形"超过"K线范围
+    for (const z of data.zhongshus) {
+      if (!inViewRange(z.startIdx, z.endIdx)) continue
+      minP = Math.min(minP, z.zd); maxP = Math.max(maxP, z.zg)
+    }
+    for (const tp of data.tradePoints) {
+      if (!inView(tp.idx)) continue
+      minP = Math.min(minP, tp.price); maxP = Math.max(maxP, tp.price)
+    }
     const padP = (maxP - minP) * 0.08 || 1
     minP -= padP; maxP += padP
 
     const slotW = (W - padL - padR) / n
-    const x = (i: number) => padL + i * slotW + slotW / 2
+    // 注意：fractals/bis/zhongshus/tradePoints 的 idx 是后端返回的绝对索引（在完整 klines 中的位置）
+    // 缩放(viewN<total)时局部索引从 offset 开始，x() 统一接收绝对索引并内部换算
+    const x = (absIdx: number) => padL + (absIdx - offset) * slotW + slotW / 2
+    const xLocal = (i: number) => x(i + offset) // K线/MACD/悬浮等使用局部索引的调用点
     const y = (p: number) => padT + MAIN_H - ((p - minP) / (maxP - minP)) * MAIN_H
     const bodyH = (o: number, c: number) => Math.max(1, Math.abs(y(o) - y(c)))
 
@@ -117,7 +137,23 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
     const volH = 70
     const vy = (v: number) => volTop + volH - (v / (maxV || 1)) * volH
 
-    return { klines, n, x, y, bodyH, my, vy, slotW, minP, maxP, macdTop, volTop, volH, maxV }
+    return { klines, n, x, xLocal, inView, inViewRange, y, bodyH, my, vy, slotW, minP, maxP, macdTop, volTop, volH, maxV, offset }
+  }, [data, viewN])
+
+  // 滚轮缩放 K 线（视口缩放，不重新请求；passive:false 以便 preventDefault）
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      const total = data?.klines.length || 200
+      setViewN(prev => {
+        const next = e.deltaY < 0 ? Math.round(prev * 0.8) : Math.round(prev * 1.25)
+        return Math.max(20, Math.min(total, next))
+      })
+    }
+    svg.addEventListener('wheel', handler, { passive: false })
+    return () => svg.removeEventListener('wheel', handler)
   }, [data])
 
   // 鼠标悬浮
@@ -150,6 +186,13 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
         {onBack && (
           <button onClick={onBack} className="text-xs text-stock-text-secondary hover:text-bronze transition">← Back</button>
         )}
+        <div className="flex items-center gap-1 ml-auto">
+          <button onClick={() => setViewN(prev => Math.max(20, Math.round(prev * 0.8)))} title="放大（滚轮 ↑）"
+            className="text-xs text-stock-text-secondary hover:text-bronze border border-stock-border rounded w-6 h-6 leading-none cursor-pointer">＋</button>
+          <span className="text-[10px] text-stock-text-secondary font-mono w-16 text-center">{viewN}根</span>
+          <button onClick={() => setViewN(prev => Math.min(data?.klines.length || 200, Math.round(prev * 1.25)))} title="缩小（滚轮 ↓）"
+            className="text-xs text-stock-text-secondary hover:text-bronze border border-stock-border rounded w-6 h-6 leading-none cursor-pointer">－</button>
+        </div>
       </div>
 
       {error && <div className="text-red-300 text-sm bg-red-900/30 border border-red-800 rounded-lg p-3 mb-3">{error}</div>}
@@ -189,24 +232,49 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
                 )
               })}
 
+              {/* 日期分隔线（30/60分钟级别）：每天两条竖线框起来，标注是哪天 */}
+              {level !== 'daily' && (() => {
+                const groups: { start: number; end: number; date: string }[] = []
+                for (let i = 0; i < view.klines.length; i++) {
+                  const d = view.klines[i].date.slice(0, 10)
+                  const last = groups[groups.length - 1]
+                  if (last && last.date === d) last.end = i
+                  else groups.push({ start: i, end: i, date: d })
+                }
+                return groups.map((g, gi) => {
+                  const xL = Math.max(view.xLocal(g.start) - view.slotW / 2, padL)
+                  const xR = Math.min(view.xLocal(g.end) + view.slotW / 2, W - padR)
+                  if (xR - xL < 1) return null
+                  return (
+                    <g key={gi}>
+                      <line x1={xL} x2={xL} y1={padT} y2={padT + MAIN_H} stroke="#4a4a5a" strokeWidth={1} strokeDasharray="2 2" />
+                      <line x1={xR} x2={xR} y1={padT} y2={padT + MAIN_H} stroke="#4a4a5a" strokeWidth={1} strokeDasharray="2 2" />
+                      <text x={(xL + xR) / 2} y={padT - 8} textAnchor="middle" fontSize={9} fill="#888">{g.date.slice(5)}</text>
+                    </g>
+                  )
+                })
+              })()}
+
               {/* 中枢 */}
               {data.zhongshus.map((z, i) => {
-                const x1 = view.x(z.startIdx) - view.slotW / 2
-                const x2 = view.x(z.endIdx) + view.slotW / 2
-                const y1 = view.y(z.zg)
-                const y2 = view.y(z.zd)
+                // 区间重叠判断：只要与视图有交集就渲染（横跨视图的中枢不消失、不顶边界）
+                if (!view.inViewRange(z.startIdx, z.endIdx)) return null
+                const x1 = Math.max(view.x(z.startIdx) - view.slotW / 2, padL)
+                const x2 = Math.min(view.x(z.endIdx) + view.slotW / 2, W - padR)
+                if (x2 < padL || x1 > W - padR) return null
+                // y 方向 clamp 到主图区域，防止中枢超出 K 线图上下边界
+                const y1 = Math.max(view.y(z.zg), padT)
+                const y2 = Math.min(view.y(z.zd), padT + MAIN_H)
+                if (y2 - y1 < 1) return null
                 return (
-                  <g key={i}>
-                    <rect x={x1} y={y1} width={Math.max(2, x2 - x1)} height={Math.max(2, y2 - y1)}
-                      fill="#faad14" fillOpacity={0.08} stroke="#faad14" strokeOpacity={0.5} strokeWidth={1} strokeDasharray="4 2" />
-                    <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 + 4} textAnchor="middle" fontSize={10} fill="#faad14" fillOpacity={0.7}>ZS</text>
-                  </g>
+                  <rect key={i} x={x1} y={y1} width={Math.max(2, x2 - x1)} height={Math.max(2, y2 - y1)}
+                    fill="#faad14" fillOpacity={0.08} stroke="#faad14" strokeOpacity={0.5} strokeWidth={1} strokeDasharray="4 2" />
                 )
               })}
 
               {/* K线 */}
               {view.klines.map((k, i) => {
-                const cx = view.x(i)
+                const cx = view.xLocal(i)
                 const up = k.close >= k.open
                 const color = up ? '#ff4d4f' : '#52c41a'
                 const yOpen = view.y(k.open)
@@ -224,6 +292,7 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
 
               {/* 笔 */}
               {data.bis.map((b, i) => {
+                if (!view.inView(b.startIdx) && !view.inView(b.endIdx)) return null
                 const x1 = view.x(b.startIdx), x2 = view.x(b.endIdx)
                 const y1 = view.y(b.startPrice), y2 = view.y(b.endPrice)
                 return <line key={i} x1={x1} x2={x2} y1={y1} y2={y2} stroke={b.direction === 'up' ? '#ff7875' : '#95de64'} strokeWidth={1.5} opacity={0.7} />
@@ -231,6 +300,7 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
 
               {/* 分型 */}
               {data.fractals.map((f, i) => {
+                if (!view.inView(f.idx)) return null
                 const cx = view.x(f.idx)
                 const cy = view.y(f.type === 'top' ? f.high : f.low)
                 return f.type === 'top' ? (
@@ -248,6 +318,7 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
 
               {/* 买卖点 */}
               {data.tradePoints.map((tp, i) => {
+                if (!view.inView(tp.idx)) return null
                 const cx = view.x(tp.idx)
                 const cy = view.y(tp.price)
                 const color = TP_COLORS[tp.type] || '#faad14'
@@ -261,11 +332,34 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
                 )
               })}
 
+              {/* 中枢 ZG/ZD 价格标注（置顶，避免被 K 线/笔盖住） */}
+              {data.zhongshus.map((z, i) => {
+                if (!view.inViewRange(z.startIdx, z.endIdx)) return null
+                const x1 = Math.max(view.x(z.startIdx) - view.slotW / 2, padL)
+                const x2 = Math.min(view.x(z.endIdx) + view.slotW / 2, W - padR)
+                if (x2 < padL || x1 > W - padR) return null
+                const y1 = Math.max(view.y(z.zg), padT)
+                const y2 = Math.min(view.y(z.zd), padT + MAIN_H)
+                if (y2 - y1 < 1) return null
+                const wide = x2 - x1 > 70
+                return (
+                  <g key={i} pointerEvents="none">
+                    {/* ZG 标签（框左上内侧） */}
+                    <rect x={x1 + 2} y={y1 - 1} width={72} height={12} rx={2} fill="#1a1a28" fillOpacity={0.75} />
+                    <text x={x1 + 5} y={y1 + 9} fontSize={9} fontWeight="bold" fill="#faad14">ZG {fmt(z.zg)}</text>
+                    {/* ZD 标签（框左下内侧） */}
+                    <rect x={x1 + 2} y={y2 - 11} width={72} height={12} rx={2} fill="#1a1a28" fillOpacity={0.75} />
+                    <text x={x1 + 5} y={y2 - 2} fontSize={9} fontWeight="bold" fill="#faad14">ZD {fmt(z.zd)}</text>
+                    {wide && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 + 4} textAnchor="middle" fontSize={10} fill="#faad14" fillOpacity={0.7}>ZS</text>}
+                  </g>
+                )
+              })}
+
               {/* 十字线 + 悬浮信息 */}
               {hoverIdx !== null && view.klines[hoverIdx] && (
                 <g>
-                  <line x1={view.x(hoverIdx)} x2={view.x(hoverIdx)} y1={padT} y2={padT + MAIN_H + MACD_H + gap + view.volH + gap} stroke="#666" strokeWidth={0.5} strokeDasharray="3 3" />
-                  <g transform={`translate(${Math.min(view.x(hoverIdx) + 12, W - 220)},${padT + 8})`}>
+                  <line x1={view.xLocal(hoverIdx)} x2={view.xLocal(hoverIdx)} y1={padT} y2={padT + MAIN_H + MACD_H + gap + view.volH + gap} stroke="#666" strokeWidth={0.5} strokeDasharray="3 3" />
+                  <g transform={`translate(${Math.min(view.xLocal(hoverIdx) + 12, W - 220)},${padT + 8})`}>
                     <rect x={0} y={0} width={200} height={86} rx={6} fill="#1a1a28" fillOpacity={0.95} stroke="#3a3a4a" />
                     {(() => {
                       const k = view.klines[hoverIdx]
@@ -292,14 +386,14 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
 
               {/* MACD 柱状图 */}
               {data.macd.map((m, i) => {
-                const cx = view.x(i)
+                const cx = view.xLocal(i)
                 const y0 = view.my(0)
                 const y1 = view.my(m.macd)
                 return <line key={i} x1={cx} x2={cx} y1={y0} y2={y1} stroke={m.macd >= 0 ? '#ff4d4f' : '#52c41a'} strokeWidth={view.slotW * 0.6} opacity={0.7} />
               })}
               {/* DIF/DEA 线 */}
-              <polyline points={data.macd.map((m, i) => `${view.x(i)},${view.my(m.dif)}`).join(' ')} fill="none" stroke="#ffd666" strokeWidth={1.2} />
-              <polyline points={data.macd.map((m, i) => `${view.x(i)},${view.my(m.dea)}`).join(' ')} fill="none" stroke="#69c0ff" strokeWidth={1.2} />
+              <polyline points={data.macd.map((m, i) => `${view.xLocal(i)},${view.my(m.dif)}`).join(' ')} fill="none" stroke="#ffd666" strokeWidth={1.2} />
+              <polyline points={data.macd.map((m, i) => `${view.xLocal(i)},${view.my(m.dea)}`).join(' ')} fill="none" stroke="#69c0ff" strokeWidth={1.2} />
               {/* MACD 零轴 */}
               <line x1={padL} x2={W - padR} y1={view.my(0)} y2={view.my(0)} stroke="#3a3a4a" strokeWidth={0.5} />
               <text x={padL - 8} y={view.my(0) + 4} textAnchor="end" fontSize={9} fill="#666">0</text>
@@ -308,7 +402,7 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
               {Array.from({ length: 6 }).map((_, i) => {
                 const idx = Math.floor((view.n - 1) / 5 * i)
                 if (idx >= view.n) return null
-                return <text key={i} x={view.x(idx)} y={H - 6} textAnchor="middle" fontSize={9} fill="#666">{view.klines[idx].date.slice(0, 10)}</text>
+                return <text key={i} x={view.xLocal(idx)} y={H - 6} textAnchor="middle" fontSize={9} fill="#666">{view.klines[idx].date.slice(0, 10)}</text>
               })}
             </svg>
           </div>
@@ -379,7 +473,7 @@ function SearchBar({ code, setCode, level, setLevel, limit, setLimit, onFetch, l
       />
       <div className="flex items-center gap-0.5 bg-stock-hover rounded-lg p-0.5">
         {([['daily', '日线'], ['m30', '30分'], ['m60', '60分']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => { setLevel(v); setCode(input.trim()); setTimeout(onFetch, 0) }}
+          <button key={v} onClick={() => { setLevel(v); setCode(input.trim()) }}
             className={`px-2.5 py-1 text-xs rounded-md transition ${level === v ? 'bg-bronze-glow text-bronze-light' : 'text-stock-text-secondary hover:text-stock-text'}`}>
             {label}
           </button>
