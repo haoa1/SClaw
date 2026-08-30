@@ -236,9 +236,9 @@ function executeThirdBuyStrategy(data, params) {
         const maPeriod = Math.max(5, Math.floor(pivotPeriod / 4));
         const ma = sma(closes, maPeriod);
         // 寻找最近的中枢区间
-        // 简化：用最近N根K线的最高/最低作为中枢区间
-        const pivotHigh = Math.max(...highs.slice(-pivotPeriod));
-        const pivotLow = Math.min(...lows.slice(-pivotPeriod));
+        // 中枢 = 最近 N 根K线（排除最后5根"突破/回踩"K线，否则突破条件永远无法成立）
+        const pivotHigh = Math.max(...highs.slice(-pivotPeriod - 5, -5));
+        const pivotLow = Math.min(...lows.slice(-pivotPeriod - 5, -5));
         const pivotMid = (pivotHigh + pivotLow) / 2;
         // 第3类买点条件：
         // 条件1: 最近价格突破中枢
@@ -255,17 +255,16 @@ function executeThirdBuyStrategy(data, params) {
         const macdResult = computeMACD(closes);
         const dif = macdResult.dif;
         const difAboveZero = dif[dif.length - 1] > 0;
+        // 硬性门槛：三买必须同时满足「突破中枢」+「回踩不破中枢上沿」，否则直接排除
+        if (!priceAbovePivot || !pullbackAbovePivot) continue;
+
         // 评分
         let score = 0;
         const signals = [];
-        if (priceAbovePivot) {
-            score += 30;
-            signals.push('突破中枢');
-        }
-        if (pullbackAbovePivot) {
-            score += 30;
-            signals.push('回踩不破');
-        }
+        score += 30;
+        signals.push('突破中枢');
+        score += 30;
+        signals.push('回踩不破');
         if (volConfirm) {
             score += 15;
             signals.push('缩量回踩');

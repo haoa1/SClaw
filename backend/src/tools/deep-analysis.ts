@@ -529,6 +529,23 @@ const handler = async (args: Record<string, unknown>): Promise<string> => {
     const results: any[] = screenResult.results || [];
     const topResults = results.slice(0, limit);
 
+    // 推送结果到前端 AI 选股面板（与 run_screen 一致，WebUI 中间/AI选股列表直接显示）
+    try {
+      const { getCurrentUserId } = require("../request-context");
+      const { pushUserAction } = require("./frontend-actions");
+      const userId = getCurrentUserId();
+      if (userId && topResults.length > 0) {
+        pushUserAction(userId, "run_screen", {
+          strategies: [{ pluginId, strategyId, params: screenParams }],
+          results: topResults,
+          stats,
+        });
+        console.log(`[DeepAnalysis] pushed run_screen action to user ${userId}: ${topResults.length} stocks`);
+      }
+    } catch (e: unknown) {
+      console.log(`[DeepAnalysis] pushUserAction failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
     if (topResults.length === 0) {
       timing.total = Date.now() - t0;
       return JSON.stringify({

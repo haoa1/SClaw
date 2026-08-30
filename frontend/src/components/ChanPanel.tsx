@@ -85,9 +85,23 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode])
 
-  // 图表尺寸
-  const W = 980, H = 620, MAIN_H = 400, MACD_H = 130, VOL_H = 0
+  // 图表尺寸 —— 自适应容器宽度（内嵌时窄容器也能完整显示，不横向溢出）
+  const H = 620, MAIN_H = 400, MACD_H = 130, VOL_H = 0
   const padL = 60, padR = 20, padT = 30, gap = 28
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [W, setW] = useState(980)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const w = Math.floor(e.contentRect.width)
+        if (w > 200) setW(w) // 最小 200，极窄时仍能看图
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // 计算价格/指标映射
   const view = useMemo(() => {
@@ -138,7 +152,7 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
     const vy = (v: number) => volTop + volH - (v / (maxV || 1)) * volH
 
     return { klines, n, x, xLocal, inView, inViewRange, y, bodyH, my, vy, slotW, minP, maxP, macdTop, volTop, volH, maxV, offset }
-  }, [data, viewN])
+  }, [data, viewN, W])
 
   // 滚轮缩放 K 线（视口缩放，不重新请求；passive:false 以便 preventDefault）
   useEffect(() => {
@@ -218,8 +232,8 @@ export default function ChanPanel({ onBack, initialCode }: { onBack?: () => void
           )}
 
           {/* K线主图 + MACD */}
-          <div className="bg-stock-card border border-stock-border rounded-lg overflow-x-auto">
-            <svg ref={svgRef} width={W} height={H} className="block min-w-[980px]" onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIdx(null)}>
+          <div ref={containerRef} className="bg-stock-card border border-stock-border rounded-lg">
+            <svg ref={svgRef} width={W} height={H} className="block w-full" onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIdx(null)}>
               {/* 网格 + 价格轴 */}
               {Array.from({ length: 6 }).map((_, i) => {
                 const yy = padT + (MAIN_H / 5) * i

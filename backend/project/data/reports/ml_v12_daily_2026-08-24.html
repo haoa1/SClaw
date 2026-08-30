@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🤖 ML v12 深度选股日报 2026-08-24</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:#0f172a; color:#e2e8f0; padding:24px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  .header { background:linear-gradient(135deg,#1e3a8a,#312e81 60%,#4c1d95); border-radius:16px; padding:28px; margin-bottom:20px; border:1px solid #334155; }
+  .header h1 { font-size:26px; font-weight:800; letter-spacing:1px; }
+  .header .sub { margin-top:8px; font-size:14px; color:#a5b4fc; }
+  .badges { margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+  .badge { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2); padding:4px 12px; border-radius:999px; font-size:12px; }
+  .badge.green { background:rgba(16,185,129,.15); border-color:rgba(16,185,129,.4); color:#6ee7b7; }
+  .badge.red { background:rgba(239,68,68,.15); border-color:rgba(239,68,68,.4); color:#fca5a5; }
+  .badge.blue { background:rgba(99,102,241,.15); border-color:rgba(99,102,241,.4); color:#a5b4fc; }
+  .panel { background:#1e293b; border-radius:14px; padding:22px; margin-bottom:18px; border:1px solid #334155; }
+  .panel h2 { font-size:18px; font-weight:700; margin-bottom:14px; color:#f1f5f9; border-left:4px solid #6366f1; padding-left:10px; }
+  .panel h2 .icon { margin-right:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { background:#334155; color:#94a3b8; text-align:left; padding:9px 10px; font-weight:600; }
+  td { padding:9px 10px; border-bottom:1px solid #293548; }
+  tr:nth-child(even) td { background:#243244; }
+  .up { color:#f87171; } .down { color:#34d399; }
+  .rank1 td { background:rgba(245,158,11,.08) !important; }
+  .card { border:1px solid #334155; border-radius:12px; padding:16px; margin-bottom:14px; background:#172033; }
+  .card .top { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; }
+  .card .name { font-size:17px; font-weight:700; }
+  .card .code { font-size:12px; color:#94a3b8; margin-left:6px; }
+  .card .score { background:#4f46e5; padding:3px 10px; border-radius:8px; font-size:13px; font-weight:700; }
+  .card .price { font-size:20px; font-weight:800; }
+  .metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+  .metric { background:#1e293b; border-radius:10px; padding:10px 12px; border:1px solid #293548; }
+  .metric .k { font-size:11px; color:#94a3b8; margin-bottom:4px; }
+  .metric .v { font-size:14px; font-weight:600; }
+  .verdict { margin-top:12px; font-size:13px; line-height:1.7; background:rgba(99,102,241,.08); border-left:3px solid #6366f1; padding:10px 14px; border-radius:0 8px 8px 0; }
+  .verdict.good { background:rgba(16,185,129,.08); border-left-color:#10b981; }
+  .verdict.warn { background:rgba(245,158,11,.08); border-left-color:#f59e0b; }
+  .verdict.bad { background:rgba(239,68,68,.08); border-left-color:#ef4444; }
+  .risk { font-size:12px; color:#fca5a5; margin-top:8px; }
+  .footer { font-size:11px; color:#64748b; text-align:center; margin-top:20px; line-height:1.8; }
+  .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:6px; margin-right:4px; }
+  .tag.r { background:rgba(239,68,68,.2); color:#fca5a5; }
+  .tag.g { background:rgba(16,185,129,.2); color:#6ee7b7; }
+  .tag.y { background:rgba(245,158,11,.2); color:#fcd34d; }
+  .tag.strike { text-decoration:line-through; opacity:.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>🤖 ML v12 深度选股日报</h1>
+    <div class="sub">2026-08-24（周一） · 15:00 收盘 · 模型：v12-mlp-87（87核心特征 / 8模型集成 / IC 0.133）</div>
+    <div class="badges">
+      <span class="badge green">📈 上涨 1379</span>
+      <span class="badge red">📉 下跌 3694</span>
+      <span class="badge">➖ 平盘 133</span>
+      <span class="badge red">下跌占比 71% · 普跌日</span>
+      <span class="badge blue">🤖 高分池逆势抗跌为关键</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">🏆</span>ML v12 全市场评分 Top 10</h2>
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:10px;">评分基于 08-21 收盘特征；涨跌幅/量比/换手/PE/PB 为今日 08-24 收盘实时核验</div>
+    <table>
+      <tr><th>#</th><th>代码</th><th>名称</th><th>评分</th><th>今日涨跌</th><th>换手</th><th>量比</th><th>PE</th><th>PB</th><th>核验</th></tr>
+      <tr class="rank1"><td>1</td><td>301590</td><td>优优绿能</td><td><b>77.3</b></td><td class="down">-3.87%</td><td>2.29%</td><td>0.85</td><td>102.4</td><td>2.21</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>2</td><td>688089</td><td><span class="tag r">ST嘉必优</span></td><td><b>75.8</b></td><td class="up">+0.67%</td><td>1.54%</td><td>1.15</td><td>亏损</td><td>0.85</td><td><span class="tag r">❌剔除</span></td></tr>
+      <tr><td>3</td><td>301512</td><td>智信精密</td><td><b>70.9</b></td><td class="down">-0.93%</td><td>2.48%</td><td>1.20</td><td>75.9</td><td>2.23</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>4</td><td>603811</td><td>诚意药业</td><td><b>70.1</b></td><td class="down">-2.16%</td><td>1.05%</td><td>0.52</td><td>17.1</td><td>2.45</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>5</td><td>605088</td><td>冠盛股份</td><td><b>69.6</b></td><td class="down">-1.90%</td><td>1.52%</td><td>0.91</td><td>14.5</td><td>1.47</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>6</td><td>603409</td><td>汇通控股</td><td><b>68.8</b></td><td class="up">+0.39%</td><td>2.88%</td><td>0.78</td><td>21.1</td><td>2.23</td><td><span class="tag g">替补深核验</span></td></tr>
+      <tr><td>7</td><td>688399</td><td>硕世生物</td><td><b>68.3</b></td><td class="down">-2.76%</td><td>1.44%</td><td>0.84</td><td>亏损</td><td>1.17</td><td><span class="tag">基础</span></td></tr>
+      <tr><td>8</td><td>300745</td><td>欣锐科技</td><td><b>67.7</b></td><td class="down">-0.83%</td><td>3.66%</td><td>0.93</td><td>亏损</td><td>2.19</td><td><span class="tag">基础</span></td></tr>
+      <tr><td>9</td><td>603324</td><td>盛剑科技</td><td><b>67.6</b></td><td class="down">-1.02%</td><td>2.78%</td><td>0.90</td><td>亏损</td><td>2.43</td><td><span class="tag">基础</span></td></tr>
+      <tr><td>10</td><td>002524</td><td>光正眼科</td><td><b>67.4</b></td><td class="down">-2.48%</td><td>6.04%</td><td>2.19</td><td>亏损</td><td>18.0</td><td><span class="tag">基础</span></td></tr>
+    </table>
+    <div style="font-size:12px;color:#fca5a5;margin-top:10px;">⚠️ 688089 实时行情已确认为 <b>ST嘉必优</b>（模型评分未实时识别ST状态），按规则剔除，由第6名 汇通控股 替补进入深度核验。</div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">🔬</span>Top 5 深度核验（缠论 / 筹码 / MACD / 均线 / 量价）</h2>
+
+    <!-- 1 优优绿能 -->
+    <div class="card">
+      <div class="top">
+        <div><span class="name">优优绿能</span><span class="code">301590 · SZ</span></div>
+        <div><span class="score">ML 77.3 · 第1</span></div>
+      </div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;">
+        <span class="price">71.60</span>
+        <span class="down">-3.87%</span>
+        <span style="font-size:12px;color:#94a3b8;">换手 2.29% · 量比 0.85 · PE 102.4 · PB 2.21 · 流通17.5亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">MA5/20/60</div><div class="v">74.2 / 74.2 / 92.3</div></div>
+        <div class="metric"><div class="k">均线状态</div><div class="v" style="color:#fca5a5;">全部下方 · 空头</div></div>
+        <div class="metric"><div class="k">MACD(DIF/DEA/柱)</div><div class="v">-3.03 / -3.85 / +1.65</div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无背驰 · 中枢1个 · 底=最后关键点</div></div>
+        <div class="metric"><div class="k">区间位置</div><div class="v">120日底部 5% 分位</div></div>
+        <div class="metric"><div class="k">筹码</div><div class="v">较成本折价37% · 底部放量信号=1</div></div>
+      </div>
+      <div class="verdict warn"><b>结论：</b>深度超跌+120日区间底部+MACD 0轴下方红柱修复，属左侧。但今日放量破位跌 3.87%、全部分时/日线均线失守，PE 102 估值贵，下跌结构未破坏。只可小仓位观察，等日线底分型+MACD 翻红再谈。</div>
+      <div class="risk">⚠️ 风险：高估值 + 趋势未反转 + 高位套牢盘沉重（现价较平均成本折价约37%）。</div>
+    </div>
+
+    <!-- 2 智信精密 -->
+    <div class="card">
+      <div class="top">
+        <div><span class="name">智信精密</span><span class="code">301512 · SZ</span></div>
+        <div><span class="score">ML 70.9 · 第3</span></div>
+      </div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;">
+        <span class="price">30.87</span>
+        <span class="down">-0.93%</span>
+        <span style="font-size:12px;color:#94a3b8;">换手 2.48% · 量比 1.20 · PE 75.9 · PB 2.23 · 流通15.0亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">MA5/20/60</div><div class="v">31.1 / 30.0 / 32.4</div></div>
+        <div class="metric"><div class="k">均线状态</div><div class="v" style="color:#6ee7b7;">站上MA20(+3.0%)</div></div>
+        <div class="metric"><div class="k">MACD(DIF/DEA/柱)</div><div class="v" style="color:#6ee7b7;">+0.34 / +0.10 / +0.48 金叉</div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无背驰 · 中枢1个 · 底=最后关键点</div></div>
+        <div class="metric"><div class="k">区间位置</div><div class="v">120日 33% 分位</div></div>
+        <div class="metric"><div class="k">筹码</div><div class="v">较成本折价11% · 上方压力区偏重</div></div>
+      </div>
+      <div class="verdict good"><b>结论：</b>5只深核验中<b>技术结构最健康</b> — MACD 金叉多头、站上 MA20，普跌日仅跌 0.93% 明显抗跌。MA20(29.9) 为短线生命线，站稳可关注；跌破止损。但 PE 76 + 流通盘仅15亿，弹性大、波动也大。</div>
+      <div class="risk">⚠️ 风险：高PE + 小盘高波动 + 上方MA60(32.4)压制。</div>
+    </div>
+
+    <!-- 3 诚意药业 -->
+    <div class="card">
+      <div class="top">
+        <div><span class="name">诚意药业</span><span class="code">603811 · SH</span></div>
+        <div><span class="score">ML 70.1 · 第4</span></div>
+      </div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;">
+        <span class="price">7.24</span>
+        <span class="down">-2.16%</span>
+        <span style="font-size:12px;color:#94a3b8;">换手 1.05% · 量比 0.52 · PE 17.1 · PB 2.45 · 流通33.2亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">MA5/20/60</div><div class="v">7.49 / 7.34 / 7.41</div></div>
+        <div class="metric"><div class="k">均线状态</div><div class="v" style="color:#fca5a5;">全部下方</div></div>
+        <div class="metric"><div class="k">MACD(DIF/DEA/柱)</div><div class="v">+0.03 / +0.02 / +0.01 零轴粘合</div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无中枢 · 高=最后关键点</div></div>
+        <div class="metric"><div class="k">区间位置</div><div class="v">120日 19% 分位</div></div>
+        <div class="metric"><div class="k">筹码</div><div class="v">较成本折价8% · 极度缩量</div></div>
+      </div>
+      <div class="verdict warn"><b>结论：</b>PE 17 估值合理、医药基本面稳健，但技术面偏弱 — 缩量阴跌、三线压制、MACD 零轴粘合无方向。当前无明确买点，观望等放量突破 7.5 或 7.2 企稳缩量。</div>
+      <div class="risk">⚠️ 风险：医药板块情绪弱 + 量能持续萎缩（量比仅0.52）。</div>
+    </div>
+
+    <!-- 4 冠盛股份 -->
+    <div class="card">
+      <div class="top">
+        <div><span class="name">冠盛股份</span><span class="code">605088 · SH</span></div>
+        <div><span class="score">ML 69.6 · 第5</span></div>
+      </div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;">
+        <span class="price">20.60</span>
+        <span class="down">-1.90%</span>
+        <span style="font-size:12px;color:#94a3b8;">换手 1.52% · 量比 0.91 · PE 14.5 · PB 1.47 · 流通41.5亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">MA5/20/60</div><div class="v">20.9 / 20.9 / 26.1</div></div>
+        <div class="metric"><div class="k">均线状态</div><div class="v" style="color:#fca5a5;">全部下方 · 距MA5仅-1.4%</div></div>
+        <div class="metric"><div class="k">MACD(DIF/DEA/柱)</div><div class="v">-0.92 / -1.21 / +0.57 红柱放大</div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无背驰 · 中枢1个 · 底=最后关键点</div></div>
+        <div class="metric"><div class="k">区间位置</div><div class="v">120日底部 7% 分位</div></div>
+        <div class="metric"><div class="k">筹码</div><div class="v">较成本折价30% · 主力净流出-15</div></div>
+      </div>
+      <div class="verdict warn"><b>结论：</b>低估值（PE 14.5 / PB 1.47）+ 深度回调至底部区域 + MACD 底部修复红柱放大。但主力资金仍在流出、今日继续阴跌，右侧信号未确认。20.4-20.6 平台守住可关注，破 19.3 前低离场。</div>
+      <div class="risk">⚠️ 风险：趋势未反转 + 主力资金流出 + 上方套牢盘（较平均成本折价30%）。</div>
+    </div>
+
+    <!-- 5 汇通控股 -->
+    <div class="card">
+      <div class="top">
+        <div><span class="name">汇通控股</span><span class="code">603409 · SH</span><span class="tag g" style="margin-left:4px;">替补</span></div>
+        <div><span class="score">ML 68.8 · 第6</span></div>
+      </div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;">
+        <span class="price">17.98</span>
+        <span class="up">+0.39%</span>
+        <span style="font-size:12px;color:#94a3b8;">换手 2.88% · 量比 0.78 · PE 21.1 · PB 2.23 · 流通9.7亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">MA5/20/60</div><div class="v">17.9 / 17.6 / 19.4</div></div>
+        <div class="metric"><div class="k">均线状态</div><div class="v" style="color:#6ee7b7;">站上MA5/MA20</div></div>
+        <div class="metric"><div class="k">MACD(DIF/DEA/柱)</div><div class="v">-0.07 / -0.21 / +0.28 修复红柱</div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无背驰 · 中枢1个 · 底=最后关键点</div></div>
+        <div class="metric"><div class="k">区间位置</div><div class="v">120日 14% 分位</div></div>
+        <div class="metric"><div class="k">筹码</div><div class="v" style="color:#6ee7b7;">主力净流入+21.4 · 买盘压力62</div></div>
+      </div>
+      <div class="verdict good"><b>结论：</b>深核验5只中<b>今日唯一收红</b>（+0.39%），全市场71%下跌的普跌日逆势走强，站上 MA5/MA20、分时守在均价线上方，主力净买入+21.4、买盘压力62，资金面最积极。隐患是流通盘仅9.7亿（小盘易波动）与上方 MA60(19.4) 压力。17.6-18.0 支撑区，关注放量突破 18.2。</div>
+      <div class="risk">⚠️ 风险：流通盘偏小流动性风险 + MA60压制 + 量比0.78量能不足。</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">⚠️</span>今日风险提示</h2>
+    <div style="font-size:13px;line-height:2;color:#e2e8f0;">
+      <div>1️⃣ <b>普跌日环境</b>：全市场 1379涨 / 3694跌（下跌占比71%），模型高分池整体回调属正常，右侧信号偏少，追高风险大。</div>
+      <div>2️⃣ <b>ST未被模型过滤</b>：评分第2的 688089 实时名称为 ST嘉必优，模型输入特征未实时识别ST状态，<b>实盘务必核对名称后再操作</b>。</div>
+      <div>3️⃣ <b>高分≠好基本面</b>：Top 10 中 7 只 PE 为负/亏损（嘉必优、硕世生物、欣锐科技、盛剑科技、光正眼科），ML 评分偏因子/技术面，不代表盈利质量。</div>
+      <div>4️⃣ 本报告为量化筛选 + 技术分析，<b>不构成买卖建议</b>，请结合自身风险承受能力决策。</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    🤖 SClaw · ML v12 深度选股日报（v12-mlp-87 · 87特征/8集成/IC 0.133）<br>
+    生成时间：2026-08-24 15:00 · 数据来源：ML评分(08-21收盘特征) + 实时行情/指标核验(08-24收盘)<br>
+    本报告仅供研究参考，不构成投资建议
+  </div>
+
+</div>
+</body>
+</html>

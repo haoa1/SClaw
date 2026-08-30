@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""ml_screener_v9 — MLP (37→32→16→1) production scorer for Sclaw screener.
+
+Same 62-factor vocabulary as training (SPARSE_NAMES + FLOAT_COLS + INT_COLS).
+Factor computation copied from server stock_ml_screener.compute_factors(kline).
+Chip 3 factors (chipProfitRatio/chipConcentration/chipCostDist) are NOT
+computable from kline — filled with 0 (=z-score mean position, model gives
+average response). Linear v7/v8-style score kept for comparison.
+"""
+import csv
+import json
+import sys
+
+import numpy as np
+
+# ============================================================
+# 62-factor vocabulary (MUST match training ALL_NAMES order)
+# ============================================================
+TEXT_KW = [
+    ('price_new_low', 'pos', '价格新低'), ('vol_shrink_floor', 'pos', '缩量见底'),
+    ('rise_from_low', 'pos', '回升'), ('dif_turn_up', 'pos', 'DIF拐头'),
+    ('back_chi_confirm', 'pos', '背驰段'), ('rebound_pct', 'pos', '反弹'),
+    ('pullback_no_break', 'pos', '回调不破'), ('vol_shrink_pullback', 'pos', '缩量回调'),
+    ('dif_pullback_zero', 'pos', 'DIF回踩零轴'), ('pivot_zhongshu', 'pos', '中枢'),
+    ('break_pivot_top', 'pos', '突破中枢'), ('revisit_no_break', 'pos', '回踩不破'),
+    ('vol_confirm', 'pos', '量能确认'), ('chip_profit_low', 'neg', '筹码获利低'),
+    ('chip_profit_high', 'pos', '筹码获利高'), ('chip_profit_mid', 'pos', '筹码获利中'),
+    ('sh_ma20_up', 'pos', 'MA20向上'), ('sh_ma20_down', 'neg', 'MA20向下'),
+    ('sh_macd_bull', 'pos', 'MACD多头'), ('sh_macd_bear', 'neg', 'MACD空头'),
+    ('dif_above_zero', 'pos', 'DIF零轴上方'), ('vol_ratio_low', 'pos', '低量比'),
+    ('vol_ratio_high', 'neg', '高量比'), ('price_60d_low', 'pos', '60日低位'),
+    ('price_60d_high', 'neg', '60日高位'), ('rsi_mid', 'pos', 'RSI中位'),
+    ('rsi_high', 'neg', 'RSI超买'), ('rsi_low', 'pos', 'RSI超卖'),
+    ('chip_bottom_peak', 'pos', '筹码底峰'), ('rs_weak', 'neg', '相对弱势'),
+    ('rs_strong', 'pos', '相对强势'), ('vol20_low', 'pos', '缩量'),
+    ('vol20_high', 'neg', '放量'), ('macd_hist_rising', 'pos', 'MACD柱升高'),
+    ('near_ma20', 'pos', '贴近MA20'), ('sh_ret5_pos', 'pos', '5日正收益'),
+    ('sh_ret5_neg', 'neg', '5日负收益'),
+]
+SPARSE_NAMES = [t[0] for t in TEXT_KW]
+
+FLOAT_COLS = ['chipProfitRatio', 'chipConcentration', 'chipCostDist',
+              'volRatio', 'pricePos60', 'ma5Dist', 'ma10Dist', 'ma20Dist',
+              'rsi6', 'vol20', 'ret5', 'ret20', 'atrRatio', 'rs5', 'rs20',
+              'shAboveMA20', 'shRet5', 'shRet20', 'volTrend']
+INT_COLS = ['chipBottomPeak', 'shMA20Dir', 'shMACDBull', 'shMACDZero',
+            'difAboveZero', 'macdHistRising']
+ALL_NAMES = SPARSE_NAMES + FLOAT_COLS + INT_COLS  # 62
+
+
+# ============================================================
+# compute_factors(kline) — from server stock_ml_screener.py
+# ============================================================
+def compute_factors(kline):
+    """Compute all 62 factors from K-line bars (open/close/high/low/volume/amount/change_pct)."""
+    factors = {}
+    n = len(kline)
+    if n < 60:
+        return None
+    closes = np.array([r['close'] for r in kline], dtype=np.float64)
+    highs = np.array([r['high'] for r in kline], dtype=np.float64)
+    lows = np.array([r['low'] for r in kline], dtype=np.float64)
+    volumes = np.array([r['volume'] for r in kline], dtype=np.float64)
+    amounts = np.array([r['amount'] if r.get('amount') else 0.0 for r in kline], dtype=np.float64)
+    change_pct = np.array([r['change_pct'] if r.get('change_pct') else 0.0
+                           for r in kline], dtype=np.float64)
+
+    ma5 = np.mean(closes[-5:]) if n >= 5 else closes[-1]
+    ma10 = np.mean(closes[-10:]) if n >= 10 else closes[-1]
+    ma20 = np.mean(closes[-20:]) if n >= 20 else closes[-1]
+    ma60 = np.mean(closes[-60:]) if n >= 60 else closes[-1]
+    last_close = closes[-1]
+    last_vol = volumes[-1]
+
+    avg_vol_20 = np.mean(volumes[-20:]) if n >= 20 else 1
+    factors['volRatio'] = last_vol / avg_vol_20 if avg_vol_20 > 0 else 1.0
+
+    high_60 = np.max(highs[-60:]) if n >= 60 else np.max(highs)
+    low_60 = np.min(lows[-60:]) if n >= 60 else np.min(lows)
+    factors['pricePos60'] = (last_close - low_60) / (high_60 - low_60) if high_60 > low_60 else 0.5
+
+    factors['ma5Dist'] = (last_close / ma5 - 1.0) * 100 if ma5 > 0 else 0
+    factors['ma10Dist'] = (last_close / ma10 - 1.0) * 100 if ma10 > 0 else 0
+    factors['ma20Dist'] = (last_close / ma20 - 1.0) * 100 if ma20 > 0 else 0
+
+    if n >= 8:
+        gains = np.mean([max(0, closes[i] - closes[i - 1]) for i in range(-6, 0)])
+        losses = np.mean([max(0, closes[i - 1] - closes[i]) for i in range(-6, 0)])
+        factors['rsi6'] = 100 - 100 / (1 + gains / losses) if losses > 0 else 100
+    else:
+        factors['rsi6'] = 50
+
+    avg_amount_20 = np.mean(amounts[-20:]) if n >= 20 else np.mean(amounts)
+    factors['vol20'] = avg_amount_20 / 1e8
+
+    factors['ret5'] = change_pct[-1] if n >= 1 else 0
+    factors['ret20'] = (closes[-1] / closes[-20] - 1) * 100 if n >= 20 else 0
+
+    if n >= 14:
+        trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]),
+                   abs(lows[i] - closes[i - 1])) for i in range(-14, 0)]
+        atr = np.mean(trs)
+        factors['atrRatio'] = atr / last_close if last_close > 0 else 0
+    else:
+        factors['atrRatio'] = 0.02
+
+    factors['rs5'] = change_pct[-1] if n >= 1 else 0
+    factors['rs20'] = factors['ret20']
+    factors['shAboveMA20'] = 1.0 if last_close > ma20 else 0.0
+    factors['shRet5'] = change_pct[-1] if n >= 1 else 0
+    factors['shRet20'] = factors['ret20']
+
+    avg_vol_5 = np.mean(volumes[-5:]) if n >= 5 else last_vol
+    factors['volTrend'] = (avg_vol_5 / avg_vol_20 - 1) * 100 if avg_vol_20 > 0 else 0
+
+    factors['chipBottomPeak'] = 1.0 if factors['pricePos60'] < 0.25 else 0.0
+
+    if n >= 25:
+        ma20_prev = np.mean(closes[-25:-5]) if n >= 25 else ma20
+        factors['shMA20Dir'] = 1.0 if ma20 > ma20_prev else (-1.0 if ma20 < ma20_prev else 0.0)
+    else:
+        factors['shMA20Dir'] = 0.0
+
+    if n >= 27:
+        alpha12, alpha26 = 2.0 / 13.0, 2.0 / 27.0
+        ema12_v, ema26_v = closes[-26], closes[-26]
+        for i in range(-25, 0):
+            ema12_v = closes[i] * alpha12 + ema12_v * (1 - alpha12)
+            ema26_v = closes[i] * alpha26 + ema26_v * (1 - alpha26)
+        ema12_v = last_close * alpha12 + ema12_v * (1 - alpha12)
+        ema26_v = last_close * alpha26 + ema26_v * (1 - alpha26)
+        dif = ema12_v - ema26_v
+        if dif > 0 and ema12_v > ema26_v:
+            factors['shMACDBull'] = 1.0
+        elif dif < 0 and ema12_v < ema26_v:
+            factors['shMACDBull'] = -1.0
+        else:
+            factors['shMACDBull'] = 0.0
+    else:
+        factors['shMACDBull'] = 0.0
+
+    factors['shMACDZero'] = 1.0 if abs(closes[-1] / ma20 - 1) < 0.02 else 0.0
+    factors['difAboveZero'] = 1.0 if last_close > ma20 else 0.0
+    factors['macdHistRising'] = 1.0 if change_pct[-1] > 0 and n >= 2 and change_pct[-2] > 0 else 0.0
+
+    # --- 37 sparse (signal) factors ---
+    factors['price_new_low'] = 1.0 if factors['pricePos60'] < 0.1 else 0.0
+    factors['vol_shrink_floor'] = 1.0 if (factors['volRatio'] < 0.6 and factors['pricePos60'] < 0.3) else 0.0
+    factors['rise_from_low'] = 1.0 if (change_pct[-1] > 2 and factors['pricePos60'] < 0.3) else 0.0
+    factors['dif_turn_up'] = 1.0 if (change_pct[-1] > 0 and n >= 3 and all(change_pct[i] <= 0 for i in range(-3, -1))) else 0.0
+    factors['back_chi_confirm'] = 1.0 if (factors['volRatio'] < 0.5 and factors['pricePos60'] < 0.2) else 0.0
+    factors['rebound_pct'] = 1.0 if abs(change_pct[-1]) > 3 else 0.0
+    factors['pullback_no_break'] = 1.0 if (change_pct[-1] < 0 and abs(change_pct[-1]) < 5) else 0.0
+    factors['vol_shrink_pullback'] = 1.0 if (change_pct[-1] < 0 and factors['volRatio'] < 0.7) else 0.0
+    factors['dif_pullback_zero'] = 1.0 if (abs(change_pct[-1]) < 1 and factors['volRatio'] < 0.8) else 0.0
+    factors['pivot_zhongshu'] = 1.0 if (abs(ma20 - ma60) / ma60 < 0.05) else 0.0
+    factors['break_pivot_top'] = 1.0 if (last_close > ma20 and n >= 5 and closes[-5] < ma20) else 0.0
+    high_10 = np.max(highs[-10:]) if n >= 10 else last_close
+    factors['revisit_no_break'] = 1.0 if (last_close > ma20 and last_close / high_10 > 0.95) else 0.0
+    factors['vol_confirm'] = 1.0 if (factors['volRatio'] > 1.2 and change_pct[-1] > 0) else 0.0
+    factors['chip_profit_low'] = 1.0 if factors['pricePos60'] < 0.3 else 0.0
+    factors['chip_profit_high'] = 1.0 if factors['pricePos60'] > 0.9 else 0.0
+    factors['chip_profit_mid'] = 1.0 if 0.3 <= factors['pricePos60'] <= 0.7 else 0.0
+    factors['sh_ma20_up'] = 1.0 if factors['shMA20Dir'] > 0 else 0.0
+    factors['sh_ma20_down'] = 1.0 if factors['shMA20Dir'] < 0 else 0.0
+    factors['sh_macd_bull'] = 1.0 if factors['shMACDBull'] == 1 else 0.0
+    factors['sh_macd_bear'] = 1.0 if factors['shMACDBull'] == -1 else 0.0
+    factors['dif_above_zero'] = 1.0 if factors['difAboveZero'] == 1 else 0.0
+    factors['vol_ratio_low'] = 1.0 if factors['volRatio'] < 0.7 else 0.0
+    factors['vol_ratio_high'] = 1.0 if factors['volRatio'] > 2.0 else 0.0
+    factors['price_60d_low'] = 1.0 if factors['pricePos60'] < 0.25 else 0.0
+    factors['price_60d_high'] = 1.0 if factors['pricePos60'] > 0.75 else 0.0
+    factors['rsi_mid'] = 1.0 if 30 <= factors['rsi6'] <= 60 else 0.0
+    factors['rsi_high'] = 1.0 if factors['rsi6'] > 70 else 0.0
+    factors['rsi_low'] = 1.0 if factors['rsi6'] < 30 else 0.0
+    factors['chip_bottom_peak'] = 1.0 if factors['chipBottomPeak'] == 1 else 0.0
+    factors['rs_weak'] = 1.0 if factors['rs20'] < -5 else 0.0
+    factors['rs_strong'] = 1.0 if factors['rs20'] > 10 else 0.0
+    factors['vol20_low'] = 1.0 if factors['vol20'] < 0.015 else 0.0
+    factors['vol20_high'] = 1.0 if factors['vol20'] > 0.03 else 0.0
+    factors['macd_hist_rising'] = 1.0 if factors['macdHistRising'] == 1 else 0.0
+    factors['near_ma20'] = 1.0 if abs(factors['ma20Dist']) < 5 else 0.0
+    factors['sh_ret5_pos'] = 1.0 if factors['shRet5'] > 0 else 0.0
+    factors['sh_ret5_neg'] = 1.0 if factors['shRet5'] < -2 else 0.0
+
+    # Chip 3 factors NOT computable from kline -> 0 (mean position after z-score)
+    factors['chipProfitRatio'] = 0.0
+    factors['chipConcentration'] = 0.0
+    factors['chipCostDist'] = 0.0
+    return factors
+
+
+# ============================================================
+# MLP scorer
+# ============================================================
+class MLPScreener:
+    def __init__(self, weights_path):
+        with open(weights_path) as f:
+            W = json.load(f)
+        self.mu = np.array(W['mu'], dtype=np.float64)
+        self.sd = np.array(W['sd'], dtype=np.float64)
+        self.models = W['models']
+        self.hids = W.get('hids', [])  # v10+ supports N-layer
+        self.feature_names = W.get('feature_names', ALL_NAMES)
+        assert self.feature_names == ALL_NAMES, 'feature order mismatch!'
+
+    def features(self, factors):
+        """factors dict -> 62-dim standardized row (returns None if missing)."""
+        row = np.zeros(len(ALL_NAMES), dtype=np.float64)
+        for i, name in enumerate(ALL_NAMES):
+            v = factors.get(name)
+            if v is None:
+                return None
+            row[i] = v
+        return (row - self.mu) / self.sd
+
+    def score(self, x_row):
+        """x_row: 62-dim standardized. Returns ensemble mean probability.
+        Supports N-layer weights: each model has W1..W_{L+1}, b1..b_{L+1}."""
+        psum = np.zeros(x_row.shape[0])
+        for mod in self.models:
+            # count layers from W keys
+            keys = sorted([k for k in mod if k.startswith('W')],
+                          key=lambda s: int(s[1:]))
+            n_layers = len(keys)  # e.g. W1,W2,W3,W4 -> 4 (3 hidden + 1 out)
+            a = x_row
+            for i in range(1, n_layers + 1):
+                # torch Linear weight is (out, in) -> transpose for x @ W.T
+                z = a @ np.array(mod[f'W{i}']).T + np.array(mod[f'b{i}'])
+                if i < n_layers:
+                    a = np.maximum(0, z)
+                else:
+                    psum += 1.0 / (1.0 + np.exp(-np.clip(z[:, 0], -30, 30)))
+        return psum / len(self.models)
+
+    def score_one(self, factors):
+        x = self.features(factors)
+        if x is None:
+            return None
+        return float(self.score(x[None, :])[0])
+
+
+# ============================================================
+# Linear v7/v8-compatible score (comparison)
+# ============================================================
+def linear_score(factors, weights, signs=None):
+    if factors is None:
+        return None
+    s = 0.0
+    for name, w in weights.items():
+        v = factors.get(name, 0.0)
+        s += w * v
+    return s
+
+
+def main():
+    # End-to-end check: build features from CSV row (same as training) & score
+    if len(sys.argv) > 1 and sys.argv[1] == '--check-csv':
+        wpath = sys.argv[2] if len(sys.argv) > 2 else '/tmp/ml_mlp_weights.json'
+        csv_path = sys.argv[3] if len(sys.argv) > 3 else '/tmp/backtest_data.csv'
+        m = MLPScreener(wpath)
+        rows = []
+        with open(csv_path) as f:
+            for r in csv.DictReader(f):
+                rows.append(r)
+        rows.sort(key=lambda r: r['date'])
+        # build 62-dim from CSV directly
+        X = np.zeros((len(rows), 62), dtype=np.float64)
+        for i, r in enumerate(rows):
+            for j, name in enumerate(ALL_NAMES):
+                X[i, j] = float(r.get(name, 0) or 0)
+        Xn = (X - m.mu) / m.sd
+        p = m.score(Xn)
+        # compare to first 10 rows scored via compute_factors? kline unavailable -> just stats
+        print(f'csv rows={len(rows)} p_range=[{p.min():.3f},{p.max():.3f}] '
+              f'mean={p.mean():.3f} top10_mean={np.mean(np.sort(p)[-10:]):.3f}')
+        return
+    print(__doc__)
+
+
+if __name__ == '__main__':
+    main()

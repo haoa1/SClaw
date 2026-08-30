@@ -1,0 +1,86 @@
+/**
+ * ML Screener Tool — 基于37因子ML模型的AI选股工具
+ */
+import { Tool, ToolParamDef, ToolRegistry } from "./registry";
+import { execSync } from "child_process";
+
+const mlScreenerHandler = async (args: Record<string, unknown>): Promise<string> => {
+  const limit = (args.limit as number) || 100;
+  const minScore = (args.min_score as number) || 0;
+  const quick = args.quick === true;
+
+  let cmd = `python3 /root/sclaw/ml_screener/fetch_and_screen.py limit=${limit}`;
+  if (quick) cmd = `python3 /root/sclaw/ml_screener/fetch_and_screen.py --quick`;
+  if (minScore > 0) cmd += ` --min-score=${minScore}`;
+
+  try {
+    const stdout = execSync(cmd, {
+      timeout: 120000,
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    
+    const data = JSON.parse(stdout);
+    const results = data.results || [];
+    const top = results.slice(0, 5);
+    
+    let res = `## ML因子选股结果 (共${data.total}只)\n\n`;
+    if (top.length > 0) {
+      res += `| 排名 | 代码 | 名称 | 评分 | 涨跌幅 | 信号 |\n`;
+      res += `| --- | --- | --- | --- | --- | --- |\n`;
+      for (const r of top) {
+        const sigs = (r.signals || []).join(" ");
+        const chg = r.change_percent != null 
+          ? `${r.change_percent > 0 ? "+" : ""}${r.change_percent.toFixed(2)}%` 
+          : "N/A";
+        res += `| ${r.rank} | ${r.code} | ${r.name} | ${r.score} | ${chg} | ${sigs} |\n`;
+      }
+      if (results.length > 5) {
+        res += `\n... 还有 ${results.length - 5} 只股票未显示\n`;
+      }
+    } else {
+      res += `没有评分大于 ${minScore} 的股票。\n`;
+    }
+    res += `\n**评分说明**: 基于v10深度ML模型(59特征/8集成)，评分范围0-100，已过滤20日跌超20%的个股。`;
+    return res;
+  } catch (e: any) {
+    if (e.stdout) {
+      try {
+        const data = JSON.parse(e.stdout);
+        let res = `## ML因子选股结果 (共${data.total}只)\n\n`;
+        for (const r of (data.results || []).slice(0, 10)) {
+          res += `- #${r.rank} ${r.code} ${r.name} 评分:${r.score} 涨跌:${r.change_percent?.toFixed(2) || "0"}%\n`;
+        }
+        return res;
+      } catch {}
+    }
+    return `ML Screener error: ${e.stderr?.slice(0, 200) || e.message}`;
+  }
+};
+
+const params: ToolParamDef[] = [
+  { name: "limit", type: "number", description: "分析股票数量 (默认: 100)", required: false },
+  { name: "min_score", type: "number", description: "最低评分阈值 0-100 (默认: 0)", required: false },
+  { name: "quick", type: "boolean", description: "快速模式 - 仅分析20只", required: false },
+];
+
+export const mlScreenerTool = new Tool(
+  "ml_screener",
+  `ML因子选股工具 - 基于v10深度ML模型(59核心特征/8模型集成)的A股智能筛选
+
+使用经过训练的ML因子模型（v10-mlp-59+drop20）对A股进行评分，内置20日跌幅>20%风控过滤，输出排名、评分和信号。
+
+模型特征：59核心特征 | 8模型集成 | hids=[64] | 回测Sharpe 0.81(MDD -30.2%) | 含20日跌>20%接飞刀过滤
+
+使用示例：
+  ml_screener(limit=100) - 分析100只股票
+  ml_screener(quick=true) - 快速分析20只
+  ml_screener(limit=200, min_score=30) - 分析200只，只显示30分以上`,
+  params,
+  mlScreenerHandler,
+);
+
+export function registerMlScreenerTool(registry: ToolRegistry): void {
+  registry.register(mlScreenerTool);
+}

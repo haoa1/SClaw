@@ -1,14 +1,11 @@
 "use strict";
 /**
- * 缠论买卖点 — 日线第一类买点 + 30分钟第二类买点
+ * 缠论买卖点 — 日线第一类买点 + 日线/30分钟第二类买点
  *
  * 基于缠论核心买卖点理论：
  *   1. 日线第一类买点：底背驰（价格新低 + MACD不新低 + 底分型确认）
  *   2. 30分钟第二类买点：第一类买点确立后，30分钟回调不破前低
- *
- * 使用说明：
- *   - 第一类买点直接用日线K线（item.kline）
- *   - 第二类买点需要日线（item.kline）+ 30分钟线（item.kline30min）
+ *   3. 日线第二类买点：第一类买点确立后，日线回调不破前低（纯日线，无需30分钟K线）
  */
 
 // ====== Helper: EMA ======
@@ -307,12 +304,153 @@ function executeSecondBuyStrategy(data, _params) {
     return results;
 }
 
+// ====== Strategy 3: 日线第二类买点（纯日线，无需30分钟K线） ======
+function executeSecondBuyDailyStrategy(data, _params) {
+    const results = [];
+    for (const item of data) {
+        const kline = item.kline;
+        if (!kline || kline.length < 60) continue;
+
+        const daily = kline.slice(-120);
+        const closes = daily.map(k => k.close);
+        const lows = daily.map(k => k.low);
+        const highs = daily.map(k => k.high);
+        const volumes = daily.map(k => k.volume);
+        const dailyMacd = computeMACD(closes);
+
+        // === 第一步：找日线第一类买点（底背驰） ===
+        const lookback = Math.min(20, Math.floor(daily.length / 3));
+        const recentLow = Math.min(...lows.slice(-lookback));
+        const recentLowIdx = lows.lastIndexOf(recentLow, lows.length - 1);
+        if (recentLowIdx < 10) continue;
+
+        const prevSegment = lows.slice(0, recentLowIdx - 5);
+        if (prevSegment.length < 10) continue;
+        const prevLow = Math.min(...prevSegment.slice(-15));
+        const prevLowIdx = lows.lastIndexOf(prevLow, prevSegment.length - 1);
+        if (prevLowIdx < 0 || prevLowIdx >= recentLowIdx) continue;
+        if (recentLowIdx - prevLowIdx < 10) continue;
+
+        // 日线底背驰确认
+        const priceNewLow = recentLow < prevLow;
+        const difDivergence = priceNewLow && dailyMacd.dif[recentLowIdx] > dailyMacd.dif[prevLowIdx];
+        if (!difDivergence) continue;
+
+        // === 第二步：从一买低点之后找反弹高点 ===
+        const afterBuy = daily.slice(recentLowIdx);
+        if (afterBuy.length < 10) continue;
+
+        // 反弹高点（一买低点之后的最高价）
+        const reboundHigh = Math.max(...afterBuy.map(k => k.high));
+        const reboundHighIdx = highs.lastIndexOf(reboundHigh, highs.length - 1);
+        if (reboundHighIdx <= recentLowIdx) continue;
+
+        // 反弹幅度
+        const reboundPct = (reboundHigh - recentLow) / recentLow * 100;
+        if (reboundPct < 5) continue; // 反弹至少5%
+
+        // 当前价格
+        const currentPrice = closes[closes.length - 1];
+        const currentHigh = highs[highs.length - 1];
+
+        // === 第三��：检查回调 ===
+        // 当前价格必须从反弹高点有所回落
+        const pullbackFromHigh = (reboundHigh - currentPrice) / reboundHigh * 100;
+        if (pullbackFromHigh < 2) continue; // 至少回调2%才算有回调
+
+        // 核心条件：回调不破一买低点
+        const notBreakLow = currentPrice > recentLow * 1.005;
+        if (!notBreakLow) continue;
+
+        // === 评分 ===
+        let score = 0;
+        const signals = [];
+
+        // 日线底背驰基础分
+        score += 25;
+        signals.push('日线底背驰');
+
+        // 反弹幅度
+        score += Math.min(10, Math.floor(reboundPct));
+        signals.push(`反弹${reboundPct.toFixed(1)}%`);
+
+        // 回调不破前低（核心）
+        score += 25;
+        signals.push('回调不破前低');
+
+        // 回调幅度适中（3%~20%）
+        if (pullbackFromHigh >= 3 && pullbackFromHigh <= 20) {
+            score += 10;
+            signals.push(`回调${pullbackFromHigh.toFixed(1)}%`);
+        }
+
+        // 回调缩量（反弹高段量 vs 当前量）
+        const volAtHigh = volumes.slice(Math.max(0, reboundHighIdx - 2), reboundHighIdx + 2).reduce((a, b) => a + b, 0) / 4;
+        const volRecent = volumes.slice(-3).reduce((a, b) => a + b, 0) / 3;
+        if (volRecent < volAtHigh * 0.8 && volAtHigh > 0) {
+            score += 15;
+            signals.push('缩量回调');
+        }
+
+        // DIF回抽0轴（从反弹高位向0轴回归）
+        const dif = dailyMacd.dif;
+        const difAtLow = dif[recentLowIdx];
+        const difRecent = dif[dif.length - 1];
+        const maxDifAfterBuy = Math.max(...dif.slice(recentLowIdx));
+        // DIF从高位回落但仍高于一买时的DIF
+        const difPullback = maxDifAfterBuy > 0 && difRecent < maxDifAfterBuy * 0.7 && difRecent > difAtLow;
+        if (difPullback) {
+            score += 15;
+            signals.push('DIF回抽0轴');
+        }
+
+        // 底分型确认
+        const recent10 = daily.slice(-10);
+        for (let i = 1; i < recent10.length - 1; i++) {
+            if (isBottomFractal(recent10[i - 1], recent10[i], recent10[i + 1])) {
+                score += 10;
+                signals.push('底分型确认');
+                break;
+            }
+        }
+
+        // 价格在MA20附近（不要太远）
+        const ma20 = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+        if (Math.abs(currentPrice - ma20) / ma20 < 0.15) {
+            score += 5;
+            signals.push('价近MA20');
+        }
+
+        if (score >= 50) {
+            results.push({
+                code: item.code,
+                name: item.name,
+                score: Math.min(100, score),
+                signals,
+                metrics: {
+                    price: item.price,
+                    changePercent: item.changePercent,
+                    score: Math.min(100, score),
+                    firstBuyLow: recentLow,
+                    reboundHigh,
+                    reboundPct: parseFloat(reboundPct.toFixed(2)),
+                    pullbackPct: parseFloat(pullbackFromHigh.toFixed(2)),
+                    currentPrice: parseFloat(currentPrice.toFixed(2)),
+                    difAtLow: parseFloat(difAtLow.toFixed(4)),
+                    difRecent: parseFloat(difRecent.toFixed(4)),
+                },
+            });
+        }
+    }
+    return results;
+}
+
 // ====== Plugin Definition ======
 const plugin = {
     id: 'chan-buy-points',
     name: '缠论买卖点',
-    version: '1.0.0',
-    description: '基于缠论第一类买点和第二类买点的精准选股策略。日线第一类买点（底背驰）+ 30分钟第二类买点（回调不破前低）。',
+    version: '1.1.0',
+    description: '基于缠论第一类买点和第二类买点的精准选股策略。日线第一类买点（底背驰）+ 30分钟第二类买点 + 日线第二类买点。',
     strategies: [
         {
             id: 'chan-first-buy',
@@ -325,10 +463,18 @@ const plugin = {
         {
             id: 'chan-second-buy',
             name: '30分钟第二类买点',
-            description: '日线第一类买点成立后，30分钟线寻找第二类买点 — 冲高回落不破前低，缩量回调至0轴附近。缠论第18课定义的第二类买点。',
+            description: '日线第一类买点成立后，30分钟线寻找第二类买点 — 冲高回落不破前低，缩量回调至0轴附近。缠论第18课定义的第二类买点。需要30分钟K线数据。',
             category: 'reversal',
             params: [],
             execute: executeSecondBuyStrategy,
+        },
+        {
+            id: 'chan-second-buy-daily',
+            name: '日线第二类买点',
+            description: '纯日线第二类买点 — 日线底背驰确立后，在日线级别冲高回落不破前低、缩量回调、DIF回抽0轴。仅需日线K线数据，不需要30分钟K线。',
+            category: 'reversal',
+            params: [],
+            execute: executeSecondBuyDailyStrategy,
         },
     ],
 };

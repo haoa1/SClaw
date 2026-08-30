@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🤖 ML v12 深度选股日报 2026-08-14</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:#0f172a; color:#e2e8f0; padding:24px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  .header { background:linear-gradient(135deg,#1e3a8a,#312e81 60%,#4c1d95); border-radius:16px; padding:28px; margin-bottom:20px; border:1px solid #334155; }
+  .header h1 { font-size:26px; font-weight:800; letter-spacing:1px; }
+  .header .sub { margin-top:8px; font-size:14px; color:#a5b4fc; }
+  .badges { margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+  .badge { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2); padding:4px 12px; border-radius:999px; font-size:12px; }
+  .badge.green { background:rgba(16,185,129,.15); border-color:rgba(16,185,129,.4); color:#6ee7b7; }
+  .badge.red { background:rgba(239,68,68,.15); border-color:rgba(239,68,68,.4); color:#fca5a5; }
+  .panel { background:#1e293b; border-radius:14px; padding:22px; margin-bottom:18px; border:1px solid #334155; }
+  .panel h2 { font-size:18px; font-weight:700; margin-bottom:14px; color:#f1f5f9; border-left:4px solid #6366f1; padding-left:10px; }
+  .panel h2 .icon { margin-right:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { background:#334155; color:#94a3b8; text-align:left; padding:9px 10px; font-weight:600; }
+  td { padding:9px 10px; border-bottom:1px solid #293548; }
+  tr:nth-child(even) td { background:#243244; }
+  .up { color:#f87171; } .down { color:#34d399; }
+  .rank1 td { background:rgba(245,158,11,.08) !important; }
+  .card { border:1px solid #334155; border-radius:12px; padding:16px; margin-bottom:14px; background:#172033; }
+  .card .top { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; }
+  .card .name { font-size:17px; font-weight:700; }
+  .card .code { font-size:12px; color:#94a3b8; margin-left:6px; }
+  .card .score { background:#4f46e5; padding:3px 10px; border-radius:8px; font-size:13px; font-weight:700; }
+  .card .price { font-size:20px; font-weight:800; }
+  .metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+  .metric { background:#1e293b; border-radius:10px; padding:10px 12px; border:1px solid #293548; }
+  .metric .k { font-size:11px; color:#94a3b8; margin-bottom:4px; }
+  .metric .v { font-size:14px; font-weight:600; }
+  .verdict { margin-top:12px; font-size:13px; line-height:1.7; background:rgba(99,102,241,.08); border-left:3px solid #6366f1; padding:10px 14px; border-radius:0 8px 8px 0; }
+  .verdict.good { background:rgba(16,185,129,.08); border-left-color:#10b981; }
+  .verdict.warn { background:rgba(245,158,11,.08); border-left-color:#f59e0b; }
+  .verdict.bad { background:rgba(239,68,68,.08); border-left-color:#ef4444; }
+  .risk { font-size:12px; color:#fca5a5; margin-top:8px; }
+  .footer { font-size:11px; color:#64748b; text-align:center; margin-top:20px; line-height:1.8; }
+  .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:6px; margin-right:4px; }
+  .tag.r { background:rgba(239,68,68,.2); color:#fca5a5; }
+  .tag.g { background:rgba(16,185,129,.2); color:#6ee7b7; }
+  .tag.y { background:rgba(245,158,11,.2); color:#fcd34d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>🤖 ML v12 深度选股日报</h1>
+    <div class="sub">2026-08-14（周五） · 收盘后 · 模型：v12-mlp-87（87核心特征 / 8模型集成 / IC 0.133）</div>
+    <div class="badges">
+      <span class="badge green">📈 上涨 2317</span>
+      <span class="badge red">📉 下跌 2712</span>
+      <span class="badge">➖ 平盘 177</span>
+      <span class="badge red">上涨占比 44.5% · 弱势分化</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">🏆</span>ML v12 全市场评分 Top 10</h2>
+    <table>
+      <tr><th>#</th><th>代码</th><th>名称</th><th>评分</th><th>昨涨跌幅</th><th>状态</th></tr>
+      <tr class="rank1"><td>1</td><td>300553</td><td>集智股份</td><td><b>69.9</b></td><td class="down">-2.80%</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>2</td><td>301042</td><td>安联锐视</td><td><b>68.3</b></td><td class="down">-2.42%</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>3</td><td>605088</td><td>冠盛股份</td><td><b>67.5</b></td><td class="down">-2.14%</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>4</td><td>001238</td><td>浙江正特</td><td><b>67.1</b></td><td class="down">-1.04%</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>5</td><td>600498</td><td>烽火通信</td><td><b>66.8</b></td><td class="down">-0.81%</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>6</td><td>300473</td><td>德尔股份</td><td>66.6</td><td class="down">-3.42%</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>7</td><td>300501</td><td>海顺新材</td><td>66.4</td><td class="down">-2.64%</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>8</td><td>603020</td><td>爱普股份</td><td>66.4</td><td class="down">-1.98%</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>9</td><td>301538</td><td>骏鼎达</td><td>66.0</td><td class="down">-2.44%</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>10</td><td>688589</td><td>力合微</td><td>66.0</td><td class="down">-2.11%</td><td><span class="tag g">候选</span></td></tr>
+    </table>
+    <div style="font-size:11px;color:#64748b;margin-top:8px;">ML 评分基于 08/13 收盘数据（模型数据管道最新交易日），下方深度卡片均已用 08/14 实时收盘核验。</div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">🔬</span>Top 5 深度核验（实时行情 + 缠论/筹码/MACD/均线/量价）</h2>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">集智股份</span><span class="code">300553 · 深创业板</span></div>
+        <div class="score">ML 69.9</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;">
+        <span class="price">43.90 <span class="down">-0.43%</span></span>
+        <span style="font-size:12px;color:#94a3b8;">PE 284.6 · PB 5.78 · 市值 48.7亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线</div><div class="v">失守MA5，站上MA20<span class="tag r" style="margin-left:4px;">MA60上 -27%</span></div></div>
+        <div class="metric"><div class="k">120日区间位置</div><div class="v">23%（低位）</div></div>
+        <div class="metric"><div class="k">MACD</div><div class="v">红柱2.42 · 水下修复</div></div>
+        <div class="metric"><div class="k">获利盘</div><div class="v">1.2%</div></div>
+        <div class="metric"><div class="k">顶底比</div><div class="v">0.47 <span class="tag g">底厚</span></div></div>
+        <div class="metric"><div class="k">净买比</div><div class="v">+1.1% <span class="tag y">中性</span></div></div>
+        <div class="metric"><div class="k">买压</div><div class="v">61.9%</div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无中枢 · 无背驰</div></div>
+        <div class="metric"><div class="k">量价</div><div class="v">量比0.87 · 换手4.56%</div></div>
+      </div>
+      <div class="verdict warn"><b>综合判断：底部蓄势，等量能确认。</b>顶底比0.47 底部筹码厚实、MACD红柱扩大，但 PE 284.6 估值极高、今日缩量回调、资金净流入仅+1.1%，主力尚未发力。属于「低位蓄势、等放量点火」的观察型标的。</div>
+      <div class="risk">⚠ 风险：PE 284 严重高估、缩量、距MA60 -27% 左侧修复未确认。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">安联锐视</span><span class="code">301042 · 深创业板</span></div>
+        <div class="score">ML 68.3</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;">
+        <span class="price">34.46 <span class="up">+1.71%</span></span>
+        <span style="font-size:12px;color:#94a3b8;">PE 106.6 · PB 3.18 · 市值 33.4亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线</div><div class="v">站上MA5/MA20<span class="tag r" style="margin-left:4px;">MA60上 -39%</span></div></div>
+        <div class="metric"><div class="k">120日区间位置</div><div class="v">16%（低位）</div></div>
+        <div class="metric"><div class="k">MACD</div><div class="v">红柱4.44 扩大 · 水下修复</div></div>
+        <div class="metric"><div class="k">获利盘</div><div class="v">9.3%</div></div>
+        <div class="metric"><div class="k">顶底比</div><div class="v">0.53 <span class="tag g">底厚</span></div></div>
+        <div class="metric"><div class="k">净买比</div><div class="v">+20.0% <span class="tag g">强流入</span></div></div>
+        <div class="metric"><div class="k">买压</div><div class="v">90.5% <span class="tag g">极强</span></div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无中枢 · 无背驰 · 底部放量信号</div></div>
+        <div class="metric"><div class="k">量价</div><div class="v">放量2.4倍 · 换手8.16%</div></div>
+      </div>
+      <div class="verdict good"><b>综合判断：资金+买压+放量三重共振，启动信号最强。</b>净买+20.0%、买压90.5%、放量2.4倍，底部筹码锁定良好，今日+1.71%放量收阳。是 Top5 中资金面最扎实的标的之一；但 PE 106 偏高、距MA60 -39%，超跌反弹右侧初段，回踩确认后更稳。</div>
+      <div class="risk">⚠ 风险：PE 106 估值偏高、距MA60极远，反弹持续性待观察。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">冠盛股份</span><span class="code">605088 · 沪主板</span></div>
+        <div class="score">ML 67.5</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;">
+        <span class="price">21.07 <span class="up">+0.05%</span></span>
+        <span style="font-size:12px;color:#94a3b8;">PE 14.8 · PB 1.51 · 市值 42.7亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线</div><div class="v">失守MA5，站上MA20<span class="tag r" style="margin-left:4px;">MA60上 -23%</span></div></div>
+        <div class="metric"><div class="k">120日区间位置</div><div class="v">10%（极低位）</div></div>
+        <div class="metric"><div class="k">MACD</div><div class="v">红柱0.93 · 水下修复</div></div>
+        <div class="metric"><div class="k">获利盘</div><div class="v">-0.8%</div></div>
+        <div class="metric"><div class="k">顶底比</div><div class="v">1.80 <span class="tag r">偏弱</span></div></div>
+        <div class="metric"><div class="k">净买比</div><div class="v">-19.7% <span class="tag r">流出</span></div></div>
+        <div class="metric"><div class="k">买压</div><div class="v">50.5%</div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v"><span class="tag r">顶背驰</span> · 无中枢</div></div>
+        <div class="metric"><div class="k">量价</div><div class="v">缩量 · 量比0.68 · 换手1.39%</div></div>
+      </div>
+      <div class="verdict warn"><b>综合判断：低估值+极低位，但资金未点火。</b>PE 14.8 / PB 1.51 是 Top5 估值最低的，区间位置10%极低位；但净买-19.7%、缩量、缠论顶背驰，说明主力尚未进场，属于「等放量再动」的观察型标的。</div>
+      <div class="risk">⚠ 风险：资金流出、缩量、顶背驰，左侧超跌反弹性质。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">浙江正特</span><span class="code">001238 · 深主板</span></div>
+        <div class="score">ML 67.1</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;">
+        <span class="price">25.00 <span class="up">+1.13%</span></span>
+        <span style="font-size:12px;color:#94a3b8;">PE 101.5 · PB 3.36 · 市值 38.8亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线</div><div class="v">失守MA5，站上MA20<span class="tag y" style="margin-left:4px;">距MA60最近 -8%</span></div></div>
+        <div class="metric"><div class="k">120日区间位置</div><div class="v">14%（低位）</div></div>
+        <div class="metric"><div class="k">MACD</div><div class="v">红柱0.42 微弱 · DIF近零轴</div></div>
+        <div class="metric"><div class="k">获利盘</div><div class="v">-1.4%</div></div>
+        <div class="metric"><div class="k">顶底比</div><div class="v">0.39 <span class="tag g">底厚</span></div></div>
+        <div class="metric"><div class="k">净买比</div><div class="v">-29.1% <span class="tag r">大幅流出</span></div></div>
+        <div class="metric"><div class="k">买压</div><div class="v">38.5% <span class="tag r">弱</span></div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">无背驰 · 无中枢</div></div>
+        <div class="metric"><div class="k">量价</div><div class="v"><b>换手0.39% · 日成交仅1413万</b></div></div>
+      </div>
+      <div class="verdict bad"><b>综合判断：筹码结构好但流动性枯竭，建议回避。</b>顶底比0.39 底部筹码厚实，但日成交仅1413万、换手0.39%，流动性接近枯竭；叠加净买-29.1%持续流出、买压38.5%偏弱、PE 101偏贵。模型评分高不代表可操作，这种票进去容易出不来。</div>
+      <div class="risk">⚠ 风险：流动性极差（日成交过小）、资金大幅流出、估值贵。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">烽火通信</span><span class="code">600498 · 沪主板</span></div>
+        <div class="score">ML 66.8</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;">
+        <span class="price">40.90 <span class="up">+4.68%</span></span>
+        <span style="font-size:12px;color:#94a3b8;">PE 132.6 · PB 3.19 · 市值 555.5亿</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线</div><div class="v">站上MA5/MA20<span class="tag r" style="margin-left:4px;">MA60上 -22%</span></div></div>
+        <div class="metric"><div class="k">120日区间位置</div><div class="v">17%（低位）</div></div>
+        <div class="metric"><div class="k">MACD</div><div class="v">红柱3.07 · 水下修复</div></div>
+        <div class="metric"><div class="k">获利盘</div><div class="v">8.3%</div></div>
+        <div class="metric"><div class="k">顶底比</div><div class="v">0.37 <span class="tag g">底厚最优</span></div></div>
+        <div class="metric"><div class="k">净买比</div><div class="v">+10.1% <span class="tag g">流入</span></div></div>
+        <div class="metric"><div class="k">买压</div><div class="v">79.7% <span class="tag g">强</span></div></div>
+        <div class="metric"><div class="k">缠论</div><div class="v">1中枢托底 · 无背驰</div></div>
+        <div class="metric"><div class="k">量价</div><div class="v">量比1.22 · 换手8.37% · 成交42.8亿</div></div>
+      </div>
+      <div class="verdict good"><b>综合判断：Top5 中唯一大盘权重，今日放量突破，信号最强。</b>通信设备龙头，顶底比0.37 全场最优、1中枢托底；资金净流入+10.1%、买压79.7%；今日42.8亿成交放量拉升 +4.68%，是超跌修复中最扎实的一个，适合资金体量大的账户分批关注。</div>
+      <div class="risk">⚠ 风险：PE 132 估值高企、距MA60(52.67) -22%，短线已反弹，追高需谨慎。</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">📌</span>今日再排名（综合 ML 评分 + 实盘验证）</h2>
+    <table>
+      <tr><th>#</th><th>代码</th><th>名称</th><th>ML评分</th><th>今日涨幅</th><th>一句话</th></tr>
+      <tr class="rank1"><td>1</td><td>600498</td><td>烽火通信</td><td>66.8</td><td class="up">+4.68%</td><td>权重放量突破，底厚+资金流入，信号最强</td></tr>
+      <tr><td>2</td><td>301042</td><td>安联锐视</td><td>68.3</td><td class="up">+1.71%</td><td>资金+买压+放量三重共振</td></tr>
+      <tr><td>3</td><td>300553</td><td>集智股份</td><td>69.9</td><td class="down">-0.43%</td><td>底部蓄势，等量能确认</td></tr>
+      <tr><td>4</td><td>605088</td><td>冠盛股份</td><td>67.5</td><td class="up">+0.05%</td><td>低估值极低位，等资金点火</td></tr>
+      <tr><td>5</td><td>001238</td><td>浙江正特</td><td>67.1</td><td class="up">+1.13%</td><td>流动性枯竭，回避</td></tr>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">⚠️</span>风险提示</h2>
+    <div style="font-size:13px;line-height:1.9;color:#cbd5e1;">
+      <p>1. <b>力合微（688589）</b>今日 +7.97% 冲入 Top10，PE 高达 662，纯情绪炒作特征明显，务必警惕。</p>
+      <p>2. 本日 Top 标的全部处于 <b>MA60 下方 + 深度套牢区</b>（获利盘普遍 &lt;10%），属于<b>左侧超跌修复</b>而非右侧确认，反弹随时可能夭折。</p>
+      <p>3. 估值普遍偏高：集智284 / 烽火132 / 安联106 / 正特101，仅冠盛（PE 14.8）具备估值安全边际。</p>
+      <p>4. 浙江正特流动性极差（日成交仅 1413万），模型评分高 ≠ 可操作。</p>
+      <p>5. 冠盛存在<b>缠论顶背驰</b>+资金净流出，追高需谨慎；海顺新材（PE -55）基本面亏损、换手不足1%，仅作候选观察。</p>
+      <p style="margin-top:8px;color:#94a3b8;">免责声明：本报告由 ML 模型自动生成，仅供研究参考，不构成任何投资建议。市场有风险，入市需谨慎。</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    SClaw 🦀 · ML v12 深度选股日报 · 生成时间 2026-08-14 15:00 CST<br>
+    数据来源：v12-mlp-87 模型（87核心特征/8模型集成）+ 实时行情核验（08/14 收盘）
+  </div>
+
+</div>
+</body>
+</html>

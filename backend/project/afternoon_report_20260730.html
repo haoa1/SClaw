@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:16px;line-height:1.6}
+.container{max-width:900px;margin:0 auto}
+.header{background:linear-gradient(135deg,#1e293b,#0f172a);padding:28px 20px;border-radius:12px;margin-bottom:20px;text-align:center;border:1px solid #334155}
+.header h1{color:#fbbf24;margin:0 0 6px;font-size:24px}
+.header .sub{color:#94a3b8;font-size:13px}
+.section{background:#1e293b;border-radius:12px;padding:20px;margin-bottom:20px;border:1px solid #334155}
+.section h2{color:#fbbf24;font-size:17px;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid #334155}
+.card{background:#0f172a;border-radius:8px;padding:14px;margin-bottom:10px;border:1px solid #334155}
+.card h3{margin:0 0 10px;font-size:15px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;word-break:break-word}
+th{background:#1e293b;color:#fbbf24;padding:8px 6px;border:1px solid #334155;text-align:center}
+td{padding:6px;border:1px solid #334155;text-align:center;vertical-align:middle}
+tr:nth-child(even){background:#1e293b}
+tr:nth-child(odd){background:#0f172a}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px 0}
+.price-table{width:100%;border-collapse:collapse;margin:8px 0}
+.price-table td{width:25%;background:#0f172a;border:1px solid #334155;padding:10px;text-align:center;vertical-align:middle}
+.price-table .label{display:block;color:#94a3b8;font-size:10px;line-height:1.4}
+.price-table .value{display:block;font-size:15px;font-weight:bold;margin-top:2px;line-height:1.4}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:bold}
+.badge-low{background:#065f46;color:#34d399}
+.badge-mid{background:#78350f;color:#fbbf24}
+.badge-high{background:#7f1d1d;color:#fca5a5}
+.badge-severe{background:#4c0519;color:#f87171}
+.buy-point-tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;margin:0 2px}
+.tag-b1{background:#065f46;color:#34d399}
+.tag-b2{background:#1e3a5f;color:#60a5fa}
+.tag-b3{background:#5b21b6;color:#a78bfa}
+.highlight-box{padding:12px;margin:10px 0;border-radius:8px;font-size:13px}
+.highlight-box.green{background:linear-gradient(135deg,#064e3b,#1e293b);border-left:4px solid #34d399}
+.highlight-box.red{background:linear-gradient(135deg,#7f1d1d,#1e293b);border-left:4px solid #f87171}
+.highlight-box.yellow{background:linear-gradient(135deg,#78350f,#1e293b);border-left:4px solid #fbbf24}
+.good{color:#34d399;font-weight:bold}
+.bad{color:#f87171;font-weight:bold}
+.warn{color:#fbbf24;font-weight:bold}
+.footer{text-align:center;padding:20px;color:#64748b;font-size:11px}
+.signal-row{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
+.signal{display:inline-block;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:bold}
+.signal-bull{background:#065f46;color:#34d399}
+.signal-bear{background:#7f1d1d;color:#fca5a5}
+.signal-neutral{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+.price-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px}
+.price-buy{background:#1e3a5f;color:#60a5fa}
+.price-stop{background:#7f1d1d;color:#fca5a5}
+.price-target{background:#065f46;color:#34d399}
+.score-excellent{background:#065f46;color:#34d399;padding:2px 8px;border-radius:4px;font-weight:bold}
+.score-good{background:#1e3a5f;color:#60a5fa;padding:2px 8px;border-radius:4px;font-weight:bold}
+.score-mid{background:#78350f;color:#fbbf24;padding:2px 8px;border-radius:4px;font-weight:bold}
+.score-warn{background:#7f1d1d;color:#fca5a5;padding:2px 8px;border-radius:4px;font-weight:bold}
+.up{color:#34d399}
+.down{color:#f87171}
+.flat{color:#94a3b8}
+.market-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.market-item{text-align:center;padding:10px;border-radius:6px}
+.market-up{background:#065f4620;border:1px solid #065f46}
+.market-down{background:#7f1d1d20;border:1px solid #7f1d1d}
+.market-flat{background:#1e293b;border:1px solid #334155}
+.risk-low{color:#34d399;font-weight:bold}
+.risk-mid{color:#fbbf24;font-weight:bold}
+.risk-high{color:#f97316;font-weight:bold}
+.risk-danger{color:#f87171;font-weight:bold}
+.card-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.card-item{padding:6px 10px;background:#1e293b;border-radius:4px}
+.card-item .label{color:#94a3b8;font-size:11px}
+.card-item .value{font-size:14px;font-weight:bold;margin-top:2px}
+.top-1 td{background:#1e293b!important}
+.top-2 td{background:#1e293b90!important}
+.top-3 td{background:#1e293b60!important}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- HEADER -->
+<div class="header">
+  <h1>🦀 缠论三买点 · 午盘深度分析报告</h1>
+  <div class="sub">2026-07-30 · 14:30 CST<br>
+  一买 ⊕ 二买 ⊕ 三买 并集筛选 | 缠论 + 筹码 + 量价 三维量化<br>
+  ⚠️ 三买点策略0命中 → 兜底策略 chan-5filters-main<br>
+  全市场 5206 只 → 命中 50 只 → 深度分析前5</div>
+</div>
+
+<!-- 市场环境 -->
+<div class="section">
+  <h2>📊 市场环境</h2>
+  <div class="market-summary">
+    <div class="market-item market-up"><div class="label">上涨</div><div style="font-size:24px;font-weight:bold;color:#34d399;">1944</div><div style="font-size:13px;color:#34d399;">37.3%</div></div>
+    <div class="market-item market-down"><div class="label">下跌</div><div style="font-size:24px;font-weight:bold;color:#f87171;">3116</div><div style="font-size:13px;color:#f87171;">59.9%</div></div>
+    <div class="market-item market-flat"><div class="label">平盘</div><div style="font-size:24px;font-weight:bold;color:#94a3b8;">146</div><div style="font-size:13px;color:#94a3b8;">2.8%</div></div>
+  </div>
+
+  <div class="highlight-box red">
+    <strong>⚠️ 市场状态提示：空头主导，谨慎操作</strong><br>
+    今日大盘偏弱，近60%个股下跌，市场情绪低迷。缠论三买点策略（一买/二买/三买）日线级别全员零命中，说明日线级别无标准缠论买点信号——市场处于趋势下跌或震荡偏弱格局。兜底策略（5条件做T筛选）从5206只中仅命中50只（不足1%），整体机会稀缺。<br><br>
+    <strong>风格特征：</strong>消费/白酒板块（金种子酒、伊力特、安琪酵母）相对抗跌，部分个股逆势放量上攻。市场无明显主线热点，资金偏向防御性消费。<br>
+    <strong>风险提醒：</strong>60%个股下跌环境下，追高风险极大。即使有放量突破信号，也需警惕冲高回落。当前应以轻仓试错、严格止损为原则。
+  </div>
+</div>
+
+<!-- 综合评分总览 -->
+<div class="section">
+  <h2>🏆 综合评分总览</h2>
+  <p style="color:#94a3b8;font-size:13px;margin:-8px 0 8px;">
+  评分维度：缠论分析(40%) + 筹码分析(30%) + 量价分析(30%) = 综合总分100<br>
+  风险等级：🟢低风险≥80 | 🟡中风险60-79 | 🟠较高风险40-59 | 🔴高风险&lt;40
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>股票</th><th>现价</th><th>涨跌%</th>
+          <th>买点类型</th><th>缠论</th><th>筹码</th><th>量价</th><th>⚡综合</th>
+          <th>买入价</th><th>止损价</th><th>目标价</th><th>风险</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="top-1">
+          <td>🥇</td>
+          <td><strong>600199</strong> 金种子酒</td>
+          <td>8.06</td>
+          <td class="up">+7.18%</td>
+          <td><span class="buy-point-tag tag-b3">类三买</span></td>
+          <td><span class="score-mid">55</span></td>
+          <td><span class="score-mid">60</span></td>
+          <td><span class="score-mid">60</span></td>
+          <td><span class="score-mid">58</span></td>
+          <td>7.80</td>
+          <td>7.00</td>
+          <td>9.00</td>
+          <td><span class="risk-high">🟠较高</span></td>
+        </tr>
+        <tr class="top-2">
+          <td>🥈</td>
+          <td><strong>600197</strong> 伊力特</td>
+          <td>10.51</td>
+          <td class="up">+2.94%</td>
+          <td><span class="buy-point-tag tag-b2">类二买</span></td>
+          <td><span class="score-mid">52</span></td>
+          <td><span class="score-mid">58</span></td>
+          <td><span class="score-mid">55</span></td>
+          <td><span class="score-mid">55</span></td>
+          <td>10.20</td>
+          <td>9.50</td>
+          <td>11.50</td>
+          <td><span class="risk-high">🟠较高</span></td>
+        </tr>
+        <tr class="top-3">
+          <td>🥉</td>
+          <td><strong>600298</strong> 安琪酵母</td>
+          <td>41.27</td>
+          <td class="up">+3.05%</td>
+          <td><span class="buy-point-tag" style="background:#7f1d1d;color:#fca5a5;">不宜追</span></td>
+          <td><span class="score-warn">40</span></td>
+          <td><span class="score-mid">55</span></td>
+          <td><span class="score-mid">50</span></td>
+          <td><span class="score-warn">48</span></td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="risk-danger">🔴高</span></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><strong>600191</strong> 华资实业</td>
+          <td>9.82</td>
+          <td class="up">+3.37%</td>
+          <td>反弹修复</td>
+          <td><span class="score-warn">48</span></td>
+          <td><span class="score-mid">52</span></td>
+          <td><span class="score-warn">40</span></td>
+          <td><span class="score-warn">47</span></td>
+          <td>9.50</td>
+          <td>8.80</td>
+          <td>10.80</td>
+          <td><span class="risk-high">🟠较高</span></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><strong>600326</strong> 西藏天路</td>
+          <td>7.09</td>
+          <td class="up">+4.11%</td>
+          <td>超跌反弹</td>
+          <td><span class="score-warn">42</span></td>
+          <td><span class="score-warn">48</span></td>
+          <td><span class="score-warn">48</span></td>
+          <td><span class="score-warn">46</span></td>
+          <td>6.80</td>
+          <td>6.30</td>
+          <td>7.80</td>
+          <td><span class="risk-high">🟠较高</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 操作建议计数 -->
+  <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
+    <div class="highlight-box green"><strong>🟢 优先关注 ≥70</strong><br><span style="font-size:28px;color:#34d399;">0</span><br>只</div>
+    <div class="highlight-box yellow"><strong>🟡 观望跟踪 60-69</strong><br><span style="font-size:28px;color:#fbbf24;">0</span><br>只</div>
+    <div class="highlight-box red"><strong>🔴 谨慎回避 &lt;60</strong><br><span style="font-size:28px;color:#f87171;">5</span><br>只</div>
+  </div>
+  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:8px;">📌 今日无高分标的，市场整体偏弱，建议轻仓或观望</p>
+</div>
+
+<!-- 前5名深度分析卡片 -->
+<div class="section">
+  <h2>🔍 深度分析卡片</h2>
+
+  <!-- 金种子酒 -->
+  <div class="card">
+    <h3>
+      <span style="color:#fbbf24;">🥇 金种子酒</span>
+      <span style="color:#94a3b8;font-size:13px;">600199</span>
+      <span style="float:right;"><span class="score-mid">综58</span></span>
+    </h3>
+    <table class="price-table">
+      <tr>
+        <td><span class="label">现价</span><span class="value">8.06</span></td>
+        <td><span class="label">涨幅</span><span class="value up">+7.18%</span></td>
+        <td><span class="label">量比</span><span class="value">2.76</span></td>
+        <td><span class="label">换手</span><span class="value">11.98%</span></td>
+      </tr>
+    </table>
+    <p><strong>买点详解：</strong>类三买 — 股价在中枢上方放量突破，MACD金叉确认（DIF 0.17/DEA 0.02），站上所有均线（MA5=7.31 / MA20=6.85 / MA60=7.27）。今日量比2.76，换手11.98%，放量明显。但涨幅已达7.18%，追高风险大，建议等回调至7.80附近再考虑介入。</p>
+    <p><strong>缠论结构：</strong>日线级别存在1个中枢（chanZhongshuCount=1），最近转折点为低点（chanLastPivotType=low），属于中枢上方突破形态。MACD零轴上方金叉运行，DIF/DEA均为正值，趋势偏多。但无底背驰信号（chanBottomDivergence=0），买点信号强度一般。</p>
+    <p><strong>筹码分析：</strong>HHI集中度11.95（中等分散），净买入比11.74%，近期买压75.31（偏强），获利比例约10%。筹码结构尚可，但获利盘已积累，短期存在兑现压力。当前区域换手率达14.14%区间量比，筹码活跃。</p>
+    <p><strong>量价分析：</strong>量比2.76放量上攻，MACD金叉红柱持续放大（0.29），站上全部三条均线。上方无明显阻力（近期高点8.27已近在咫尺），若能有效突破8.27则打开上涨空间。PE为负（-30.31），基本面偏弱是硬伤。</p>
+    <p><strong>关键价位：</strong>
+      <span class="price-badge price-buy">买入 7.80-8.06</span>
+      <span class="price-badge price-stop">止损 7.00</span>
+      <span class="price-badge price-target">目标1 9.00</span>
+      <span class="price-badge price-target">目标2 10.00</span>
+    </p>
+    <div class="signal-row">
+      <span class="signal signal-bull">✅ MACD金叉</span>
+      <span class="signal signal-bull">✅ 站上所有均线</span>
+      <span class="signal signal-bull">✅ 中枢上方突破</span>
+      <span class="signal signal-bear">❌ 无底背驰</span>
+      <span class="signal signal-bear">❌ 涨幅已大追高风险</span>
+      <span class="signal signal-bear">❌ PE为负</span>
+    </div>
+  </div>
+
+  <!-- 伊力特 -->
+  <div class="card">
+    <h3>
+      <span style="color:#cbd5e1;">🥈 伊力特</span>
+      <span style="color:#94a3b8;font-size:13px;">600197</span>
+      <span style="float:right;"><span class="score-mid">综55</span></span>
+    </h3>
+    <table class="price-table">
+      <tr>
+        <td><span class="label">现价</span><span class="value">10.51</span></td>
+        <td><span class="label">涨幅</span><span class="value up">+2.94%</span></td>
+        <td><span class="label">量比</span><span class="value">3.30</span></td>
+        <td><span class="label">换手</span><span class="value">3.78%</span></td>
+      </tr>
+    </table>
+    <p><strong>买点详解：</strong>类二买 — 股价在中枢内部回踩后反弹，MACD即将金叉（DIF=-0.04 / DEA=-0.13，差距仅0.09）。站上MA5(10.19)和MA20(10.04)，但仍受MA60(10.91)压制。今日量比3.30放量明显，幅度温和（+2.94%），相比金种子酒追高风险更小。</p>
+    <p><strong>缠论结构：</strong>日线级别存在1个中枢，最近转折为低点。MACD在零轴下方但即将金叉，柱状线已连续翻红（0.18），是典型的底部企稳信号。无背驰信号，走势类型为中枢震荡中的向上段。</p>
+    <p><strong>筹码分析：</strong>HHI集中度12.88（中等），净买入比14.33%（较好），近期买压72.90（中等偏强）。获利比例仅2.46%，绝大多数筹码处于成本附近，抛压较轻。筹码结构优于金种子酒。</p>
+    <p><strong>量价分析：</strong>量比3.30为五只中最强，但涨幅仅2.94%，量价配合健康（放量温和上涨）。MACD即将金叉，若明日确认金叉则信号增强。PE=28.09合理。上方MA60(10.91)是关键阻力，突破后空间打开。</p>
+    <p><strong>关键价位：</strong>
+      <span class="price-badge price-buy">买入 10.20-10.50</span>
+      <span class="price-badge price-stop">止损 9.50</span>
+      <span class="price-badge price-target">目标1 11.50</span>
+      <span class="price-badge price-target">目标2 12.50</span>
+    </p>
+    <div class="signal-row">
+      <span class="signal signal-bull">✅ MACD即将金叉</span>
+      <span class="signal signal-bull">✅ 放量温和上涨</span>
+      <span class="signal signal-bull">✅ 获利盘少/抛压轻</span>
+      <span class="signal signal-bull">✅ PE合理(28)</span>
+      <span class="signal signal-neutral">➡️ 中枢内震荡</span>
+      <span class="signal signal-bear">❌ 受MA60压制</span>
+    </div>
+  </div>
+
+  <!-- 安琪酵母 -->
+  <div class="card">
+    <h3>
+      <span style="color:#d97706;">🥉 安琪酵母</span>
+      <span style="color:#94a3b8;font-size:13px;">600298</span>
+      <span style="float:right;"><span class="score-warn">综48</span></span>
+    </h3>
+    <table class="price-table">
+      <tr>
+        <td><span class="label">现价</span><span class="value">41.27</span></td>
+        <td><span class="label">涨幅</span><span class="value up">+3.05%</span></td>
+        <td><span class="label">量比</span><span class="value">2.65</span></td>
+        <td><span class="label">换手</span><span class="value">3.12%</span></td>
+      </tr>
+    </table>
+    <p><strong>买点详解：</strong>不建议追入 — 缠论系统检测到 <span class="bad">MACD顶背驰信号</span>（chanTopDivergence=1），这是日线级别的危险信号。虽然股价站上所有均线、MACD仍在零轴上方（DIF=0.88/DEA=0.69），但柱状线增速放缓，量价背离迹象明显。今日涨幅3.05%是高位加速赶顶的风险特征。</p>
+    <p><strong>缠论结构：</strong>无中枢结构，最近转折为低点但已运行至高位（区间位置76%）。顶背驰信号是缠论中最明确的卖出/回避信号之一，说明上涨动能衰竭，随时可能转折。当前价格接近52周最高区间。</p>
+    <p><strong>筹码分析：</strong>HHI 12.43（中等），净买入比7.75%（一般），买压78.59（偏强），获利比例约5%。筹码结构不算差，但底部筹码已大幅获利，高位追入筹码风险大。</p>
+    <p><strong>量价分析：</strong>MACD零轴上运行但红柱增速放缓，量比2.65尚可。PE=22.38合理。但顶背驰+区间高位（76%分位）的组合意味着追高风险极大。今日冲高42.26后回落至41.27，上影线较长。</p>
+    <p><strong>关键价位：</strong>
+      <span class="price-badge price-buy">不建议买入</span>
+      <span class="price-badge price-stop">若持仓止损 37.00</span>
+      <span class="price-badge price-target">—</span>
+      <span class="price-badge price-target">—</span>
+    </p>
+    <div class="signal-row">
+      <span class="signal signal-bear">❌ 日线MACD顶背驰</span>
+      <span class="signal signal-bear">❌ 高位加速赶顶</span>
+      <span class="signal signal-bear">❌ 上影线回落</span>
+      <span class="signal signal-bull">✅ 站上所有均线</span>
+      <span class="signal signal-bull">✅ PE合理</span>
+      <span class="signal signal-neutral">➡️ 无中枢结构</span>
+    </div>
+  </div>
+
+  <!-- 华资实业 -->
+  <div class="card">
+    <h3>
+      <span style="color:#94a3b8;">4. 华资实业</span>
+      <span style="color:#94a3b8;font-size:13px;">600191</span>
+      <span style="float:right;"><span class="score-warn">综47</span></span>
+    </h3>
+    <table class="price-table">
+      <tr>
+        <td><span class="label">现价</span><span class="value">9.82</span></td>
+        <td><span class="label">涨幅</span><span class="value up">+3.37%</span></td>
+        <td><span class="label">量比</span><span class="value">1.43</span></td>
+        <td><span class="label">换手</span><span class="value">3.22%</span></td>
+      </tr>
+    </table>
+    <p><strong>买点详解：</strong>反弹修复 — 股价从低点8.06反弹至9.82，站上MA5(9.18)和MA20(8.85)，但受MA60(10.22)压制。MACD零轴下方运行（DIF=-0.20/DEA=-0.40），柱状线持续回升（0.41），属于超跌后的技术修复。无中枢、无背驰信号。</p>
+    <p><strong>缠论结构：</strong>无中枢结构，趋势为空头主导（价格在VWAP 11.48下方-14.47%），属于下跌趋势中的反弹段。MACD虽有金叉迹象（柱状线翻红），但DIF/DEA均为负值，力度有限。</p>
+    <p><strong>筹码分析：</strong>HHI 13.09（中等），净买入比仅2.64%（偏弱），但近期买压91.18为五只中最强，说明短期有资金介入。获利比8.33%，筹码结构两极分化——底部筹码获利、高位套牢盘沉重。</p>
+    <p><strong>量价分析：</strong>量比1.43为五只中最弱，放量不足。PE=69.3偏高。MA60(10.22)是强阻力位，距当前价约4%。突破MA60需要更强放量配合。</p>
+    <p><strong>关键价位：</strong>
+      <span class="price-badge price-buy">买入 9.50</span>
+      <span class="price-badge price-stop">止损 8.80</span>
+      <span class="price-badge price-target">目标 10.80</span>
+    </p>
+    <div class="signal-row">
+      <span class="signal signal-bull">✅ MACD柱回升</span>
+      <span class="signal signal-bull">✅ 近期买压极强</span>
+      <span class="signal signal-bear">❌ 量比偏弱</span>
+      <span class="signal signal-bear">❌ 受MA60压制</span>
+      <span class="signal signal-bear">❌ PE偏高(69)</span>
+      <span class="signal signal-neutral">➡️ 无中枢/无背驰</span>
+    </div>
+  </div>
+
+  <!-- 西藏天路 -->
+  <div class="card">
+    <h3>
+      <span style="color:#94a3b8;">5. 西藏天路</span>
+      <span style="color:#94a3b8;font-size:13px;">600326</span>
+      <span style="float:right;"><span class="score-warn">综46</span></span>
+    </h3>
+    <table class="price-table">
+      <tr>
+        <td><span class="label">现价</span><span class="value">7.09</span></td>
+        <td><span class="label">涨幅</span><span class="value up">+4.11%</span></td>
+        <td><span class="label">量比</span><span class="value">2.66</span></td>
+        <td><span class="label">换手</span><span class="value">7.06%</span></td>
+      </tr>
+    </table>
+    <p><strong>买点详解：</strong>超跌反弹 — 股价从6.05低点反弹，站上MA5(6.53)和MA20(6.40)，但MA60(7.35)在上方形成压制。MACD零轴下方（DIF=-0.10/DEA=-0.23），柱状线回升中（0.25）。PE高达321，基本面极差。</p>
+    <p><strong>缠论结构：</strong>无中枢结构，趋势偏空（价格大幅低于VWAP 8.80，偏离-19.69%）。反弹幅度已达区间低位的18%分位，属于深跌后的技术性修复，趋势反转信号不明确。</p>
+    <p><strong>筹码分析：</strong>HHI 12.93（中等），净买入比5.88%（一般），买压73.73（中等）。获利比7.66%，筹码结构一般。底部换手14.97%区间量比，有资金在低位承接。</p>
+    <p><strong>量价分析：</strong>量比2.66放量尚可，换手7.06%偏高。MACD柱状线回升但仍在零轴下方。PE=321极高，基本面风险大。上方MA60(7.35)是第一阻力，突破后才能看高一线。</p>
+    <p><strong>关键价位：</strong>
+      <span class="price-badge price-buy">买入 6.80</span>
+      <span class="price-badge price-stop">止损 6.30</span>
+      <span class="price-badge price-target">目标 7.80</span>
+    </p>
+    <div class="signal-row">
+      <span class="signal signal-bull">✅ 底部放量反弹</span>
+      <span class="signal signal-bull">✅ 站上MA5/MA20</span>
+      <span class="signal signal-bear">❌ PE极高(321)</span>
+      <span class="signal signal-bear">❌ 受MA60压制</span>
+      <span class="signal signal-bear">❌ MACD零轴下</span>
+      <span class="signal signal-neutral">➡️ 无中枢结构</span>
+    </div>
+  </div>
+</div>
+
+<!-- 总结 -->
+<div class="section">
+  <h2>📝 午盘总结</h2>
+  <div class="highlight-box yellow">
+    <strong>今日综合评价：</strong>市场偏弱，三买点策略零命中，说明日线级别无标准缠论买点。兜底策略筛选出的5只标的综合分均在40-60区间（🟠较高风险），无一进入优先关注区间。整体操作难度大。<br><br>
+    <strong>操作策略建议：</strong><br>
+    · <strong>空仓/轻仓为主：</strong>今日不建议新开仓位，已有持仓应严格止损<br>
+    · <strong>伊力特(600197)</strong>相对最优：类二买形态+即将MACD金叉+获利盘少，可在10.20附近轻仓试错，止损9.50<br>
+    · <strong>金种子酒(600199)</strong>涨幅已大不宜追高，等回调至7.80附近再评估<br>
+    · <strong>安琪酵母(600298)</strong>顶背驰信号明确，持有者考虑减仓，未持有者回避<br>
+    · <strong>华资实业/西藏天路</strong>分别为反弹修复和超跌反弹形态，信号偏弱，不建议参与<br><br>
+    <strong>风格判断：</strong>消费/白酒板块今日相对活跃（金种子酒、伊力特、安琪酵母均属此板块），可能是防御性轮动。但持续性存疑，不建议追涨。等待大盘企稳后再寻找真正的缠论买点信号。
+  </div>
+</div>
+
+<div class="footer">
+  🦀 SClaw · 缠论三买点午盘报告 · 2026-07-30 14:30 CST<br>
+  本报告由AI自动生成，仅供参考，不构成投资建议
+</div>
+
+</div>
+</body>
+</html>

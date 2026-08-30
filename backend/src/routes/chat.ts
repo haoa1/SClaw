@@ -16,6 +16,7 @@ import { LLMClient } from "../agent/llm";
 import { shouldCompact, compactContext, microCompactMessages, estimateTotalTokens } from "../agent/compact";
 import { clearUserActions, drainUserActions } from "../tools/frontend-actions";
 import { runWithUserId } from "../request-context";
+import { extractMemoryFromMessages } from "../memory/extract";
 
 const CHAT_DATA_DIR = path.resolve(process.cwd(), "data", "chat");
 
@@ -271,6 +272,11 @@ export function createChatRoutes(
       // Send done event
       res.write(`data: ${JSON.stringify({ type: "done", content: finalContent })}\n\n`);
       res.write("data: [DONE]\n\n");
+
+      // Stop hook: async memory extraction (fire-and-forget, does not block response)
+      extractMemoryFromMessages(agent.getMemory(), message, finalContent).catch(err =>
+        console.error("[StopHook] Memory extraction error:", err)
+      );
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e);
       res.write(`data: ${JSON.stringify({ type: "error", content: errMsg })}\n\n`);

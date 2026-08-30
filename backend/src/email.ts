@@ -138,8 +138,8 @@ function buildScreenResultsTable(results: FilterResult[], maxRows = 30): string 
   if (!results || results.length === 0) return '<p style="color:#aaa;">无匹配结果</p>';
   const top = results.slice(0, maxRows);
   let html = `
-    <div style="overflow-x:auto;">
-    <table style="border-collapse:collapse;width:100%;font-size:13px;font-family:'PingFang SC','Helvetica Neue',sans-serif;min-width:600px;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table style="border-collapse:collapse;width:100%;font-size:13px;font-family:'PingFang SC','Helvetica Neue',sans-serif;word-break:break-word;">
       <thead>
         <tr style="background:linear-gradient(135deg,#1a1a3e,#2a1a4e);color:#e0e0e0;">
           <th style="border:1px solid #333;padding:8px 8px;text-align:center;width:36px;">#</th>
@@ -407,6 +407,17 @@ export async function sendScreenReport(
       p { margin:10px 0; line-height:1.8; }
       strong { color:#e0e0e0; }
       code { background:#1e293b; color:#fbbf24; padding:2px 6px; border-radius:4px; font-size:13px; font-family:monospace; }
+      @media only screen and (max-width:600px){
+        body{ padding:10px !important; }
+        h1{ font-size:18px !important; }
+        .section{ padding:10px !important; }
+        .section h2{ font-size:14px !important; }
+        .card{ padding:10px !important; }
+        .card-header{ flex-direction:column !important; align-items:flex-start !important; }
+        .card-grid{ grid-template-columns:1fr !important; }
+        table{ font-size:11px !important; }
+        th, td{ padding:4px 3px !important; font-size:10px !important; }
+      }
     </style>
     <div style="background:#0a0a1a;color:#ccc;padding:20px;font-family:'PingFang SC','Helvetica Neue',sans-serif;">
       <div style="max-width:680px;margin:0 auto;">

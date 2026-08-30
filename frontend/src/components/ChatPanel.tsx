@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import ChatStockList, { AiStock } from './ChatStockList'
 
 interface ToolCallInfo {
   id: string
@@ -115,19 +114,17 @@ function saveMessages(messages: Message[]) {
   } catch {}
 }
 
-export default function ChatPanel({ onHighlight, highlightTimeout, onAction, context }: ChatPanelProps) {
+export interface ChatPanelHandle {
+  send: (text?: string) => Promise<void>
+}
+
+const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function ChatPanel({ onHighlight, highlightTimeout, onAction, context }, ref) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [loaded, setLoaded] = useState(false)
-
-  // AI 选股结果 — 左侧股票列表（来自 run_screen action）
-  const [aiStocks, setAiStocks] = useState<AiStock[]>([])
-  const [stockPanelOpen, setStockPanelOpen] = useState(true)
-  const [viewingStock, setViewingStock] = useState<AiStock | null>(null)
-  const ChanPanel = lazy(() => import('./ChanPanel'))
 
   // Model switching state
   const [currentModel, setCurrentModel] = useState<string>('deepseek-v4-flash')
@@ -415,24 +412,7 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
                 streamingSegments.current.push({ type: 'tool_result', data: parsed.content || '' })
                 updatePending()
               } else if (parsed.type === 'action') {
-                // 捕获 AI 选股结果 → 左侧股票列表
-                if (parsed.action === 'run_screen' && parsed.payload?.results?.length) {
-                  setAiStocks(prev => {
-                    const merged = [...prev]
-                    for (const r of parsed.payload.results) {
-                      if (!merged.some(x => x.code === r.code)) {
-                        merged.push({
-                          code: r.code,
-                          name: r.name || r.code,
-                          score: typeof r.score === 'number' ? r.score : 0,
-                          signals: Array.isArray(r.signals) ? r.signals : [],
-                        })
-                      }
-                    }
-                    return merged
-                  })
-                  setStockPanelOpen(true)
-                }
+                // AI 选股结果 → 由 App.tsx 统一处理 (run_screen / ml_screen 推送股票列表到左栏)
                 if (onAction) onAction(parsed.action, parsed.payload)
               } else if (parsed.type === 'debug_prompt') {
                 // Store last 5 prompt dumps for debug panel
@@ -472,6 +452,8 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
       highlightTimeout.current = setTimeout(() => onHighlight(null), 2000)
     }
   }
+
+  useImperativeHandle(ref, () => ({ send }), [send])
 
   // Also listen on native keydown for browser automation compatibility.
   // agent-browser/Playwright types directly into the DOM, bypassing React's onChange,
@@ -1017,17 +999,8 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
 
   return (
     <div className="flex flex-1 min-h-0 bg-black font-mono relative">
-      {/* 左侧：AI 选股列表 */}
-      <ChatStockList
-        stocks={aiStocks}
-        open={stockPanelOpen}
-        onToggle={() => setStockPanelOpen(o => !o)}
-        onSelect={s => setViewingStock(s)}
-        onClear={() => setAiStocks([])}
-      />
-
       {/* 右侧：聊天 */}
-      <div className="flex flex-col flex-1 min-h-0 relative">
+      <div className="flex flex-col flex-1 min-w-[300px] min-h-0 relative">
         {messagesList}
 
       {/* Floating scroll-to-bottom button — outside scroll container */}
@@ -1122,28 +1095,8 @@ export default function ChatPanel({ onHighlight, highlightTimeout, onAction, con
         </div>
       </div>
       </div>
-
-      {/* 缠论 overlay — 点击左侧股票时全屏显示 */}
-      {viewingStock && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
-            <span className="text-bronze font-mono text-sm">
-              🔍 缠论分析: {viewingStock.name} ({viewingStock.code})
-            </span>
-            <button
-              onClick={() => setViewingStock(null)}
-              className="text-gray-500 hover:text-red-400 text-xs font-mono px-3 py-1 border border-gray-800 rounded hover:border-red-900 transition-colors cursor-pointer"
-            >
-              ✕ 关闭
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500 text-sm font-mono">Loading Chan...</div>}>
-              <ChanPanel onBack={() => setViewingStock(null)} initialCode={viewingStock.code} />
-            </Suspense>
-          </div>
-        </div>
-      )}
     </div>
   )
-}
+});
+
+export default ChatPanel

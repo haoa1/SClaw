@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>涨停缩量回调策略 v3 — 138笔交易全览</title>
+<style>
+  :root { --bg:#0f1420; --card:#1a2233; --card2:#1e2740; --txt:#e8edf7; --sub:#8b98b5;
+          --red:#e74c6f; --green:#2ecc71; --amber:#f5a623; --blue:#4a90d9; --grid:#2a3550; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; padding:24px; }
+  h1 { font-size:22px; font-weight:700; margin-bottom:4px; }
+  .subtitle { color:var(--sub); font-size:13px; margin-bottom:20px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+  .kpi { background:var(--card); border-radius:10px; padding:14px 16px; border:1px solid var(--grid); }
+  .kpi .label { color:var(--sub); font-size:12px; margin-bottom:6px; }
+  .kpi .val { font-size:22px; font-weight:700; }
+  .kpi .val.green { color:var(--green); } .kpi .val.red { color:var(--red); } .kpi .val.amber { color:var(--amber); }
+  .kpi .val.blue { color:var(--blue); }
+  .kpi .note { color:var(--sub); font-size:11px; margin-top:4px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media(max-width:1100px){ .grid{ grid-template-columns:1fr; } }
+  .card { background:var(--card); border-radius:12px; padding:16px; border:1px solid var(--grid); }
+  .card h2 { font-size:15px; font-weight:600; margin-bottom:12px; color:#c6d2ee; }
+  .card.wide { grid-column:1 / -1; }
+  svg text { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--sub); margin-bottom:8px; }
+  .legend span i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th { color:var(--sub); text-align:left; font-weight:500; padding:6px 8px; border-bottom:1px solid var(--grid); }
+  td { padding:6px 8px; border-bottom:1px solid #222c44; }
+  tr:hover td { background:#1c2540; }
+  .pos { color:var(--green); } .neg { color:var(--red); }
+  .tooltip { position:fixed; background:#0b0f1a; border:1px solid #3a4a6e; border-radius:8px; padding:8px 12px;
+             font-size:12px; pointer-events:none; opacity:0; transition:opacity .1s; z-index:99; max-width:260px; }
+  .chip { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; background:#263252; color:#a9c3f0; }
+  .chip.stop_loss{ background:#3a1f2c; color:#f08aa4; } .chip.trail_stop{ background:#1e3527; color:#7ed6a5; }
+  .chip.time_stop{ background:#3a3119; color:#e8c15a; }
+  .foot { margin-top:18px; color:#5c6a8c; font-size:11.5px; text-align:center; }
+  .wr-bar { display:inline-block; height:6px; border-radius:3px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<h1>📈 涨停缩量回调策略 v3（情绪状态机）</h1>
+<div class="subtitle">全周期回测 2022-04 → 2026-08 · 138 笔交易 · 数据源：bt_limitup_best_trades.csv（v3）</div>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="grid">
+  <div class="card wide">
+    <h2>📉 累计净收益曲线（按卖出日排序）</h2>
+    <div class="legend"><span><i style="background:#4a90d9"></i>累计收益</span><span><i style="background:#2ecc71"></i>单笔收益（右轴）</span></div>
+    <div id="curveChart"></div>
+  </div>
+
+  <div class="card">
+    <h2>🗂 分段表现（卖出日归属）</h2>
+    <div id="segChart"></div>
+  </div>
+
+  <div class="card">
+    <h2>📊 单笔收益率分布</h2>
+    <div id="histChart"></div>
+  </div>
+
+  <div class="card">
+    <h2>🎯 卖出原因分布</h2>
+    <div id="reasonChart"></div>
+  </div>
+
+  <div class="card">
+    <h2>📆 按年收益</h2>
+    <table id="yearTable"></table>
+  </div>
+
+  <div class="card">
+    <h2>🏆 盈利 TOP 8</h2>
+    <table id="winTable"></table>
+  </div>
+
+  <div class="card">
+    <h2>💀 亏损 TOP 8</h2>
+    <table id="lossTable"></table>
+  </div>
+</div>
+
+<div class="foot">生成于 2026-08-23 · 纯 SVG 绘制，无外部依赖 · 可离线打开</div>
+<div class="tooltip" id="tip"></div>
+
+<script>
+const DATA = {"curve": [{"date": "2022-06-14", "cum": -257.0, "net": -257.0, "ret": -8.6, "name": "创新医疗", "code": "002173", "reason": "stop_loss", "buy": "2022-05-11", "hold": "23"}, {"date": "2022-06-16", "cum": -581.0, "net": -324.0, "ret": -9.74, "name": "000613", "code": "000613", "reason": "stop_loss", "buy": "2022-06-14", "hold": "2"}, {"date": "2022-07-07", "cum": -80.0, "net": 501.0, "ret": 15.33, "name": "飞乐音响", "code": "600651", "reason": "time_stop", "buy": "2022-05-11", "hold": "40"}, {"date": "2022-07-07", "cum": 828.0, "net": 908.0, "ret": 35.77, "name": "神力股份", "code": "603819", "reason": "time_stop", "buy": "2022-05-11", "hold": "40"}, {"date": "2022-07-15", "cum": 616.0, "net": -212.0, "ret": -6.99, "name": "益生股份", "code": "002458", "reason": "stop_loss", "buy": "2022-07-07", "hold": "6"}, {"date": "2022-08-03", "cum": 1171.0, "net": 554.0, "ret": 20.57, "name": "积成电子", "code": "002339", "reason": "trail_stop", "buy": "2022-07-18", "hold": "12"}, {"date": "2022-08-05", "cum": 2338.0, "net": 1167.0, "ret": 40.21, "name": "黑猫股份", "code": "002068", "reason": "trail_stop", "buy": "2022-06-16", "hold": "36"}, {"date": "2022-08-24", "cum": 1932.0, "net": -406.0, "ret": -12.2, "name": "炼石航空", "code": "000697", "reason": "stop_loss", "buy": "2022-08-08", "hold": "12"}, {"date": "2022-08-29", "cum": 2144.0, "net": 212.0, "ret": 6.9, "name": "群兴玩具", "code": "002575", "reason": "trail_stop", "buy": "2022-08-08", "hold": "15"}, {"date": "2022-08-30", "cum": 1853.0, "net": -291.0, "ret": -11.49, "name": "绿康生化", "code": "002868", "reason": "stop_loss", "buy": "2022-08-25", "hold": "3"}, {"date": "2022-09-01", "cum": 1880.0, "net": 27.0, "ret": 0.89, "name": "珠海中富", "code": "000659", "reason": "trail_stop", "buy": "2022-07-07", "hold": "40"}, {"date": "2022-09-15", "cum": 1607.0, "net": -274.0, "ret": -11.48, "name": "康惠股份", "code": "603139", "reason": "trail_stop", "buy": "2022-08-31", "hold": "10"}, {"date": "2022-09-16", "cum": 1394.0, "net": -213.0, "ret": -6.79, "name": "欧菲光", "code": "002456", "reason": "stop_loss", "buy": "2022-09-02", "hold": "9"}, {"date": "2022-09-28", "cum": 1146.0, "net": -248.0, "ret": -9.44, "name": "东方中科", "code": "002819", "reason": "stop_loss", "buy": "2022-09-27", "hold": "1"}, {"date": "2022-10-20", "cum": 942.0, "net": -204.0, "ret": -8.62, "name": "丽臣实业", "code": "001218", "reason": "trail_stop", "buy": "2022-09-27", "hold": "12"}, {"date": "2022-10-24", "cum": 3314.0, "net": 2372.0, "ret": 71.57, "name": "双成药业", "code": "002693", "reason": "trail_stop", "buy": "2022-10-12", "hold": "8"}, {"date": "2022-11-01", "cum": 3758.0, "net": 444.0, "ret": 14.61, "name": "康弘药业", "code": "002773", "reason": "time_stop", "buy": "2022-08-29", "hold": "40"}, {"date": "2022-12-15", "cum": 3956.0, "net": 198.0, "ret": 6.66, "name": "中光学", "code": "002189", "reason": "time_stop", "buy": "2022-10-20", "hold": "40"}, {"date": "2022-12-20", "cum": 6119.0, "net": 2162.0, "ret": 83.95, "name": "绿康生化", "code": "002868", "reason": "trail_stop", "buy": "2022-10-26", "hold": "39"}, {"date": "2022-12-20", "cum": 5911.0, "net": -208.0, "ret": -9.5, "name": "润都股份", "code": "002923", "reason": "stop_loss", "buy": "2022-12-15", "hold": "3"}, {"date": "2022-12-27", "cum": 5916.0, "net": 6.0, "ret": 0.18, "name": "上海物贸", "code": "600822", "reason": "time_stop", "buy": "2022-11-01", "hold": "40"}, {"date": "2023-01-10", "cum": 5647.0, "net": -270.0, "ret": -8.35, "name": "600393", "code": "600393", "reason": "stop_loss", "buy": "2022-12-26", "hold": "10"}, {"date": "2023-01-18", "cum": 5561.0, "net": -86.0, "ret": -2.72, "name": "实益达", "code": "002137", "reason": "trail_stop", "buy": "2023-01-10", "hold": "6"}, {"date": "2023-02-24", "cum": 5310.0, "net": -251.0, "ret": -8.87, "name": "易普力", "code": "002096", "reason": "trail_stop", "buy": "2022-12-26", "hold": "38"}, {"date": "2023-03-01", "cum": 5244.0, "net": -66.0, "ret": -2.21, "name": "青岛金王", "code": "002094", "reason": "time_stop", "buy": "2022-12-27", "hold": "40"}, {"date": "2023-03-22", "cum": 5406.0, "net": 162.0, "ret": 5.17, "name": "模塑科技", "code": "000700", "reason": "time_stop", "buy": "2023-01-18", "hold": "40"}, {"date": "2023-03-22", "cum": 6304.0, "net": 898.0, "ret": 28.75, "name": "龙建股份", "code": "600853", "reason": "trail_stop", "buy": "2023-02-24", "hold": "18"}, {"date": "2023-04-17", "cum": 6490.0, "net": 186.0, "ret": 6.21, "name": "遥望科技", "code": "002291", "reason": "trail_stop", "buy": "2023-03-22", "hold": "17"}, {"date": "2023-04-27", "cum": 6584.0, "net": 94.0, "ret": 3.89, "name": "南华期货", "code": "603093", "reason": "time_stop", "buy": "2023-03-01", "hold": "40"}, {"date": "2023-05-10", "cum": 12060.0, "net": 5476.0, "ret": 178.6, "name": "中国科传", "code": "601858", "reason": "trail_stop", "buy": "2023-03-22", "hold": "31"}, {"date": "2023-06-14", "cum": 11866.0, "net": -194.0, "ret": -7.5, "name": "佳电股份", "code": "000922", "reason": "trail_stop", "buy": "2023-04-17", "hold": "39"}, {"date": "2023-06-30", "cum": 12020.0, "net": 155.0, "ret": 5.34, "name": "长虹美菱", "code": "000521", "reason": "time_stop", "buy": "2023-04-28", "hold": "40"}, {"date": "2023-07-07", "cum": 12283.0, "net": 263.0, "ret": 7.89, "name": "三特索道", "code": "002159", "reason": "time_stop", "buy": "2023-05-10", "hold": "40"}, {"date": "2023-07-27", "cum": 12046.0, "net": -238.0, "ret": -9.69, "name": "泰和新材", "code": "002254", "reason": "stop_loss", "buy": "2023-06-30", "hold": "19"}, {"date": "2023-08-11", "cum": 11860.0, "net": -186.0, "ret": -5.64, "name": "永安林业", "code": "000663", "reason": "trail_stop", "buy": "2023-06-14", "hold": "40"}, {"date": "2023-08-22", "cum": 11628.0, "net": -232.0, "ret": -7.96, "name": "赫美集团", "code": "002356", "reason": "stop_loss", "buy": "2023-08-14", "hold": "6"}, {"date": "2023-08-28", "cum": 11303.0, "net": -325.0, "ret": -11.15, "name": "光洋股份", "code": "002708", "reason": "trail_stop", "buy": "2023-08-22", "hold": "4"}, {"date": "2023-09-01", "cum": 12309.0, "net": 1006.0, "ret": 30.14, "name": "通化金马", "code": "000766", "reason": "time_stop", "buy": "2023-07-07", "hold": "40"}, {"date": "2023-09-20", "cum": 12418.0, "net": 109.0, "ret": 5.27, "name": "冠盛股份", "code": "605088", "reason": "trail_stop", "buy": "2023-08-28", "hold": "17"}, {"date": "2023-09-21", "cum": 12742.0, "net": 324.0, "ret": 10.79, "name": "皖通高速", "code": "600012", "reason": "time_stop", "buy": "2023-07-27", "hold": "40"}, {"date": "2023-10-09", "cum": 12622.0, "net": -119.0, "ret": -3.95, "name": "亚厦股份", "code": "002375", "reason": "trail_stop", "buy": "2023-09-21", "hold": "6"}, {"date": "2023-10-13", "cum": 12299.0, "net": -323.0, "ret": -10.25, "name": "焦点科技", "code": "002315", "reason": "stop_loss", "buy": "2023-10-09", "hold": "4"}, {"date": "2023-10-20", "cum": 12389.0, "net": 90.0, "ret": 3.07, "name": "模塑科技", "code": "000700", "reason": "trail_stop", "buy": "2023-09-01", "hold": "29"}, {"date": "2023-11-09", "cum": 12824.0, "net": 434.0, "ret": 15.56, "name": "智度股份", "code": "000676", "reason": "trail_stop", "buy": "2023-10-13", "hold": "19"}, {"date": "2023-11-24", "cum": 13070.0, "net": 246.0, "ret": 8.56, "name": "亚太股份", "code": "002284", "reason": "time_stop", "buy": "2023-09-21", "hold": "40"}, {"date": "2023-11-24", "cum": 12832.0, "net": -238.0, "ret": -9.63, "name": "三七互娱", "code": "002555", "reason": "stop_loss", "buy": "2023-11-09", "hold": "11"}, {"date": "2023-12-20", "cum": 12560.0, "net": -272.0, "ret": -8.93, "name": "赛象科技", "code": "002337", "reason": "time_stop", "buy": "2023-10-25", "hold": "40"}, {"date": "2024-01-11", "cum": 12317.0, "net": -243.0, "ret": -8.44, "name": "九丰能源", "code": "605090", "reason": "trail_stop", "buy": "2023-11-24", "hold": "33"}, {"date": "2024-01-16", "cum": 12395.0, "net": 78.0, "ret": 2.52, "name": "茶花股份", "code": "603615", "reason": "trail_stop", "buy": "2023-11-24", "hold": "36"}, {"date": "2024-01-17", "cum": 12101.0, "net": -295.0, "ret": -10.57, "name": "浙江世宝", "code": "002703", "reason": "stop_loss", "buy": "2024-01-11", "hold": "4"}, {"date": "2024-01-30", "cum": 11855.0, "net": -245.0, "ret": -10.58, "name": "游族网络", "code": "002174", "reason": "trail_stop", "buy": "2024-01-16", "hold": "10"}, {"date": "2024-01-30", "cum": 11456.0, "net": -400.0, "ret": -16.39, "name": "日久光电", "code": "003015", "reason": "stop_loss", "buy": "2024-01-25", "hold": "3"}, {"date": "2024-02-05", "cum": 11336.0, "net": -120.0, "ret": -4.73, "name": "中远海能", "code": "600026", "reason": "trail_stop", "buy": "2023-12-21", "hold": "31"}, {"date": "2024-03-27", "cum": 11415.0, "net": 79.0, "ret": 3.87, "name": "大金重工", "code": "002487", "reason": "trail_stop", "buy": "2024-02-19", "hold": "27"}, {"date": "2024-04-08", "cum": 11341.0, "net": -74.0, "ret": -3.16, "name": "华林证券", "code": "002945", "reason": "trail_stop", "buy": "2024-02-19", "hold": "33"}, {"date": "2024-04-17", "cum": 11821.0, "net": 480.0, "ret": 16.62, "name": "瑞尔特", "code": "002790", "reason": "time_stop", "buy": "2024-02-19", "hold": "40"}, {"date": "2024-04-29", "cum": 11643.0, "net": -178.0, "ret": -5.37, "name": "山推股份", "code": "000680", "reason": "trail_stop", "buy": "2024-03-29", "hold": "19"}, {"date": "2024-05-07", "cum": 11308.0, "net": -335.0, "ret": -10.92, "name": "TCL科技", "code": "000100", "reason": "stop_loss", "buy": "2024-04-08", "hold": "18"}, {"date": "2024-05-28", "cum": 11809.0, "net": 501.0, "ret": 15.51, "name": "荣安地产", "code": "000517", "reason": "trail_stop", "buy": "2024-05-07", "hold": "15"}, {"date": "2024-06-05", "cum": 11467.0, "net": -341.0, "ret": -10.89, "name": "宏盛华源", "code": "601096", "reason": "stop_loss", "buy": "2024-04-23", "hold": "28"}, {"date": "2024-06-06", "cum": 11293.0, "net": -174.0, "ret": -7.97, "name": "百通能源", "code": "001376", "reason": "stop_loss", "buy": "2024-05-31", "hold": "4"}, {"date": "2024-06-07", "cum": 12154.0, "net": 861.0, "ret": 26.33, "name": "和展能源", "code": "000809", "reason": "trail_stop", "buy": "2024-04-29", "hold": "26"}, {"date": "2024-06-24", "cum": 11776.0, "net": -378.0, "ret": -11.32, "name": "中公教育", "code": "002607", "reason": "stop_loss", "buy": "2024-06-14", "hold": "6"}, {"date": "2024-06-24", "cum": 11559.0, "net": -217.0, "ret": -8.58, "name": "上工申贝", "code": "600843", "reason": "trail_stop", "buy": "2024-06-14", "hold": "6"}, {"date": "2024-07-09", "cum": 11334.0, "net": -225.0, "ret": -7.46, "name": "融捷股份", "code": "002192", "reason": "stop_loss", "buy": "2024-07-01", "hold": "6"}, {"date": "2024-07-18", "cum": 10980.0, "net": -354.0, "ret": -10.64, "name": "华英农业", "code": "002321", "reason": "stop_loss", "buy": "2024-07-11", "hold": "5"}, {"date": "2024-08-05", "cum": 11445.0, "net": 465.0, "ret": 14.55, "name": "远东股份", "code": "600869", "reason": "trail_stop", "buy": "2024-07-22", "hold": "10"}, {"date": "2024-08-09", "cum": 12124.0, "net": 678.0, "ret": 22.11, "name": "领先股份", "code": "603991", "reason": "time_stop", "buy": "2024-06-14", "hold": "40"}, {"date": "2024-08-22", "cum": 11902.0, "net": -222.0, "ret": -6.68, "name": "江钨装备", "code": "600397", "reason": "stop_loss", "buy": "2024-08-12", "hold": "8"}, {"date": "2024-08-26", "cum": 11786.0, "net": -116.0, "ret": -3.6, "name": "高乐股份", "code": "002348", "reason": "time_stop", "buy": "2024-07-01", "hold": "40"}, {"date": "2024-08-27", "cum": 11588.0, "net": -198.0, "ret": -6.05, "name": "太平洋", "code": "601099", "reason": "stop_loss", "buy": "2024-08-05", "hold": "16"}, {"date": "2024-09-20", "cum": 11362.0, "net": -226.0, "ret": -6.91, "name": "确成股份", "code": "605183", "reason": "stop_loss", "buy": "2024-08-28", "hold": "15"}, {"date": "2024-10-09", "cum": 12143.0, "net": 781.0, "ret": 24.31, "name": "长虹美菱", "code": "000521", "reason": "trail_stop", "buy": "2024-08-28", "hold": "23"}, {"date": "2024-10-09", "cum": 12587.0, "net": 444.0, "ret": 15.38, "name": "正虹科技", "code": "000702", "reason": "trail_stop", "buy": "2024-09-20", "hold": "8"}, {"date": "2024-11-01", "cum": 13351.0, "net": 764.0, "ret": 29.43, "name": "广电计量", "code": "002967", "reason": "time_stop", "buy": "2024-08-28", "hold": "40"}, {"date": "2024-11-14", "cum": 13386.0, "net": 34.0, "ret": 1.16, "name": "山河智能", "code": "002097", "reason": "trail_stop", "buy": "2024-11-04", "hold": "8"}, {"date": "2024-11-15", "cum": 13350.0, "net": -36.0, "ret": -1.13, "name": "我爱我家", "code": "000560", "reason": "trail_stop", "buy": "2024-10-09", "hold": "27"}, {"date": "2024-11-15", "cum": 13617.0, "net": 268.0, "ret": 8.28, "name": "福星股份", "code": "000926", "reason": "trail_stop", "buy": "2024-10-09", "hold": "27"}, {"date": "2024-11-26", "cum": 13294.0, "net": -323.0, "ret": -10.55, "name": "宁波建工", "code": "601789", "reason": "stop_loss", "buy": "2024-11-21", "hold": "3"}, {"date": "2024-12-04", "cum": 13052.0, "net": -242.0, "ret": -7.28, "name": "水发燃气", "code": "603318", "reason": "stop_loss", "buy": "2024-11-27", "hold": "5"}, {"date": "2025-01-02", "cum": 12916.0, "net": -136.0, "ret": -4.44, "name": "方正科技", "code": "600601", "reason": "trail_stop", "buy": "2024-12-04", "hold": "20"}, {"date": "2025-01-03", "cum": 12632.0, "net": -284.0, "ret": -8.84, "name": "现代投资", "code": "000900", "reason": "trail_stop", "buy": "2024-11-21", "hold": "30"}, {"date": "2025-01-10", "cum": 12724.0, "net": 92.0, "ret": 3.03, "name": "水星家纺", "code": "603365", "reason": "trail_stop", "buy": "2024-11-21", "hold": "35"}, {"date": "2025-01-21", "cum": 12432.0, "net": -293.0, "ret": -10.07, "name": "荣丰控股", "code": "000668", "reason": "stop_loss", "buy": "2025-01-14", "hold": "5"}, {"date": "2025-03-19", "cum": 13077.0, "net": 645.0, "ret": 20.28, "name": "派斯林", "code": "600215", "reason": "time_stop", "buy": "2025-01-14", "hold": "40"}, {"date": "2025-03-19", "cum": 13291.0, "net": 214.0, "ret": 8.17, "name": "宏和科技", "code": "603256", "reason": "time_stop", "buy": "2025-01-14", "hold": "40"}, {"date": "2025-03-25", "cum": 13128.0, "net": -163.0, "ret": -5.14, "name": "索菱股份", "code": "002766", "reason": "trail_stop", "buy": "2025-01-21", "hold": "39"}, {"date": "2025-03-27", "cum": 12932.0, "net": -196.0, "ret": -10.75, "name": "炬申股份", "code": "001202", "reason": "stop_loss", "buy": "2025-03-26", "hold": "1"}, {"date": "2025-04-07", "cum": 12450.0, "net": -481.0, "ret": -14.89, "name": "000627", "code": "000627", "reason": "stop_loss", "buy": "2025-03-19", "hold": "12"}, {"date": "2025-04-18", "cum": 12653.0, "net": 203.0, "ret": 7.38, "name": "南京港", "code": "002040", "reason": "trail_stop", "buy": "2025-04-14", "hold": "4"}, {"date": "2025-04-29", "cum": 12369.0, "net": -284.0, "ret": -9.28, "name": "赣能股份", "code": "000899", "reason": "stop_loss", "buy": "2025-04-18", "hold": "7"}, {"date": "2025-04-30", "cum": 12079.0, "net": -290.0, "ret": -9.92, "name": "三维化学", "code": "002469", "reason": "stop_loss", "buy": "2025-04-29", "hold": "1"}, {"date": "2025-05-20", "cum": 12218.0, "net": 139.0, "ret": 4.83, "name": "华特达因", "code": "000915", "reason": "time_stop", "buy": "2025-03-19", "hold": "40"}, {"date": "2025-05-23", "cum": 12431.0, "net": 213.0, "ret": 7.98, "name": "博菲电气", "code": "001255", "reason": "trail_stop", "buy": "2025-04-30", "hold": "14"}, {"date": "2025-06-03", "cum": 13204.0, "net": 773.0, "ret": 32.44, "name": "妙可蓝多", "code": "600882", "reason": "time_stop", "buy": "2025-04-01", "hold": "40"}, {"date": "2025-06-18", "cum": 12882.0, "net": -322.0, "ret": -10.0, "name": "浙江永强", "code": "002489", "reason": "stop_loss", "buy": "2025-05-20", "hold": "20"}, {"date": "2025-06-20", "cum": 12661.0, "net": -221.0, "ret": -7.23, "name": "日出东方", "code": "603366", "reason": "stop_loss", "buy": "2025-06-03", "hold": "13"}, {"date": "2025-07-15", "cum": 12455.0, "net": -205.0, "ret": -6.68, "name": "贵绳股份", "code": "600992", "reason": "trail_stop", "buy": "2025-06-23", "hold": "16"}, {"date": "2025-07-21", "cum": 12338.0, "net": -118.0, "ret": -3.7, "name": "贝因美", "code": "002570", "reason": "time_stop", "buy": "2025-05-23", "hold": "40"}, {"date": "2025-08-18", "cum": 12510.0, "net": 172.0, "ret": 7.31, "name": "正泰电源", "code": "002150", "reason": "time_stop", "buy": "2025-06-23", "hold": "40"}, {"date": "2025-09-02", "cum": 13325.0, "net": 816.0, "ret": 41.1, "name": "深深房A", "code": "000029", "reason": "trail_stop", "buy": "2025-07-15", "hold": "35"}, {"date": "2025-09-04", "cum": 13183.0, "net": -142.0, "ret": -5.75, "name": "东港股份", "code": "002117", "reason": "trail_stop", "buy": "2025-07-21", "hold": "33"}, {"date": "2025-09-04", "cum": 13400.0, "net": 217.0, "ret": 9.69, "name": "华钰矿业", "code": "601020", "reason": "trail_stop", "buy": "2025-08-18", "hold": "13"}, {"date": "2025-09-23", "cum": 13083.0, "net": -318.0, "ret": -9.9, "name": "宁波富达", "code": "600724", "reason": "stop_loss", "buy": "2025-09-05", "hold": "12"}, {"date": "2025-09-23", "cum": 12791.0, "net": -292.0, "ret": -10.96, "name": "三维股份", "code": "603033", "reason": "stop_loss", "buy": "2025-09-05", "hold": "12"}, {"date": "2025-09-26", "cum": 13668.0, "net": 877.0, "ret": 26.3, "name": "红豆股份", "code": "600400", "reason": "trail_stop", "buy": "2025-09-05", "hold": "15"}, {"date": "2025-10-17", "cum": 13380.0, "net": -288.0, "ret": -8.62, "name": "华塑控股", "code": "000509", "reason": "stop_loss", "buy": "2025-09-25", "hold": "10"}, {"date": "2025-10-20", "cum": 13565.0, "net": 185.0, "ret": 8.2, "name": "盛达资源", "code": "000603", "reason": "trail_stop", "buy": "2025-09-25", "hold": "11"}, {"date": "2025-11-11", "cum": 13383.0, "net": -182.0, "ret": -7.34, "name": "中通客车", "code": "000957", "reason": "stop_loss", "buy": "2025-10-20", "hold": "16"}, {"date": "2025-11-18", "cum": 13701.0, "net": 317.0, "ret": 9.82, "name": "闽发铝业", "code": "002578", "reason": "trail_stop", "buy": "2025-11-11", "hold": "5"}, {"date": "2025-11-19", "cum": 13422.0, "net": -279.0, "ret": -11.04, "name": "汉钟精机", "code": "002158", "reason": "stop_loss", "buy": "2025-10-20", "hold": "22"}, {"date": "2025-11-21", "cum": 13477.0, "net": 55.0, "ret": 2.02, "name": "TCL中环", "code": "002129", "reason": "trail_stop", "buy": "2025-09-30", "hold": "32"}, {"date": "2025-11-24", "cum": 13130.0, "net": -346.0, "ret": -12.44, "name": "联美控股", "code": "600167", "reason": "stop_loss", "buy": "2025-11-19", "hold": "3"}, {"date": "2025-12-04", "cum": 12980.0, "net": -150.0, "ret": -8.39, "name": "泰永长征", "code": "002927", "reason": "stop_loss", "buy": "2025-11-28", "hold": "4"}, {"date": "2025-12-11", "cum": 12743.0, "net": -237.0, "ret": -7.86, "name": "诺德股份", "code": "600110", "reason": "stop_loss", "buy": "2025-11-28", "hold": "9"}, {"date": "2025-12-16", "cum": 12544.0, "net": -199.0, "ret": -6.99, "name": "德赛电池", "code": "000049", "reason": "stop_loss", "buy": "2025-12-04", "hold": "8"}, {"date": "2025-12-16", "cum": 12377.0, "net": -168.0, "ret": -7.25, "name": "东阳光", "code": "600673", "reason": "stop_loss", "buy": "2025-12-12", "hold": "2"}, {"date": "2026-01-16", "cum": 12636.0, "net": 259.0, "ret": 9.85, "name": "中集集团", "code": "000039", "reason": "time_stop", "buy": "2025-11-19", "hold": "40"}, {"date": "2026-01-29", "cum": 12464.0, "net": -172.0, "ret": -7.43, "name": "全新好", "code": "000007", "reason": "trail_stop", "buy": "2025-12-18", "hold": "28"}, {"date": "2026-01-30", "cum": 12973.0, "net": 509.0, "ret": 16.03, "name": "盈新发展", "code": "000620", "reason": "trail_stop", "buy": "2025-12-18", "hold": "29"}, {"date": "2026-02-02", "cum": 12777.0, "net": -196.0, "ret": -11.49, "name": "三星新材", "code": "603578", "reason": "stop_loss", "buy": "2026-01-29", "hold": "2"}, {"date": "2026-03-03", "cum": 12510.0, "net": -268.0, "ret": -10.67, "name": "马可波罗", "code": "001386", "reason": "trail_stop", "buy": "2026-02-03", "hold": "14"}, {"date": "2026-03-23", "cum": 12112.0, "net": -398.0, "ret": -12.09, "name": "我爱我家", "code": "000560", "reason": "trail_stop", "buy": "2026-02-03", "hold": "28"}, {"date": "2026-03-23", "cum": 12484.0, "net": 372.0, "ret": 12.17, "name": "太阳能", "code": "000591", "reason": "trail_stop", "buy": "2026-01-19", "hold": "39"}, {"date": "2026-03-30", "cum": 12308.0, "net": -175.0, "ret": -7.65, "name": "绿发电力", "code": "000537", "reason": "stop_loss", "buy": "2026-03-27", "hold": "1"}, {"date": "2026-04-01", "cum": 11875.0, "net": -434.0, "ret": -13.03, "name": "和展能源", "code": "000809", "reason": "stop_loss", "buy": "2026-03-27", "hold": "3"}, {"date": "2026-04-10", "cum": 13446.0, "net": 1571.0, "ret": 58.6, "name": "法尔胜", "code": "000890", "reason": "trail_stop", "buy": "2026-03-09", "hold": "23"}, {"date": "2026-04-28", "cum": 13148.0, "net": -297.0, "ret": -9.46, "name": "新疆交建", "code": "002941", "reason": "stop_loss", "buy": "2026-03-30", "hold": "20"}, {"date": "2026-05-12", "cum": 12901.0, "net": -247.0, "ret": -8.02, "name": "中兴商业", "code": "000715", "reason": "stop_loss", "buy": "2026-04-28", "hold": "7"}, {"date": "2026-05-14", "cum": 12726.0, "net": -174.0, "ret": -6.58, "name": "仁东控股", "code": "002647", "reason": "stop_loss", "buy": "2026-05-12", "hold": "2"}, {"date": "2026-05-15", "cum": 12890.0, "net": 163.0, "ret": 7.74, "name": "通化金马", "code": "000766", "reason": "trail_stop", "buy": "2026-04-10", "hold": "22"}, {"date": "2026-05-21", "cum": 12877.0, "net": -13.0, "ret": -0.41, "name": "安道麦A", "code": "000553", "reason": "trail_stop", "buy": "2026-04-01", "hold": "32"}, {"date": "2026-06-22", "cum": 12644.0, "net": -233.0, "ret": -8.37, "name": "中成股份", "code": "000151", "reason": "trail_stop", "buy": "2026-06-03", "hold": "12"}, {"date": "2026-06-25", "cum": 12429.0, "net": -215.0, "ret": -7.1, "name": "特力A", "code": "000025", "reason": "stop_loss", "buy": "2026-06-03", "hold": "15"}, {"date": "2026-06-25", "cum": 11978.0, "net": -451.0, "ret": -13.93, "name": "三力制药", "code": "603439", "reason": "trail_stop", "buy": "2026-06-03", "hold": "15"}, {"date": "2026-07-15", "cum": 11910.0, "net": -67.0, "ret": -2.56, "name": "神州数码", "code": "000034", "reason": "trail_stop", "buy": "2026-06-22", "hold": "17"}, {"date": "2026-07-20", "cum": 11704.0, "net": -206.0, "ret": -6.62, "name": "宏达高科", "code": "002144", "reason": "stop_loss", "buy": "2026-07-15", "hold": "3"}, {"date": "2026-07-21", "cum": 11362.0, "net": -342.0, "ret": -10.44, "name": "贤丰控股", "code": "002141", "reason": "stop_loss", "buy": "2026-07-20", "hold": "1"}], "seg": [{"name": "2022熊市", "n": 24, "sum": 5330.0, "wr": 45.8}, {"name": "2023震荡", "n": 26, "sum": 6946.0, "wr": 53.8}, {"name": "2024初股灾", "n": 6, "sum": -454.0, "wr": 33.3}, {"name": "2024修复", "n": 18, "sum": 1086.0, "wr": 33.3}, {"name": "2024-25牛市", "n": 29, "sum": 493.0, "wr": 44.8}, {"name": "2025-26震荡", "n": 35, "sum": -2039.0, "wr": 25.7}], "hist": [{"label": "-30~-20%", "n": 0, "lo": -30}, {"label": "-20~-15%", "n": 1, "lo": -20}, {"label": "-15~-10%", "n": 24, "lo": -15}, {"label": "-10~-5%", "n": 47, "lo": -10}, {"label": "-5~0%", "n": 11, "lo": -5}, {"label": "0~5%", "n": 10, "lo": 0}, {"label": "5~10%", "n": 18, "lo": 5}, {"label": "10~20%", "n": 10, "lo": 10}, {"label": "20~40%", "n": 11, "lo": 20}, {"label": "40~200%", "n": 6, "lo": 40}], "reasons": [{"k": "trail_stop", "label": "移动止盈", "n": 61}, {"k": "stop_loss", "label": "硬止损", "n": 52}, {"k": "time_stop", "label": "时间止损", "n": 25}], "stats": {"n": 138, "total": 11362.0, "wr": 39.9, "pf": 1.57, "avg_win": 568.0, "avg_loss": -239.0, "gw": 31222.0, "gl": 19861.0}, "yearly": [{"year": "2022", "n": 24, "wr": 45.8, "net": 5330}, {"year": "2023", "n": 26, "wr": 53.8, "net": 6946}, {"year": "2024", "n": 33, "wr": 36.4, "net": 449}, {"year": "2025", "n": 37, "wr": 40.5, "net": 249}, {"year": "2026", "n": 18, "wr": 16.7, "net": -1612}]};
+const REASON_LABEL = {stop_loss:'硬止损', trail_stop:'移动止盈', time_stop:'时间止损'};
+const SEG_COLORS = {0:'#4a90d9',1:'#2ecc71',2:'#e74c6f',3:'#f5a623',4:'#9b59b6',5:'#e84393'};
+
+// ---------- KPI ----------
+function fmtKpi(v){ return (v>0?'+':'')+v.toLocaleString(); }
+const st = DATA.stats;
+document.getElementById('kpis').innerHTML = [
+  ['总净收益', fmtKpi(st.total), st.total>=0?'green':'red', 'INIT 1万 · ' + st.n + '笔'],
+  ['胜率', st.wr + '%', st.wr>=40?'green':'amber', st.n-st.wins_n!==undefined?'':('胜'+st.wins_n+' 负'+st.loss_n)],
+  ['盈亏比 PF', st.pf, st.pf>=1.5?'green':'amber', '毛盈'+fmtKpi(st.gw)+' / 毛亏'+fmtKpi(st.gl)],
+  ['平均盈利', fmtKpi(st.avg_win), 'green', '平均亏损 '+fmtKpi(st.avg_loss)+' ('+(st.avg_win/ (st.avg_loss||1)).toFixed(2)+'x)'],
+  ['期末持仓浮盈', fmtKpi(st.open_pnl||0), st.open_pnl>0?'green':'red', '总收益含期末未平仓'],
+].map(([l,v,c,n])=>`<div class="kpi"><div class="label">${l}</div><div class="val ${c}">${v}</div><div class="note">${n||''}</div></div>`).join('');
+
+// ---------- SVG helper ----------
+function svgEl(tag, attrs){ const e=document.createElementNS('http://www.w3.org/2000/svg',tag); for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+
+// 累计收益曲线（面积+折线+散点） 与 单笔收益柱（右轴）
+(function(){
+  const data = DATA.curve, W=1050, H=330, padL=62, padR=56, padT=22, padB=36;
+  const iw=W-padL-padR, ih=H-padT-padB;
+  const maxC=Math.max(...data.map(d=>d.cum)), minC=Math.min(0,...data.map(d=>d.cum));
+  const cRng=(maxC-minC)||1;
+  const maxN=Math.max(...data.map(d=>d.net)), minN=Math.min(...data.map(d=>d.net));
+  const nRng=(maxN-minN)||1;
+  const X=i=>padL+ i/(data.length-1)*iw;
+  const YC=v=>padT+ih-(v-minC)/cRng*ih;
+  const YN=v=>padT+ih-(v-minN)/nRng*ih;
+  const svg=svgEl('svg',{width:W,height:H,viewBox:`0 0 ${W} ${H}`});
+  // 网格线
+  for(let g=0;g<=4;g++){ const y=padT+ih*g/4;
+    svg.appendChild(svgEl('line',{x1:padL,y1:y,x2:W-padR,y2:y,stroke:'#2a3550','stroke-width':0.7}));
+    const v=Math.round(minC+cRng*g/4); const t=svgEl('text',{x:padL-8,y:y+4,fill:'#8b98b5','font-size':11, 'text-anchor':'end'}); t.textContent=v; svg.appendChild(t);
+  }
+  // 右轴
+  for(let g=0;g<=4;g++){ const y=padT+ih*g/4;
+    const v=Math.round(minN+nRng*g/4); const t=svgEl('text',{x:W-padR+8,y:y+4,fill:'#5c6a8c','font-size':10}); t.textContent=v; svg.appendChild(t);
+  }
+  // 单笔收益柱
+  data.forEach((d,i)=>{ const x=X(i); const y0=YN(0), y1=YN(d.net);
+    svg.appendChild(svgEl('rect',{x:x-1.2,y:Math.min(y0,y1),width:2.4,height:Math.abs(y1-y0)||0.8,fill:d.net>=0?'rgba(46,204,113,0.30)':'rgba(231,76,111,0.30)'}));
+  });
+  // 累计折线
+  let pathC='', pathA='';
+  data.forEach((d,i)=>{ pathC+=(i?'L':'M')+X(i).toFixed(1)+','+YC(d.cum).toFixed(1);
+    pathA+=(i?'L':'M')+X(i).toFixed(1)+','+YC(d.cum).toFixed(1); });
+  pathA+='L'+X(data.length-1).toFixed(1)+','+YC(minC).toFixed(1)+'L'+X(0).toFixed(1)+','+YC(minC).toFixed(1)+'Z';
+  svg.appendChild(svgEl('path',{d:pathA,fill:'rgba(74,144,217,0.14)',stroke:'none'}));
+  svg.appendChild(svgEl('path',{d:pathC,fill:'none',stroke:'#4a90d9','stroke-width':2.2,'stroke-linejoin':'round'}));
+  // 日期刻度 (约8个)
+  const step=Math.ceil(data.length/8);
+  for(let i=0;i<data.length;i+=step){ const t=svgEl('text',{x:X(i),y:H-padB+18,fill:'#8b98b5','font-size':10.5,'text-anchor':'middle'}); t.textContent=data[i].date; svg.appendChild(t); }
+  // 末尾标记
+  const last=data[data.length-1];
+  const lt=svgEl('text',{x:X(data.length-1)-8,y:YC(last.cum)-8,fill:'#4a90d9','font-size':12,'font-weight':700,'text-anchor':'end'});
+  lt.textContent='+'+last.cum.toLocaleString(); svg.appendChild(lt);
+  // tooltip
+  const tip=document.getElementById('tip');
+  svg.addEventListener('mousemove', e=>{
+    const r=svg.getBoundingClientRect(); const mx=(e.clientX-r.left)/r.width*W;
+    let idx=Math.round((mx-padL)/iw*(data.length-1)); idx=Math.max(0,Math.min(data.length-1,idx));
+    const d=data[idx];
+    tip.innerHTML=`<b>${d.date}</b> ${d.code} ${d.name}<br>净收益 <span class="${d.net>=0?'pos':'neg'}">${fmtKpi(d.net)}</span> (${d.ret>=0?'+':''}${d.ret}%)<br>累计 <b>${fmtKpi(d.cum)}</b> · 持有${d.hold}天 · ${REASON_LABEL[d.reason]||d.reason}`;
+    tip.style.opacity=1; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+10)+'px';
+  });
+  svg.addEventListener('mouseleave', ()=>tip.style.opacity=0);
+  document.getElementById('curveChart').appendChild(svg);
+})();
+
+// ---------- 分段柱状图 ----------
+(function(){
+  const seg=DATA.seg, W=560, H=300, padL=52, padR=14, padT=20, padB=64;
+  const iw=W-padL-padR, ih=H-padT-padB;
+  const maxV=Math.max(...seg.map(s=>s.sum),0), minV=Math.min(...seg.map(s=>s.sum),0);
+  const rng=(maxV-minV)||1;
+  const bw=Math.min(58, iw/seg.length*0.62);
+  const svg=svgEl('svg',{width:W,height:H,viewBox:`0 0 ${W} ${H}`});
+  for(let g=0;g<=4;g++){ const y=padT+ih*g/4;
+    svg.appendChild(svgEl('line',{x1:padL,y1:y,x2:W-padR,y2:y,stroke:'#2a3550','stroke-width':0.7}));
+    const v=Math.round(minV+rng*g/4); const t=svgEl('text',{x:padL-8,y:y+4,fill:'#8b98b5','font-size':10.5,'text-anchor':'end'}); t.textContent=v; svg.appendChild(t);
+  }
+  const Y=v=>padT+ih-(v-minV)/rng*ih;
+  seg.forEach((s,i)=>{
+    const x=padL+iw*(i+0.5)/seg.length-bw/2;
+    const y0=Y(0), y1=Y(s.sum);
+    const col=SEG_COLORS[i]||'#4a90d9';
+    svg.appendChild(svgEl('rect',{x:x,y:Math.min(y0,y1),width:bw,height:Math.max(1,Math.abs(y1-y0)),fill:s.sum>=0?col+'CC':col+'AA',rx:3}));
+    const t=svgEl('text',{x:x+bw/2,y:y1+(s.sum>=0?-8:16),fill:s.sum>=0?'#2ecc71':'#e74c6f','font-size':11.5,'font-weight':600,'text-anchor':'middle'});
+    t.textContent=(s.sum>0?'+':'')+s.sum.toLocaleString(); svg.appendChild(t);
+    const l=svgEl('text',{x:x+bw/2,y:H-padB+14,fill:'#c6d2ee','font-size':10.5,'text-anchor':'middle'}); l.textContent=s.name; svg.appendChild(l);
+    const n=svgEl('text',{x:x+bw/2,y:H-padB+30,fill:'#8b98b5','font-size':10,'text-anchor':'middle'}); n.textContent=s.n+'笔 · 胜率'+s.wr+'%'; svg.appendChild(n);
+  });
+  document.getElementById('segChart').appendChild(svg);
+})();
+
+// ---------- 直方图 ----------
+(function(){
+  const hist=DATA.hist, W=560, H=300, padL=40, padR=14, padT=20, padB=52;
+  const iw=W-padL-padR, ih=H-padT-padB;
+  const maxN=Math.max(...hist.map(h=>h.n));
+  const bw=iw/hist.length*0.66;
+  const svg=svgEl('svg',{width:W,height:H,viewBox:`0 0 ${W} ${H}`});
+  for(let g=0;g<=4;g++){ const y=padT+ih*g/4;
+    svg.appendChild(svgEl('line',{x1:padL,y1:y,x2:W-padR,y2:y,stroke:'#2a3550','stroke-width':0.7}));
+    const t=svgEl('text',{x:padL-8,y:y+4,fill:'#8b98b5','font-size':10.5,'text-anchor':'end'}); t.textContent=Math.round(maxN*g/4); svg.appendChild(t);
+  }
+  hist.forEach((h,i)=>{
+    const x=padL+iw*(i+0.5)/hist.length-bw/2;
+    const hgt=ih*h.n/maxN;
+    const col=h.lo<0?'rgba(231,76,111,0.75)':'rgba(46,204,113,0.75)';
+    svg.appendChild(svgEl('rect',{x:x,y:padT+ih-hgt,width:bw,height:Math.max(1,hgt),fill:col,rx:2}));
+    const t=svgEl('text',{x:x+bw/2,y:padT+ih-hgt-5,fill:'#c6d2ee','font-size':10.5,'text-anchor':'middle'}); t.textContent=h.n; svg.appendChild(t);
+    const l=svgEl('text',{x:x+bw/2,y:H-padB+14,fill:'#8b98b5','font-size':9.5,'text-anchor':'middle'}); l.textContent=h.label; svg.appendChild(l);
+  });
+  document.getElementById('histChart').appendChild(svg);
+})();
+
+// ---------- 卖出原因 ----------
+(function(){
+  const rs=DATA.reasons, W=560, H=300, padL=92, padR=30, padT=24, padB=46;
+  const iw=W-padL-padR, ih=H-padT-padB;
+  const maxN=Math.max(...rs.map(r=>r.n));
+  const rowH=ih/rs.length;
+  const svg=svgEl('svg',{width:W,height:H,viewBox:`0 0 ${W} ${H}`});
+  const colors={stop_loss:'#e74c6f',trail_stop:'#2ecc71',time_stop:'#f5a623'};
+  const total=rs.reduce((a,r)=>a+r.n,0);
+  rs.forEach((r,i)=>{
+    const y=padT+i*rowH+rowH*0.28;
+    const l=svgEl('text',{x:padL-10,y:y+rowH*0.42,fill:'#c6d2ee','font-size':12,'text-anchor':'end'}); l.textContent=r.label; svg.appendChild(l);
+    const w=iw*r.n/maxN;
+    svg.appendChild(svgEl('rect',{x:padL,y:y,width:Math.max(2,w),height:rowH*0.44,fill:colors[r.k]||'#4a90d9',rx:3}));
+    const t=svgEl('text',{x:padL+w+8,y:y+rowH*0.44-2,fill:'#e8edf7','font-size':12,'font-weight':600}); t.textContent=r.n+' 笔 ('+(r.n/total*100).toFixed(0)+'%)'; svg.appendChild(t);
+  });
+  // 注释
+  const note=svgEl('text',{x:padL,y:H-14,fill:'#5c6a8c','font-size':11});
+  note.textContent='移动止盈(利润奔跑) 44% + 硬止损 38% + 时间止损 18%'; svg.appendChild(note);
+  document.getElementById('reasonChart').appendChild(svg);
+})();
+
+// ---------- 盈亏表 ----------
+function buildTable(id, list, pos){
+  const tb=document.getElementById(id);
+  tb.innerHTML='<tr><th>日期</th><th>代码</th><th>名称</th><th>收益率</th><th>净收益</th><th>原因</th></tr>'+
+    list.map(t=>`<tr><td>${t.buy}→${t.sell}</td><td>${t.code}</td><td>${t.name}</td>
+      <td class="${t.ret>=0?'pos':'neg'}">${t.ret>=0?'+':''}${t.ret}%</td>
+      <td class="${t.net>=0?'pos':'neg'}">${fmtKpi(t.net)}</td>
+      <td><span class="chip ${t.reason}">${REASON_LABEL[t.reason]||t.reason}</span></td></tr>`).join('');
+}
+const curve=DATA.curve;
+buildTable('winTable', curve.slice().sort((a,b)=>b.net-a.net).slice(0,8), true);
+buildTable('lossTable', curve.slice().sort((a,b)=>a.net-b.net).slice(0,8), false);
+
+// ---------- 按年收益 ----------
+(function(){
+  const yr = DATA.yearly||[];
+  if(!yr.length) return;
+  const tb = document.getElementById('yearTable');
+  tb.innerHTML = '<tr><th>年份</th><th>笔数</th><th>胜率</th><th>净收益</th><th>平均/笔</th></tr>' +
+    yr.map(y=>`<tr><td><b>${y.year}</b></td><td>${y.n}</td><td>${y.wr}%</td>
+      <td class="${y.net>=0?'pos':'neg'}">${fmtKpi(y.net)}</td>
+      <td class="${y.net>=0?'pos':'neg'}">${fmtKpi(Math.round(y.net/y.n))}</td></tr>`).join('');
+})();
+</script>
+</body>
+</html>

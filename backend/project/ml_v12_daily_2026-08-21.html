@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🤖 ML v12 深度选股日报 2026-08-21</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:#0f1117; color:#e8eaf0; padding:24px; }
+  .container { max-width:960px; margin:0 auto; }
+  .header { background:linear-gradient(135deg,#1a1f3a,#2a1a4a 60%,#0f1117); border:1px solid #3a3f6a; border-radius:16px; padding:28px 32px; margin-bottom:20px; }
+  .header h1 { font-size:26px; color:#ffd76a; margin-bottom:8px; }
+  .header .sub { color:#9aa0b5; font-size:13px; }
+  .badge { display:inline-block; background:#2a3a6a; color:#8fc1ff; border-radius:20px; padding:3px 12px; font-size:12px; margin-right:8px; }
+  .market-box { background:#161b2e; border:1px solid #2c3355; border-radius:12px; padding:16px 20px; margin-bottom:20px; display:flex; gap:28px; flex-wrap:wrap; align-items:center; }
+  .mkt-item .num { font-size:22px; font-weight:700; }
+  .mkt-item .lbl { font-size:12px; color:#8b91a8; }
+  .up { color:#ff5c5c; } .down { color:#36d399; } .flat { color:#9aa0b5; }
+  h2 { font-size:19px; margin:26px 0 14px; color:#ffd76a; border-left:4px solid #ffd76a; padding-left:10px; }
+  table { width:100%; border-collapse:collapse; background:#141826; border-radius:10px; overflow:hidden; margin-bottom:12px; }
+  th { background:#1d2338; color:#9aa0b5; font-size:12px; padding:10px 8px; text-align:left; }
+  td { padding:10px 8px; border-top:1px solid #222942; font-size:13px; }
+  .card { background:#141826; border:1px solid #2c3355; border-radius:12px; padding:20px 24px; margin-bottom:16px; }
+  .card-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .card-head .name { font-size:18px; font-weight:700; }
+  .score-pill { background:#1f5a3a; color:#5bffa0; border-radius:20px; padding:4px 14px; font-weight:700; }
+  .price-row { display:flex; gap:18px; flex-wrap:wrap; margin-bottom:14px; }
+  .price-box { background:#0f1322; border:1px solid #222942; border-radius:8px; padding:8px 14px; text-align:center; }
+  .price-box .k { font-size:11px; color:#8b91a8; } .price-box .v { font-size:16px; font-weight:700; margin-top:3px; }
+  .tag { display:inline-block; border-radius:6px; padding:2px 10px; font-size:12px; margin:2px 4px 2px 0; }
+  .tag.green { background:#163a2c; color:#5bffa0; } .tag.red { background:#3a1a1a; color:#ff8a8a; } .tag.gray { background:#232a40; color:#9aa0b5; } .tag.yellow { background:#3a3016; color:#ffd76a; }
+  .sect-title { font-size:14px; font-weight:700; color:#8fc1ff; margin:14px 0 6px; }
+  .text { font-size:13px; line-height:1.75; color:#c9cede; }
+  .warn-box { background:#2e1a1a; border:1px solid #5a2c2c; border-radius:10px; padding:14px 18px; margin-bottom:16px; }
+  .warn-box h3 { color:#ff8a8a; font-size:15px; margin-bottom:8px; }
+  .warn-box ul { margin-left:18px; } .warn-box li { font-size:13px; color:#e0c9c9; line-height:1.7; }
+  .footer { text-align:center; color:#6b7188; font-size:12px; margin-top:28px; padding-top:16px; border-top:1px solid #222942; line-height:1.8; }
+  .note { font-size:12px; color:#8b91a8; margin-bottom:18px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>🤖 ML v12 深度选股日报</h1>
+    <div><span class="badge">2026-08-21 15:00</span><span class="badge">v12 深度模型 · 87特征/8集成</span><span class="badge">全市场打分 Top 候选</span></div>
+    <div class="sub" style="margin-top:8px;">模型数据基准 2026-08-20 收盘 · 实时行情核验 2026-08-21 收盘</div>
+  </div>
+
+  <div class="market-box">
+    <div class="mkt-item"><div class="num up">2401</div><div class="lbl">上涨家数</div></div>
+    <div class="mkt-item"><div class="num down">2617</div><div class="lbl">下跌家数</div></div>
+    <div class="mkt-item"><div class="num flat">188</div><div class="lbl">平盘</div></div>
+    <div class="mkt-item" style="flex:1; min-width:260px; padding-left:20px; border-left:1px solid #2c3355;">
+      <div style="font-size:13px; line-height:1.7; color:#9aa0b5;">⚠️ <b style="color:#ffd76a;">分化日（下跌家数略多）</b>：今日大盘并非普涨，ML 候选却能批量走强（士兰微涨停、麦格米特+8.27%、金瑞矿业/烽火通信均大涨），说明是<b>个股/板块独立行情</b>而非大盘贝塔，含金量更高，但也要防高开回落。</div>
+    </div>
+  </div>
+
+  <h2>📊 评分总表（ML v12 Top 候选 + 核验状态）</h2>
+  <table>
+    <tr><th>排名</th><th>代码</th><th>名称</th><th>ML评分</th><th>现价</th><th>今日涨幅</th><th>换手率</th><th>核验</th></tr>
+    <tr><td>1</td><td>301590</td><td>优优绿能</td><td>75.6</td><td>74.48</td><td class="up">+0.72%</td><td>1.56%</td><td><span class="tag green">✅ 有效</span></td></tr>
+    <tr><td>2</td><td>600460</td><td>士兰微</td><td>73.9</td><td>35.89</td><td class="up">+9.99%</td><td>4.63%</td><td><span class="tag green">✅ 有效 · 涨停</span></td></tr>
+    <tr><td>3</td><td>600498</td><td>烽火通信</td><td>73.5</td><td>40.70</td><td class="up">+5.71%</td><td>8.38%</td><td><span class="tag green">✅ 有效</span></td></tr>
+    <tr><td>4</td><td>688089</td><td>ST嘉必优</td><td>73.1</td><td>7.51</td><td class="up">+0.67%</td><td>0.90%</td><td><span class="tag red">⛔ 剔除(ST)</span></td></tr>
+    <tr><td>5</td><td>600714</td><td>金瑞矿业</td><td>71.8</td><td>15.63</td><td class="up">+5.97%</td><td>9.65%</td><td><span class="tag green">✅ 有效</span></td></tr>
+    <tr><td>6</td><td>001366</td><td>播恩集团</td><td>70.7</td><td>12.30</td><td class="up">+3.19%</td><td>10.75%</td><td><span class="tag yellow">✅ 替补入选</span></td></tr>
+    <tr><td>7</td><td>300745</td><td>欣锐科技</td><td>70.6</td><td>28.97</td><td class="up">+1.51%</td><td>3.44%</td><td><span class="tag green">✅ 有效</span></td></tr>
+    <tr><td>8</td><td>605088</td><td>冠盛股份</td><td>69.4</td><td>21.00</td><td class="up">+0.48%</td><td>1.40%</td><td><span class="tag green">✅ 有效</span></td></tr>
+    <tr><td>9</td><td>002851</td><td>麦格米特</td><td>69.3</td><td>128.06</td><td class="up">+8.27%</td><td>6.97%</td><td><span class="tag green">✅ 有效</span></td></tr>
+    <tr><td>10</td><td>300553</td><td>集智股份</td><td>69.1</td><td>40.60</td><td class="down">-0.27%</td><td>4.00%</td><td><span class="tag green">✅ 有效</span></td></tr>
+  </table>
+  <div class="note">注：688089 嘉必优 已被交易所标记为 ST，模型过滤失效，人工核验剔除；以 #6 播恩集团 替补进入深度分析。</div>
+
+  <h2>🔍 深度卡片（前 5 有效候选）</h2>
+
+  <!-- 士兰微 -->
+  <div class="card">
+    <div class="card-head">
+      <div><span class="name">600460 士兰微</span> <span class="tag gray">半导体·IDM</span> <span class="tag green">今日涨停</span> <span class="tag yellow">资金强流入</span></div>
+      <span class="score-pill">ML 73.9</span>
+    </div>
+    <div class="price-row">
+      <div class="price-box"><div class="k">现价</div><div class="v">35.89</div></div>
+      <div class="price-box"><div class="k">今日</div><div class="v up">+9.99%</div></div>
+      <div class="price-box"><div class="k">PE / PB</div><div class="v" style="font-size:13px;">130.2 / 4.95</div></div>
+      <div class="price-box"><div class="k">量比</div><div class="v">0.91</div></div>
+      <div class="price-box"><div class="k">120日位置</div><div class="v">38%</div></div>
+      <div class="price-box"><div class="k">流通市值</div><div class="v" style="font-size:13px;">597亿</div></div>
+    </div>
+    <div class="sect-title">📈 缠论结构</div>
+    <div class="text">6/30 高点 54.58 → 8/3 低点 27.39 完成 A 段下杀，随后 V 型反弹至 8/19 的 36.60；8/20 回踩 -5.39% 至 32.63，今日直接一字板式涨停收复 35.89（收盘=最高价）。日线中枢 1 个。<b style="color:#ff8a8a;">注意：8/19 反弹高点出现顶背驰预警（chanTopDivergence=1）</b>，突破 36.60 前高前，只能算中枢震荡，不算趋势反转。</div>
+    <div class="sect-title">🧩 筹码分布</div>
+    <div class="text">5 只深度票里筹码最健康的一只：获利盘 +6.84%，距长期 VWAP(36.79) 仅折价 -2.45%，上方几乎没有套牢山；买压 67.74%、净买比 +19.72%、买卖比 1.49，<b style="color:#5bffa0;">资金流入全场最强</b>。集中度 HHI 14.88，筹码不算散。</div>
+    <div class="sect-title">📊 MACD / 均线 / 量价</div>
+    <div class="text">MACD 水下金叉（DIF -0.47 / DEA -1.28），红柱 +1.61，DIF 快速向零轴靠拢，动能修复中。今日站上 MA5(34.39)、MA20(31.67)，但上方 MA60(37.36) 仍未收复。<b style="color:#ffd76a;">量价瑕疵：涨停日量能 77.1 万手，低于 20 日均量 85 万手（0.91 倍）</b>——缩量涨停说明惜售筹码锁定，但也可能缺承接，次日容易高开分歧。</div>
+    <div class="sect-title">⚠️ 结论</div>
+    <div class="text">今日最强候选：V 型修复 + 资金强流入 + 缩量涨停。风险在 PE 130 偏高 + 前高顶背驰预警。<b>关键位：36.60（8/19 前高）→ 突破则打开空间看 MA60(37.36)/40 关口；回踩不破 MA5(34.39) 属强势整理。</b>追涨停需接受次日分歧风险。</div>
+  </div>
+
+  <!-- 烽火通信 -->
+  <div class="card">
+    <div class="card-head">
+      <div><span class="name">600498 烽火通信</span> <span class="tag gray">通信设备·光模块</span> <span class="tag yellow">修复中继</span></div>
+      <span class="score-pill">ML 73.5</span>
+    </div>
+    <div class="price-row">
+      <div class="price-box"><div class="k">现价</div><div class="v">40.70</div></div>
+      <div class="price-box"><div class="k">今日</div><div class="v up">+5.71%</div></div>
+      <div class="price-box"><div class="k">PE / PB</div><div class="v" style="font-size:13px;">131.9 / 3.17</div></div>
+      <div class="price-box"><div class="k">量比</div><div class="v">1.14</div></div>
+      <div class="price-box"><div class="k">120日位置</div><div class="v">16%</div></div>
+      <div class="price-box"><div class="k">流通市值</div><div class="v" style="font-size:13px;">517亿</div></div>
+    </div>
+    <div class="sect-title">📈 缠论结构</div>
+    <div class="text">6/25 高点 84.59 → 7/30 低点 31.36 深度下杀，随后修复反弹至 8/18 的 42.41；8/19 放量大跌 -8.79% 回踩，8/20 企稳 38.50，今日放量 +5.71% 收复 40.70，连续两日修复。日线中枢 1 个，无顶/底背驰信号，属下跌后的<b style="color:#5bffa0;">中枢震荡修复段</b>。</div>
+    <div class="sect-title">🧩 筹码分布</div>
+    <div class="text">获利盘 +2.66%（成本区附近，浮亏很小），买压 61.09%、净买比 +9.10%，短线资金持续回流；集中度 HHI 18.91 是深度票里最高的，筹码相对集中。但距长期 VWAP(53.48) 仍折价 -23.9%，上方 44-50 一带还有前期的套牢筹码要消化。</div>
+    <div class="sect-title">📊 MACD / 均线 / 量价</div>
+    <div class="text">MACD 水下金叉、红柱 +2.29 持续扩大，反弹动能最扎实。今日站上 MA5(39.85)/MA20(37.46)，量能 106.6 万手 ≈ 均量（量比 1.14），是 5 只里唯一<b style="color:#5bffa0;">量价配合健康</b>的放量修复。上方 MA60(51.62) 距离尚远，中期仍是空头趋势的修复段。</div>
+    <div class="sect-title">⚠️ 结论</div>
+    <div class="text">修复走势最稳健：量价配合 + 资金回流 + 筹码集中。短期关键压力是 8/18 前高 <b style="color:#ffd76a;">42.41</b>——放量突破则看 44-45；若在 42 附近受阻，回踩 MA20(37.46) 不破仍是低吸区。PE 131 偏高，注意估值压制。</div>
+  </div>
+
+  <!-- 优优绿能 -->
+  <div class="card">
+    <div class="card-head">
+      <div><span class="name">301590 优优绿能</span> <span class="tag gray">次新·充电桩</span> <span class="tag yellow">低位·未确认</span></div>
+      <span class="score-pill">ML 75.6</span>
+    </div>
+    <div class="price-row">
+      <div class="price-box"><div class="k">现价</div><div class="v">74.48</div></div>
+      <div class="price-box"><div class="k">今日</div><div class="v up">+0.72%</div></div>
+      <div class="price-box"><div class="k">PE / PB</div><div class="v" style="font-size:13px;">106.5 / 2.30</div></div>
+      <div class="price-box"><div class="k">量比</div><div class="v">0.55</div></div>
+      <div class="price-box"><div class="k">120日位置</div><div class="v">8%</div></div>
+      <div class="price-box"><div class="k">流通市值</div><div class="v" style="font-size:13px;">18.1亿</div></div>
+    </div>
+    <div class="sect-title">📈 缠论结构</div>
+    <div class="text">次新股，上市后从 156 高位一路阴跌至 7/30 的 66 低点（120 日位置仅 8%），随后弱反弹至 8/13 的 80.66，8/19 再度回落至 72.50，现 74.48 缩量横盘。日线中枢 1 个、<b style="color:#5bffa0;">底量信号出现（bottomVolumeSignal=1）</b>，无顶/底背驰。</div>
+    <div class="sect-title">🧩 筹码分布</div>
+    <div class="text">获利盘 -2.63%，上方筹码几乎全部套牢，距长期 VWAP(113.72) 折价 -34.5%，反弹路上全是解套抛压。好在买压 56.12%、净买比 +5.89%，短线有资金低吸；集中度 HHI 13.15。</div>
+    <div class="sect-title">📊 MACD / 均线 / 量价</div>
+    <div class="text">MACD 水下金叉、红柱 +2.25，动能修复中。今日站上 MA20(74.28) 但被 MA5(75.65) 压制，MA60(93.10) 远在上方。量能仅 0.48 倍均量，<b style="color:#ff8a8a;">连续两日缩量</b>，上涨乏力，更像超跌后的磨底而非启动。</div>
+    <div class="sect-title">⚠️ 结论</div>
+    <div class="text">位置极低（8%）、底量信号已现，但形态未确认、缩量明显。右侧信号 = <b>放量收复 MA5(75.65) 并站稳 77 一线</b>；左侧低吸要接受高波动 + 上方套牢盘压制。今天 5 只里表现最弱，观察优先。</div>
+  </div>
+
+  <!-- 金瑞矿业 -->
+  <div class="card">
+    <div class="card-head">
+      <div><span class="name">600714 金瑞矿业</span> <span class="tag gray">资源·小盘</span> <span class="tag yellow">放量反抽</span></div>
+      <span class="score-pill">ML 71.8</span>
+    </div>
+    <div class="price-row">
+      <div class="price-box"><div class="k">现价</div><div class="v">15.63</div></div>
+      <div class="price-box"><div class="k">今日</div><div class="v up">+5.97%</div></div>
+      <div class="price-box"><div class="k">PE / PB</div><div class="v" style="font-size:13px;">317.2 / 5.98</div></div>
+      <div class="price-box"><div class="k">量比</div><div class="v">1.90</div></div>
+      <div class="price-box"><div class="k">120日位置</div><div class="v">15%</div></div>
+      <div class="price-box"><div class="k">流通市值</div><div class="v" style="font-size:13px;">45亿</div></div>
+    </div>
+    <div class="sect-title">📈 缠论结构</div>
+    <div class="text">6/5 高点 32.90 → 7/20 低点 12.58 深度下杀，反弹至 8/18 的 16.76，8/20 回踩 14.75，今日放量 +5.97% 收回 15.63。日线暂无中枢记录，无背驰信号，属<b>超跌反弹中继</b>，尚未站上前高 16.76。</div>
+    <div class="sect-title">🧩 筹码分布</div>
+    <div class="text">获利盘 +0.58%（成本区附近），买压 52.91%、净买比 +10.49%，今日放量（量比 1.90）显示资金回流。但距长期 VWAP(21.64) 折价 -27.8%，上方仍有较大套牢带；集中度 HHI 11.43 偏散。</div>
+    <div class="sect-title">📊 MACD / 均线 / 量价</div>
+    <div class="text">MACD 水下金叉、红柱 +0.67，DIF(-0.25) 逼近零轴，反弹动能尚可。今日站上 MA20(14.65)、贴着 MA5(15.67) 运行，MA60(19.30) 压制明显。放量但收盘未过当日高点，短线有获利兑现。</div>
+    <div class="sect-title">⚠️ 结论</div>
+    <div class="text">波动大的资源小票（换手 9.65%、PE 317 极高）。放量反抽是积极信号，但<b>前高 16.76 不破不算转强</b>；突破看 17-18，失败则回踩 14.7-15 震荡。只适合轻仓快进快出，追高风险大。</div>
+  </div>
+
+  <!-- 播恩集团 -->
+  <div class="card">
+    <div class="card-head">
+      <div><span class="name">001366 播恩集团</span> <span class="tag gray">饲料·小盘</span> <span class="tag red">亏损·高换手</span></div>
+      <span class="score-pill">ML 70.7</span>
+    </div>
+    <div class="price-row">
+      <div class="price-box"><div class="k">现价</div><div class="v">12.30</div></div>
+      <div class="price-box"><div class="k">今日</div><div class="v up">+3.19%</div></div>
+      <div class="price-box"><div class="k">PE / PB</div><div class="v" style="font-size:13px;">亏损 / 2.46</div></div>
+      <div class="price-box"><div class="k">量比</div><div class="v">2.88</div></div>
+      <div class="price-box"><div class="k">120日位置</div><div class="v">26%</div></div>
+      <div class="price-box"><div class="k">流通市值</div><div class="v" style="font-size:13px;">19.8亿</div></div>
+    </div>
+    <div class="sect-title">📈 缠论结构</div>
+    <div class="text">7/22 低点 10.05 后走修复，8/18 放量突破（+10%），8/20 盘中冲高 13.82 后大幅回落收 11.92（长上影），今日再放量反弹至 12.30。<b style="color:#ff8a8a;">8/20 高点出现顶背驰预警（chanTopDivergence=1）</b>，短线分歧巨大。</div>
+    <div class="sect-title">🧩 筹码分布</div>
+    <div class="text">获利盘 -0.3%（成本区），买压仅 48.9%、净买比 +3.14%，资金流入力度一般。距 VWAP(13.84) 折价 -11.2%，上方 13.82 长上影处有一批套牢盘。集中度 HHI 13.75。</div>
+    <div class="sect-title">📊 MACD / 均线 / 量价</div>
+    <div class="text">5 只里唯一<b style="color:#5bffa0;">MACD 零轴上方</b>的：DIF 0.29 / DEA 0.19，红柱 +0.21，中期结构最强。今日量能 17.3 万手 vs 均量 6 万手——<b style="color:#ffd76a;">量能爆 2.9 倍、换手 10.75%</b>，典型游资票。但收盘价低于 MA5(12.51)。</div>
+    <div class="sect-title">⚠️ 结论</div>
+    <div class="text">高波动妖票候选：零轴上方 MACD + 天量换手，资金关注度拉满。但<b>基本面亏损 + 8/20 长上影套牢 + 顶背驰预警</b>，属于高风险投机标的。要二次上攻必须先放量收复 13.82；否则容易在 12.5-13.8 之间大震荡，仓位务必小。</div>
+  </div>
+
+  <div class="warn-box">
+    <h3>⚠️ 风险提示</h3>
+    <ul>
+      <li><b>模型 ST 过滤盲区</b>：688089 嘉必优 已被标记 ST，但 ML 模型仍给出 73.1 高分放行。人工核验已剔除——依赖模型结果前务必再过一遍名称与风险标记。</li>
+      <li><b>估值普遍偏高</b>：士兰微/烽火通信 PE 130+，麦格米特 PE 489，金瑞矿业 PE 317（周期股盈利低谷失真）。高分不等于便宜，回调时安全垫薄。</li>
+      <li><b>缠论顶背驰预警</b>：士兰微（8/19 高点）、播恩集团（8/20 高点）均出现顶背驰信号，追高需防冲高回落。</li>
+      <li><b>缩量涨停</b>：士兰微今日涨停但量能 0.91 倍均量，若明日高开不放量，警惕分歧兑现。</li>
+      <li><b>大盘分化</b>：今日 2401 涨 / 2617 跌，赚钱效应一般，个股行情持续性存疑，注意仓位管理。</li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    🦀 SClaw ML v12 深度选股日报 · 仅供研究参考，不构成投资建议<br>
+    模型评分基于历史量价因子，不保证未来收益 · 生成时间 2026-08-21 15:00 CST
+  </div>
+</div>
+</body>
+</html>

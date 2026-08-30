@@ -5,6 +5,7 @@ import { DataFetcher } from '../data/data-fetcher';
 import { ScreenRequest, PluginInfo, StrategyInfo, ScreenResponse } from '../types';
 import { enrichWithHistory } from '../tools/strategy-validator';
 import { analyzeStock, quickSummary } from '../chan/service';
+import { analyzeChan } from '../chan/engine';
 
 export function createRoutes(
   pluginManager: PluginManager,
@@ -89,6 +90,11 @@ export function createRoutes(
         const chipCfg = strategies.find(s =>
           s.pluginId === 'chip-structure' || s.strategyId === 'chip-structure-best' || s.pluginId === 'chip-score' || s.strategyId === 'chip-score-main'
         );
+        const pullbackMacdCfg = strategies.find(s =>
+          s.pluginId === 'limit-up-pullback-macd' || s.strategyId === 'limit-up-pullback-green-shrink'
+        );
+        // 涨停回调MACD绿柱缩短策略需要全市场扫描（回调中的个股任何涨跌幅/量能都可能），跳过默认4条件过滤
+        if (pullbackMacdCfg) return stocks;
         const p = { ...(dtCfg?.params || {}), ...(chipCfg?.params || {}) };
         const minChg = p.minChange ?? (chipCfg ? 0 : 3);
         const maxChg = p.maxChange ?? (chipCfg ? 5 : 5);
@@ -138,7 +144,10 @@ export function createRoutes(
         s.strategyId === 'chan-first-buy' ||
         s.strategyId === 'chan-second-buy' ||
         s.pluginId === 'chan-theory-screener' ||
-        s.pluginId === 'chip-structure' || s.pluginId === 'chip-score'
+        s.pluginId === 'chan-5filters-screener' ||
+        s.pluginId === 'life-line-ma60' ||
+        s.pluginId === 'chip-structure' || s.pluginId === 'chip-score' ||
+        s.pluginId === 'limit-up-pullback-macd'
       );
       const needs30min = request.strategies.some(s =>
         s.strategyId === 'chan-second-buy'
@@ -158,11 +167,33 @@ export function createRoutes(
           await Promise.all(candidates.slice(i, i + CONCURRENCY).map(async (stock: any) => {
             const mkt = detectMkt(stock.code);
             try {
-              const { data: daily } = await dataFetcher.fetchKLine(stock.code, mkt, 120);
+              const { data: daily } = await dataFetcher.fetchKLine(stock.code, mkt, 300);
               stock.kline = daily;
             } catch { stock.kline = []; }
           }));
         }
+
+        // Step 1.5: R4v4 缠论预分析（供 chan-* 插件消费真实中枢/买卖点/背驰）
+        for (const stock of candidates) {
+          if (stock.kline && stock.kline.length >= 30) {
+            try {
+              const chan = analyzeChan(stock.kline, stock.code, 'daily');
+              stock.chanResult = {
+                zhongshus: chan.zhongshus,
+                tradePoints: chan.tradePoints,
+                divergences: chan.divergences,
+                trend: chan.trend,
+                summary: chan.summary,
+                level: 'daily',
+              };
+            } catch {
+              stock.chanResult = null;
+            }
+          } else {
+            stock.chanResult = null;
+          }
+        }
+        console.log(`[API Screen] R4v4 pre-analysis done for ${candidates.length} candidates`);
 
         // Step 2: 30分K线（网络调用，独立分批）
         if (needs30min) {

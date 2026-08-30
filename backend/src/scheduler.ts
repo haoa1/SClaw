@@ -12,6 +12,7 @@
  */
 
 import cron from 'node-cron';
+import { execSync } from 'child_process';
 import { StrategyEngine } from './strategies/strategy-engine';
 import { DataFetcher } from './data/data-fetcher';
 import { sendScreenReport } from './email';
@@ -388,9 +389,106 @@ export class ScreenScheduler {
     // ===== Screening task =====
     try {
       const allStocks = await this.dataFetcher.fetchAllStocks();
+      // ===== Pre-filter + K-line attachment for chan strategies =====
+      const hasChanStrategy = task.strategies!.some(s =>
+        s.pluginId === 'chan-buy-points' ||
+        s.strategyId === 'chan-first-buy' ||
+        s.strategyId === 'chan-second-buy' ||
+        s.pluginId === 'chan-theory-screener' ||
+        s.pluginId === 'limit-up-pullback-macd'
+      );
+
+      if (hasChanStrategy) {
+        // Basic pre-filter: price > 0, volume not too low, market cap > 5亿
+        let candidates = allStocks.filter((stock: any) => {
+          const price = stock.price ?? 0;
+          const vr = stock.volumeRatio ?? 0;
+          const mcapYi = (stock.marketCap ?? 0) / 100000000;
+          if (price <= 0) return false;
+          if (vr > 0 && vr < 0.05) return false;
+          if (mcapYi < 5) return false;
+          // 排除 ST / *ST / SST / 退市整理股
+          const stockName = stock.name ?? '';
+          if (/^[*S]*ST/i.test(stockName) || stockName.endsWith('退')) return false;
+          return true;
+        });
+
+        console.log(`[Scheduler] Pre-filter: ${allStocks.length} -> ${candidates.length} candidates`);
+
+        // ===== ML 双模型叠加过滤（task.mlMinScore > 0 时启用）=====
+        // 在缠论确认前，先用 ML v10 模型对候选池打分，只保留 ML 分 >= mlMinScore 的股票
+        const mlMinScore = (task as any).mlMinScore || 0;
+        if (mlMinScore > 0 && candidates.length > 0) {
+          console.log(`[Scheduler] ML pre-filter enabled (minScore=${mlMinScore})`);
+          try {
+            const inputJson = JSON.stringify({ codes: candidates.map((s: any) => s.code) });
+            const stdout = execSync(`python3 /root/sclaw/ml_screener/rerank_codes.py`, {
+              input: inputJson,
+              timeout: 300000,
+              encoding: 'utf-8',
+              maxBuffer: 50 * 1024 * 1024,
+            });
+            const mlData = JSON.parse(stdout);
+            const scoreMap = new Map<string, number>();
+            for (const r of (mlData.results || [])) {
+              scoreMap.set(r.code, r.score);
+            }
+            const before = candidates.length;
+            candidates = candidates.filter((s: any) => (scoreMap.get(s.code) ?? 0) >= mlMinScore);
+            console.log(`[Scheduler] ML pre-filter: ${before} -> ${candidates.length} candidates (ML score >= ${mlMinScore}, scored=${mlData.scored ?? '?'})`);
+          } catch (e: any) {
+            console.error(`[Scheduler] ML pre-filter failed (${e.message?.slice(0, 150)}) — continuing without ML filter`);
+          }
+        }
+
+        if (candidates.length > 0) {
+          const CONCURRENCY = 20;
+          const detectMkt = (code: string): 'SH' | 'SZ' =>
+            (code.startsWith('6') || code.startsWith('9')) ? 'SH' : 'SZ';
+
+          for (let i = 0; i < candidates.length; i += CONCURRENCY) {
+            await Promise.all(candidates.slice(i, i + CONCURRENCY).map(async (stock: any) => {
+              const mkt = detectMkt(stock.code);
+              try {
+                const { data: daily } = await this.dataFetcher.fetchKLine(stock.code, mkt, 120);
+                stock.kline = daily;
+              } catch { stock.kline = []; }
+            }));
+          }
+
+          // Sync kline to all stocks
+          const klineMap = new Map(candidates.map(s => [s.code, s.kline]));
+          for (const stock of allStocks) {
+            (stock as any).kline = klineMap.get(stock.code) || [];
+          }
+        } else {
+          for (const stock of allStocks) (stock as any).kline = [];
+        }
+        console.log(`[Scheduler] K-line attached: ${candidates.length} stocks`);
+      }
+
+
+      // Auto-resolve pluginId (same as API screen path): if a strategy's pluginId doesn't
+      // match any loaded plugin, search all plugins for a strategy with that ID.
+      const resolvePlugins = this.getPlugins?.() || [];
+      for (const s of task.strategies!) {
+        const pluginExists = resolvePlugins.some(p => p.id === s.pluginId);
+        if (!pluginExists) {
+          for (const plugin of resolvePlugins) {
+            const strategy = plugin.strategies.find(st => st.id === s.strategyId || st.id === s.pluginId);
+            if (strategy) {
+              console.log(`[Scheduler] Auto-resolved: ${s.pluginId}/${s.strategyId} -> ${plugin.id}/${strategy.id}`);
+              s.pluginId = plugin.id;
+              s.strategyId = strategy.id;
+              break;
+            }
+          }
+        }
+      }
+
       const { results } = await this.strategyEngine.execute(allStocks, {
         strategies: task.strategies!,
-        combineMode: 'score',
+        combineMode: 'union',
       });
 
       // Get strategy names for the report

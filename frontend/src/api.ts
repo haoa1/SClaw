@@ -149,4 +149,17 @@ export const api = {
   // Watch tasks
   getWatchTasks: () =>
     fetchJson<{ tasks: import('./types').WatchTaskSimple[] }>('/watch/tasks'),
+
+  // Model switching
+  getModel: () =>
+    fetchJson<{ model: string }>('/model'),
+
+  setModel: (model: string) =>
+    fetchJson<{ success: boolean; model: string; message: string }>('/model', {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    }),
+
+  getModelList: () =>
+    fetchJson<{ models: Array<{ id: string; name: string; description: string }> }>('/model/list'),
 };

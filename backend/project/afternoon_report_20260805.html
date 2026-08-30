@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9; color: #334155; margin: 0; padding: 20px; }
+.container { max-width: 860px; margin: 0 auto; }
+.header { background: #ffffff; border: 1px solid #e2e8f0; border-top: 4px solid #2d5a8e; border-radius: 12px; padding: 24px 20px; margin-bottom: 16px; text-align: center; }
+.header h1 { color: #1e3a5f; margin: 0 0 8px; font-size: 22px; letter-spacing: 1px; }
+.header .badge-row { text-align: center; margin: 10px 0; }
+.header .badge { display: inline-block; padding: 4px 14px; border-radius: 12px; font-size: 12px; font-weight: 600; margin: 2px 4px; }
+.badge-chan { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+.badge-chip { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.badge-vp { background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8; }
+.header .sub { color: #64748b; font-size: 13px; margin-top: 8px; }
+.section { background: #ffffff; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; border: 1px solid #e2e8f0; }
+.section h2 { color: #1e3a5f; font-size: 16px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+.section h2 .subtitle { color: #94a3b8; font-size: 13px; font-weight: normal; }
+.warning-box { background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; color: #92400e; }
+.warning-box strong { color: #b45309; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #f1f5f9; color: #1e3a5f; padding: 8px 6px; text-align: center; font-weight: 600; font-size: 12px; border-bottom: 2px solid #cbd5e1; white-space: nowrap; }
+tbody td { padding: 7px 6px; text-align: center; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+tbody tr:nth-child(even) td { background: #f8fafc; }
+.top-1 td { background: #fffbeb !important; }
+.top-2 td { background: #f0f9ff !important; }
+.top-3 td { background: #fdf2f8 !important; }
+.top-4 td, .top-5 td { background: #f8fafc !important; }
+.rank-1 { color: #d97706; font-weight: bold; }
+.rank-2 { color: #64748b; font-weight: bold; }
+.rank-3 { color: #b45309; font-weight: bold; }
+.score { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 13px; font-weight: 700; min-width: 30px; text-align: center; }
+.score-excellent { background: #dcfce7; color: #15803d; }
+.score-good { background: #dbeafe; color: #1d4ed8; }
+.score-mid { background: #fef9c3; color: #a16207; }
+.score-warn { background: #fee2e2; color: #b91c1c; }
+.risk-low { color: #15803d; font-weight: 600; }
+.risk-mid { color: #a16207; font-weight: 600; }
+.risk-high { color: #ea580c; font-weight: 600; }
+.risk-danger { color: #dc2626; font-weight: 700; }
+.up { color: #dc2626; font-weight: 600; }
+.down { color: #16a34a; font-weight: 600; }
+.flat { color: #94a3b8; }
+.zone-container { margin: 12px 0; text-align: center; }
+.zone { width: 31%; display: inline-block; vertical-align: top; padding: 12px 8px; border-radius: 10px; text-align: center; margin: 0 0.5%; }
+.zone-priority { background: #f0fdf4; border: 1px solid #86efac; }
+.zone-watch { background: #fffbeb; border: 1px solid #fcd34d; }
+.zone-avoid { background: #fef2f2; border: 1px solid #fca5a5; }
+.zone .zone-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.zone .zone-count { font-size: 26px; font-weight: 800; }
+.zone .zone-range { font-size: 12px; color: #64748b; }
+.zone-priority .zone-title { color: #15803d; }
+.zone-priority .zone-count { color: #16a34a; }
+.zone-watch .zone-title { color: #a16207; }
+.zone-watch .zone-count { color: #d97706; }
+.zone-avoid .zone-title { color: #b91c1c; }
+.zone-avoid .zone-count { color: #dc2626; }
+.card { background: #f8fafc; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
+.card-header { overflow: hidden; padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
+.card-header .stock-name { float: left; font-size: 16px; font-weight: 700; color: #0f172a; }
+.card-header .stock-code { float: left; color: #64748b; font-size: 13px; margin-left: 6px; padding-top: 3px; }
+.card-header .card-score { float: right; font-size: 18px; font-weight: 800; }
+.card-body { font-size: 14px; color: #334155; }
+.card-body p { margin: 6px 0; }
+.card-grid { margin: 8px 0; }
+.card-item { width: 47.5%; display: inline-block; vertical-align: top; background: #ffffff; border-radius: 8px; padding: 8px 10px; border: 1px solid #e2e8f0; margin: 0 0 8px 0; }
+.card-item:nth-child(odd) { margin-right: 2%; }
+.card-item .label { color: #94a3b8; font-size: 12px; margin-bottom: 2px; }
+.card-item .value { font-size: 14px; font-weight: 600; color: #1e293b; }
+.signal-row { margin: 8px 0; }
+.signal { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }
+.signal-bull { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.signal-bear { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+.signal-neutral { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+.price-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 1px 2px; }
+.price-buy { background: #dcfce7; color: #15803d; }
+.price-stop { background: #fee2e2; color: #b91c1c; }
+.price-target { background: #eef2ff; color: #4338ca; }
+.summary-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #2d5a8e; border-radius: 10px; padding: 12px 16px; font-size: 14px; color: #334155; line-height: 1.7; }
+.summary-box strong { color: #0f172a; }
+.footer { text-align: center; padding: 16px; color: #94a3b8; font-size: 12px; border-top: 1px solid #e2e8f0; margin-top: 8px; }
+.footer a { color: #64748b; text-decoration: none; }
+@media (max-width: 600px) {
+  body { padding: 10px; }
+  table { font-size: 11px; }
+  thead th, tbody td { padding: 5px 3px; }
+  .zone { width: 100%; margin: 4px 0; }
+  .card-item { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+<h1>🦀 SClaw 缠论·筹码·量价 三维度午盘分析</h1>
+<div class="badge-row">
+<span class="badge badge-chan">📐 缠论 40%</span>
+<span class="badge badge-chip">📊 筹码 30%</span>
+<span class="badge badge-vp">📈 量价 30%</span>
+</div>
+<div class="sub" id="header-sub">📅 2026-08-05 14:32 CST · 全市场 <b>3072↑</b> / <b>1950↓</b> / <b>184平</b> · <b>59.0%</b>个股上涨</div>
+</div>
+
+<div class="warning-box" id="market-warning">
+⚠️ <strong>市场状态提示</strong>：今日大盘偏强，近六成个股上涨，日内赚钱效应较好。但<strong>缠论经典一买/二买/三买策略今日零命中</strong>，说明市场缺乏经典底部/回调确认信号，当前以反弹修复行情为主。ML因子模型仍在推荐高位下跌股（部分已退市），需警惕模型偏差。本次改用 chan-5filters-main 兜底策略，筛选出的标的均为放量反弹但缠论结构偏弱，整体评分偏低，建议轻仓试探、严格止损。
+</div>
+
+<div class="section">
+<h2>📋 三维度综合评分总表</h2>
+<table id="score-table">
+<thead>
+<tr>
+<th>#</th><th>股票</th><th>现价</th><th>涨跌%</th><th>买点</th><th>缠论</th><th>筹码</th><th>量价</th><th>⚡综合</th><th>买入价</th><th>止损价</th><th>目标价</th><th>风险</th>
+</tr>
+</thead>
+<tbody id="score-body">
+<tr class="top-1">
+<td><span class="rank-1">🥇1</span></td>
+<td><b>香江控股</b><br><span style="color:#94a3b8;font-size:11px;">600162</span></td>
+<td>3.38</td>
+<td><span class="up">+4.32%</span></td>
+<td>5filters</td>
+<td><span class="score score-mid">58</span></td>
+<td><span class="score score-mid">58</span></td>
+<td><span class="score score-good">65</span></td>
+<td><span class="score score-mid">60.1</span></td>
+<td>3.38</td>
+<td>3.07</td>
+<td>3.56/3.94</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-2">
+<td><span class="rank-2">🥈2</span></td>
+<td><b>东睦股份</b><br><span style="color:#94a3b8;font-size:11px;">600114</span></td>
+<td>28.94</td>
+<td><span class="up">+2.62%</span></td>
+<td>5filters</td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-good">60</span></td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-mid">56.5</span></td>
+<td>28.94</td>
+<td>28.02</td>
+<td>29.36/34.55</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-3">
+<td><span class="rank-3">🥉3</span></td>
+<td><b>铜峰电子</b><br><span style="color:#94a3b8;font-size:11px;">600237</span></td>
+<td>8.52</td>
+<td><span class="up">+3.65%</span></td>
+<td>5filters</td>
+<td><span class="score score-mid">52</span></td>
+<td><span class="score score-good">62</span></td>
+<td><span class="score score-mid">50</span></td>
+<td><span class="score score-mid">54.4</span></td>
+<td>8.52</td>
+<td>8.15</td>
+<td>8.60/11.55</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-4">
+<td>4</td>
+<td><b>安邦护卫</b><br><span style="color:#94a3b8;font-size:11px;">603373</span></td>
+<td>37.82</td>
+<td><span class="up">+3.53%</span></td>
+<td>5filters</td>
+<td><span class="score score-warn">45</span></td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-mid">48</span></td>
+<td><span class="score score-warn">48.9</span></td>
+<td>37.82</td>
+<td>36.90</td>
+<td>37.99/39.95</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr class="top-5">
+<td>5</td>
+<td><b>诺德股份</b><br><span style="color:#94a3b8;font-size:11px;">600110</span></td>
+<td>9.33</td>
+<td><span class="up">+5.90%</span></td>
+<td>5filters</td>
+<td><span class="score score-warn">40</span></td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-warn">45</span></td>
+<td><span class="score score-warn">46.0</span></td>
+<td>9.33</td>
+<td>8.86</td>
+<td>9.48/14.07</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>6</td>
+<td><b>中金岭南</b><br><span style="color:#94a3b8;font-size:11px;">000060</span></td>
+<td>6.69</td>
+<td><span class="up">+3.72%</span></td>
+<td>5filters</td>
+<td><span class="score score-warn">40</span></td>
+<td><span class="score score-warn">45</span></td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-warn">46.0</span></td>
+<td>6.69</td>
+<td>6.25</td>
+<td>6.80/7.12</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>7</td>
+<td><b>波导股份</b><br><span style="color:#94a3b8;font-size:11px;">600130</span></td>
+<td>4.32</td>
+<td><span class="up">+9.92%</span></td>
+<td>5filters</td>
+<td><span class="score score-warn">35</span></td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-warn">45</span></td>
+<td><span class="score score-warn">44.0</span></td>
+<td>4.32</td>
+<td>3.92</td>
+<td>—</td>
+<td><span class="risk-danger">🔴高</span></td>
+</tr>
+<tr>
+<td>8</td>
+<td><b>大元泵业</b><br><span style="color:#94a3b8;font-size:11px;">603757</span></td>
+<td>58.30</td>
+<td><span class="up">+4.63%</span></td>
+<td>5filters</td>
+<td><span class="score score-mid">50</span></td>
+<td><span class="score score-warn">45</span></td>
+<td><span class="score score-warn">35</span></td>
+<td><span class="score score-warn">44.0</span></td>
+<td>58.30</td>
+<td>54.60</td>
+<td>61.00/65.02</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>9</td>
+<td><b>兴发集团</b><br><span style="color:#94a3b8;font-size:11px;">600141</span></td>
+<td>31.73</td>
+<td><span class="up">+4.55%</span></td>
+<td>5filters</td>
+<td><span class="score score-warn">30</span></td>
+<td><span class="score score-mid">50</span></td>
+<td><span class="score score-mid">52</span></td>
+<td><span class="score score-warn">42.6</span></td>
+<td>31.73</td>
+<td>30.65</td>
+<td>32.30/33.81</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>10</td>
+<td><b>春秋电子</b><br><span style="color:#94a3b8;font-size:11px;">603890</span></td>
+<td>18.20</td>
+<td><span class="up">+4.66%</span></td>
+<td>5filters</td>
+<td><span class="score score-warn">45</span></td>
+<td><span class="score score-warn">42</span></td>
+<td><span class="score score-warn">38</span></td>
+<td><span class="score score-warn">42.0</span></td>
+<td>18.20</td>
+<td>17.20</td>
+<td>18.53/19.78</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="section">
+<h2>📋 操作建议 <span class="subtitle">按综合评分分级</span></h2>
+<div class="zone-container" id="operation-zones">
+<div class="zone zone-priority">
+<div class="zone-title">⭐ 优先关注</div>
+<div class="zone-count" id="count-priority">0</div>
+<div class="zone-range">综合分 ≥ 70</div>
+</div>
+<div class="zone zone-watch">
+<div class="zone-title">👀 观察等待</div>
+<div class="zone-count" id="count-watch">1</div>
+<div class="zone-range">综合分 60 ~ 69</div>
+</div>
+<div class="zone zone-avoid">
+<div class="zone-title">⏸️ 暂时回避</div>
+<div class="zone-count" id="count-avoid">9</div>
+<div class="zone-range">综合分 &lt; 60</div>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h2>🔍 前5名深度分析</h2>
+<div id="analysis-cards">
+
+<div class="card">
+<div class="card-header">
+<span class="stock-name">🥇 香江控股</span>
+<span class="stock-code">600162.SH</span>
+<span class="card-score"><span class="score score-mid">60.1</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">3.38</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+4.32%</div></div>
+<div class="card-item"><div class="label">换手率</div><div class="value">7.68%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">1.37</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">-126</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">110亿</div></div>
+</div>
+<p><strong>买点详解：</strong>chan-5filters-main策略命中，今日放量突破MA5/MA20/MA60三线，是10只标的中唯一站上全部均线的个股。MACD金叉持续扩大，60日区间位置75%（偏高但趋势向上）。</p>
+<p><strong>缠论结构：</strong>60日线形成<strong>2个中枢</strong>（sz=2），结构相对完整。最近分型为底分型，无背驰信号。当前处于中枢上沿突破阶段，若有效站稳MA60（2.79）则趋势确认。MACD DIF 0.11 刚上零轴。</p>
+<p><strong>筹码分析：</strong>HHI集中度12.48（中等），净买入比+11.72%，近期买压73.49（较强）。获利比例15.28%（低位建仓空间大），VWAP价格之上+17.73%表明筹码成本在下方。</p>
+<p><strong>量价分析：</strong>今日量比1.37温和放量，换手7.68%活跃。距MA20偏离+23%偏高需警惕回踩。支撑位MA5=3.16、MA20=2.74；阻力位今日高点3.56、前高3.94。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 3.38</span>
+<span class="price-badge price-stop">止损 3.07</span>
+<span class="price-badge price-target">目标1 3.56</span>
+<span class="price-badge price-target">目标2 3.94</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 站上全部均线</span>
+<span class="signal signal-bull">✅ MACD金叉</span>
+<span class="signal signal-bull">✅ 2中枢结构</span>
+<span class="signal signal-bear">❌ PE为负（亏损）</span>
+<span class="signal signal-neutral">➡️ 距MA20偏离23%偏高</span>
+</div>
+</div>
+</div>
+
+<div class="card">
+<div class="card-header">
+<span class="stock-name">🥈 东睦股份</span>
+<span class="stock-code">600114.SH</span>
+<span class="card-score"><span class="score score-mid">56.5</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">28.94</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+2.62%</div></div>
+<div class="card-item"><div class="label">换手率</div><div class="value">3.44%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">1.13</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">33.23</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">183亿</div></div>
+</div>
+<p><strong>买点详解：</strong>chan-5filters-main命中，底部放量信号（bottomVolumeSignal=1）。站上MA5和MA20，MACD柱状图+1.06持续扩大，金叉动能强劲。</p>
+<p><strong>缠论结构：</strong>最近分型为底分型。无顶/底背驰，无中枢。MACD DIF=-2.17仍在零轴下方但快速收敛中（DEA=-2.70→DIF在追赶），金叉后首次放量。</p>
+<p><strong>筹码分析：</strong>HHI集中度12.48（中等偏低），净买入比+15.21%，近期买压74.53（强）。获利比例8.77%，成本区附近。VWAP下方-16.84%，筹码成本偏高但在收敛。</p>
+<p><strong>量价分析：</strong>成交量平稳（量比1.13），换手3.44%。站上MA5/MA20但距MA60（34.84）仍有较大距离。距近期低点24.15已反弹20%，区间位置21%属于底部反弹初期。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 28.94</span>
+<span class="price-badge price-stop">止损 28.02</span>
+<span class="price-badge price-target">目标1 29.36</span>
+<span class="price-badge price-target">目标2 34.55</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ MACD金叉扩大</span>
+<span class="signal signal-bull">✅ 底部放量信号</span>
+<span class="signal signal-bull">✅ PE合理(33)</span>
+<span class="signal signal-bear">❌ MA60远在上方</span>
+<span class="signal signal-neutral">➡️ 区间位置仅21%</span>
+</div>
+</div>
+</div>
+
+<div class="card">
+<div class="card-header">
+<span class="stock-name">🥉 铜峰电子</span>
+<span class="stock-code">600237.SH</span>
+<span class="card-score"><span class="score score-mid">54.4</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">8.52</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+3.65%</div></div>
+<div class="card-item"><div class="label">换手率</div><div class="value">6.64%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">1.31</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">45.81</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">54亿</div></div>
+</div>
+<p><strong>买点详解：</strong>chan-5filters-main命中。站上MA5，距MA20仅-0.5%（即将突破）。MACD金叉(柱状图+0.19)，筹码面在10只标的中最优。</p>
+<p><strong>缠论结构：</strong>日线形成1个中枢，最近底分型。无背驰信号。MACD DIF=-0.72接近零轴，若突破MA20（8.56）且MACD上零轴则形成强确认。</p>
+<p><strong>筹码分析：</strong>HHI集中度12.74（中等），<strong>净买入比+18.91%</strong>（10只最高之一），近期买压77.44（强）。获利比例6.14%，成本区附近。筹码面表现突出。</p>
+<p><strong>量价分析：</strong>量比1.31温和放量，换手6.64%活跃。区间位置仅15%（底部区域），波动率4.5%适中。距MA60（10.25）仍有距离。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 8.52</span>
+<span class="price-badge price-stop">止损 8.15</span>
+<span class="price-badge price-target">目标1 8.60</span>
+<span class="price-badge price-target">目标2 11.55</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 净买入+18.91%</span>
+<span class="signal signal-bull">✅ 买压77.44</span>
+<span class="signal signal-bull">✅ MACD金叉</span>
+<span class="signal signal-bear">❌ 区间位置仅15%</span>
+<span class="signal signal-neutral">➡️ 即将突破MA20</span>
+</div>
+</div>
+</div>
+
+<div class="card">
+<div class="card-header">
+<span class="stock-name">4. 安邦护卫</span>
+<span class="stock-code">603373.SH</span>
+<span class="card-score"><span class="score score-warn">48.9</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">37.82</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+3.53%</div></div>
+<div class="card-item"><div class="label">换手率</div><div class="value">7.24%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">2.32</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">44.24</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">57亿</div></div>
+</div>
+<p><strong>买点详解：</strong>chan-5filters命中，站上全部均线（MA5/MA20/MA60），量比2.32放量明显。MACD金叉柱状图+0.78。但<strong>顶背驰信号触发</strong>（chanTopDivergence=1）且区间位置高达84%。</p>
+<p><strong>缠论结构：</strong>1个中枢，最近底分型。⚠️ 顶背驰=1，价格创新高但MACD动能未同步。区间84%处于高位，追高风险大。</p>
+<p><strong>筹码分析：</strong>HHI集中度14.21，净买入比+18%，买压60.3。VWAP上方+14%，筹码成本偏高。</p>
+<p><strong>量价分析：</strong>量比2.32突出，换手7.24%活跃。站上所有均线但距MA5偏离+10%需警惕。MACD金叉良好。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 37.82</span>
+<span class="price-badge price-stop">止损 36.90</span>
+<span class="price-badge price-target">目标1 37.99</span>
+<span class="price-badge price-target">目标2 39.95</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 站上全部均线</span>
+<span class="signal signal-bull">✅ MACD金叉</span>
+<span class="signal signal-bull">✅ 量比2.32</span>
+<span class="signal signal-bear">❌ 顶背驰!区间84%</span>
+<span class="signal signal-neutral">➡️ 高位追涨风险</span>
+</div>
+</div>
+</div>
+
+<div class="card">
+<div class="card-header">
+<span class="stock-name">5. 诺德股份</span>
+<span class="stock-code">600110.SH</span>
+<span class="card-score"><span class="score score-warn">46.0</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">9.33</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+5.90%</div></div>
+<div class="card-item"><div class="label">换手率</div><div class="value">9.19%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">1.50</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">-131</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">162亿</div></div>
+</div>
+<p><strong>买点详解：</strong>chan-5filters命中。站上MA5，但MA20（9.85）和MA60（11.91）远在上方。MACD接近金叉（柱状图+0.04），量比1.5放量。</p>
+<p><strong>缠论结构：</strong>无中枢、无背驰。最近底分型。MACD DIF=-1.19在零轴下方，整体缠论结构薄弱。</p>
+<p><strong>筹码分析：</strong>HHI 15.64（中等偏高），净买入比+17.57%，买压53.29。获利比6.33%。VWAP下方-14.84%。</p>
+<p><strong>量价分析：</strong>量比1.5放量，换手9.19%（今日最高之一）。区间位置25%偏低。MACD即将金叉需确认。PE-131严重亏损。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 9.33</span>
+<span class="price-badge price-stop">止损 8.86</span>
+<span class="price-badge price-target">目标1 9.48</span>
+<span class="price-badge price-target">目标2 14.07</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 放量反弹</span>
+<span class="signal signal-bull">✅ MACD近金叉</span>
+<span class="signal signal-bear">❌ PE-131严重亏损</span>
+<span class="signal signal-bear">❌ MA20/60远在上方</span>
+<span class="signal signal-neutral">➡️ 缠论结构薄弱</span>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="section">
+<h2>📌 今日总结</h2>
+<div class="summary-box" id="summary-box">
+<strong>市场判断：</strong>今日大盘偏强（59%个股上涨），但<strong>缠论经典一买/二买/三买策略零命中</strong>，表面看市场缺乏经典型买点，反弹以超跌修复为主。改用chan-5filters-main兜底后扫描到50只，分析10只全部评分低于70。<br><br>
+<strong>ML因子模型交叉验证：</strong>ML v11评分Top 30与缠论策略<strong>零重叠</strong>——ML推荐的基本是300开头创板大跌股（-9%~-13%），其中600306已退市（数据停在2024年），印证了ML模型在ST/退市过滤上仍有缺陷。今日ML结果不适合作为参考。<br><br>
+<strong>最佳标的：</strong>香江控股（60.1分）是唯一≥60的标的，站上全部均线+2中枢结构+MACD金叉，缺点是PE为负（亏损）。东睦股份（56.5分）PE合理+MACD金叉强劲+底部放量确认，作为次选观察。其余标的评分偏低，暂不建议介入。<br><br>
+<strong>操作策略：</strong>今日无≥70分标的，整体以<strong>观望为主</strong>。若非要参与，香江控股可在3.38附近轻仓试探（仓位≤10%），跌破3.07止损。等待明日一买/二买/三买策略恢复信号后再加大仓位。
+</div>
+</div>
+
+<div class="footer">
+🦀 SClaw 缠论·筹码·量价 午盘分析 · 仅供参考，不构成投资建议<br>
+Generated by AI · Data source: Real-time A-share market · 2026-08-05
+</div>
+
+</div>
+</body>
+</html>

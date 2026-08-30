@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🤖 ML v12 深度选股日报 2026-08-25</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f4f6f9; color: #1f2937; margin: 0; padding: 20px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  .header { background: linear-gradient(135deg, #1e293b, #334155); color: #fff; border-radius: 14px; padding: 22px 26px; margin-bottom: 18px; }
+  .header h1 { margin: 0 0 6px; font-size: 22px; }
+  .header .sub { font-size: 13px; opacity: .85; }
+  .card { background: #fff; border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .card h2 { font-size: 17px; margin: 0 0 12px; border-left: 4px solid #3b82f6; padding-left: 10px; }
+  .card h3 { font-size: 15px; margin: 14px 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f1f5f9; text-align: left; padding: 8px 6px; font-weight: 600; }
+  td { padding: 7px 6px; border-bottom: 1px solid #eef2f7; }
+  .up { color: #dc2626; font-weight: 600; }
+  .down { color: #16a34a; font-weight: 600; }
+  .rank1 { background: #fef3c7; font-weight: 700; }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 4px; }
+  .tag-red { background: #fee2e2; color: #b91c1c; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .tag-amber { background: #fef9c3; color: #a16207; }
+  .tag-blue { background: #dbeafe; color: #1d4ed8; }
+  .grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .kpi { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 12px; min-width: 110px; }
+  .kpi .k { color: #64748b; font-size: 11px; }
+  .kpi .v { font-weight: 700; font-size: 14px; margin-top: 2px; }
+  .danger { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 10px; }
+  .warn { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 10px; }
+  .good { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 10px; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { font-size: 13px; margin-bottom: 4px; line-height: 1.6; }
+  .footer { font-size: 11px; color: #94a3b8; text-align: center; padding: 12px 0 4px; }
+  .score-badge { font-size: 15px; font-weight: 800; color: #3b82f6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>🤖 ML v12 深度选股日报</h1>
+    <div class="sub">2026-08-25（周一）收盘后 · 87核心特征 / 8模型集成 · IC 0.133 · 全市场打分</div>
+  </div>
+
+  <div class="card">
+    <h2>📊 市场概况</h2>
+    <div class="grid">
+      <div class="kpi"><div class="k">上涨家数</div><div class="v up">3959</div></div>
+      <div class="kpi"><div class="k">下跌家数</div><div class="v down">1167</div></div>
+      <div class="kpi"><div class="k">平盘</div><div class="v">80</div></div>
+      <div class="kpi"><div class="k">涨跌比</div><div class="v">3.4 : 1</div></div>
+      <div class="kpi"><div class="k">市场状态</div><div class="v" style="color:#16a34a">强势</div></div>
+    </div>
+    <p style="font-size:13px; color:#475569; margin:8px 0 0;">模型评分基于 08-24 收盘数据（打分管线最新快照），Top 5 已用 <b>08-25 收盘实时行情</b>逐一核验，全部正常交易，无退市/ST/停牌/仙股。</p>
+  </div>
+
+  <div class="card">
+    <h2>🏆 ML v12 评分 Top 10</h2>
+    <table>
+      <tr><th>#</th><th>代码</th><th>名称</th><th>评分</th><th>v12概率</th><th>08-24收盘</th><th>08-24涨跌</th><th>08-25核验</th></tr>
+      <tr class="rank1"><td>1</td><td>002084</td><td>海鸥住工</td><td class="score-badge">61.6</td><td>0.616</td><td>3.95</td><td class="up">+10.03%</td><td class="up">+10.13% 一字板 <span class="tag tag-red">过热</span></td></tr>
+      <tr><td>2</td><td>300176</td><td>鸿特科技</td><td class="score-badge">58.7</td><td>0.587</td><td>4.57</td><td class="down">-2.35%</td><td class="up">+4.16%</td></tr>
+      <tr><td>3</td><td>300862</td><td>蓝盾光电</td><td class="score-badge">44.1</td><td>0.442</td><td>55.10</td><td class="down">-2.48%</td><td class="down">-3.09% <span class="tag tag-red">高换手</span></td></tr>
+      <tr><td>4</td><td>002906</td><td>华阳集团</td><td class="score-badge">39.5</td><td>0.396</td><td>28.23</td><td class="up">+10.02%</td><td class="down">-2.90% <span class="tag tag-amber">放量</span></td></tr>
+      <tr><td>5</td><td>603811</td><td>诚意药业</td><td class="score-badge">27.6</td><td>0.276</td><td>7.24</td><td class="down">-2.16%</td><td class="up">+2.62%</td></tr>
+      <tr><td>6</td><td>000931</td><td>中关村</td><td>27.6</td><td>0.276</td><td>5.60</td><td class="up">+10.02%</td><td>—</td></tr>
+      <tr><td>7</td><td>300712</td><td>永福股份</td><td>27.5</td><td>0.275</td><td>19.03</td><td class="down">-7.76%</td><td>—</td></tr>
+      <tr><td>8</td><td>605088</td><td>冠盛股份</td><td>26.9</td><td>0.269</td><td>20.60</td><td class="down">-1.90%</td><td>—</td></tr>
+      <tr><td>9</td><td>688408</td><td>中信博</td><td>26.8</td><td>0.268</td><td>24.90</td><td class="down">-2.28%</td><td>—</td></tr>
+      <tr><td>10</td><td>688311</td><td>盟升电子</td><td>26.5</td><td>0.265</td><td>22.16</td><td class="down">-3.15%</td><td>—</td></tr>
+    </table>
+    <p style="font-size:12px; color:#94a3b8; margin:6px 0 0;">注：6-10名未逐一核验，08-24涨跌为评分快照数据。</p>
+  </div>
+
+  <div class="card">
+    <h2>🔍 Top 5 深度核验</h2>
+
+    <h3>🥇 1. 海鸥住工（002084）<span class="tag tag-red">短线过热</span></h3>
+    <div class="grid">
+      <div class="kpi"><div class="k">现价/涨跌</div><div class="v up">4.35 (+10.13%)</div></div>
+      <div class="kpi"><div class="k">换手率</div><div class="v">0.40%</div></div>
+      <div class="kpi"><div class="k">量比</div><div class="v">0.09</div></div>
+      <div class="kpi"><div class="k">PE / PB</div><div class="v">-21.3 / 2.21</div></div>
+      <div class="kpi"><div class="k">总市值</div><div class="v">28.1亿</div></div>
+    </div>
+    <ul>
+      <li><b>量价</b>：连续两日涨停（08-24 +10.03% → 08-25 一字板），今日全天封死、仅 25,552 手成交，惜售特征明显。</li>
+      <li><b>均线</b>：MA5 3.55 / MA20 3.45 / MA60 3.46，多头排列，但现价距 MA5 乖离高达 <b>+22.5%</b>，短线透支。</li>
+      <li><b>MACD</b>：dif 0.04 / dea 0 / 柱 +0.08，刚金叉红柱，动能仍在但基数低。</li>
+      <li><b>缠论</b>：<span class="tag tag-red">顶背驰信号=1</span>，中枢1个，最近枢轴为低点；连续涨停后进入背驰观察区。</li>
+      <li><b>筹码</b>：获利盘 13.1%、净买 -4.15%、买压 58.8%，筹码仍在下沿但价格已飞离成本区。</li>
+    </ul>
+    <div class="danger">⚠️ <b>风险提示</b>：PE 为负（亏损企业），题材驱动上涨；顶背驰+22%乖离，一旦炸板回撤幅度可观。追高性价比差。</div>
+
+    <h3>🥈 2. 鸿特科技（300176）<span class="tag tag-blue">低位反弹</span></h3>
+    <div class="grid">
+      <div class="kpi"><div class="k">现价/涨跌</div><div class="v up">4.76 (+4.16%)</div></div>
+      <div class="kpi"><div class="k">换手率</div><div class="v">4.90%</div></div>
+      <div class="kpi"><div class="k">量比</div><div class="v">1.05</div></div>
+      <div class="kpi"><div class="k">PE / PB</div><div class="v">52.6 / 2.59</div></div>
+      <div class="kpi"><div class="k">总市值</div><div class="v">25.3亿</div></div>
+    </div>
+    <ul>
+      <li><b>位置</b>：120日区间位置 0%（最低位），今日 +4.16% 放量反弹，现价站回均价线上方。</li>
+      <li><b>均线</b>：MA5 5.01 / MA20 4.98 / MA60 5.23，仍空头排列，反弹首日未收复均线。</li>
+      <li><b>MACD</b>：dif -0.04 / dea -0.02 / 柱 -0.05，绿柱，尚未金叉，趋势未反转。</li>
+      <li><b>缠论</b>：最近枢轴为高点、无中枢；<span class="tag tag-green">底部放量信号=1</span>，有资金试探迹象。</li>
+      <li><b>筹码</b>：获利盘 -8.66%（浮亏筹码为主）、净买 -9.8%、买压 39.8% 仍偏弱。</li>
+    </ul>
+    <div class="warn">⚠️ <b>提示</b>：ML评分高但技术面只算"初现转机"，需确认站稳 MA20 且 MACD 金叉才算右侧信号。当前位置是左侧观察区。</div>
+
+    <h3>🥉 3. 蓝盾光电（300862）<span class="tag tag-red">高位风险</span></h3>
+    <div class="grid">
+      <div class="kpi"><div class="k">现价/涨跌</div><div class="v down">53.40 (-3.09%)</div></div>
+      <div class="kpi"><div class="k">换手率</div><div class="v up">16.47%</div></div>
+      <div class="kpi"><div class="k">量比</div><div class="v">0.61</div></div>
+      <div class="kpi"><div class="k">PE / PB</div><div class="v">-103.7 / 5.03</div></div>
+      <div class="kpi"><div class="k">总市值</div><div class="v">98.6亿</div></div>
+    </div>
+    <ul>
+      <li><b>位置</b>：120日区间位置 97%，60日内从 15.23 → 55.1 翻了约 <b>3.6倍</b>，典型妖股走势。</li>
+      <li><b>乖离</b>：现价距 MA20（27.02）乖离 <b>+97.7%</b>，距 MA60（24.05）乖离 +122%，极端超买。</li>
+      <li><b>MACD</b>：dif 8.47 / dea 4.11 / 柱 8.72，高位强多头但柱体已开始钝化。</li>
+      <li><b>量价</b>：今日 <b>-3.09% 且换手 16.47%</b>，高位巨量滞涨，出货嫌疑重；买压虽 84.9% 但已属顶部区域。</li>
+      <li><b>缠论</b>：无中枢（单边主升），无背驰信号——但这种走势的背驰往往迟到。</li>
+    </ul>
+    <div class="danger">⚠️ <b>风险提示</b>：PE 负、PB 5.03、换手 16% 高位放量下跌。ML 模型给 44 分主要因动量因子，不代表安全边际。此类标的只适合极短线博弈，重仓=赌博。</div>
+
+    <h3>4. 华阳集团（002906）<span class="tag tag-amber">放量分歧</span></h3>
+    <div class="grid">
+      <div class="kpi"><div class="k">现价/涨跌</div><div class="v down">27.41 (-2.90%)</div></div>
+      <div class="kpi"><div class="k">换手率</div><div class="v">6.71%</div></div>
+      <div class="kpi"><div class="k">量比</div><div class="v up">6.23</div></div>
+      <div class="kpi"><div class="k">PE / PB</div><div class="v">17.1 / 2.02</div></div>
+      <div class="kpi"><div class="k">总市值</div><div class="v">143.9亿</div></div>
+    </div>
+    <ul>
+      <li><b>量价</b>：昨日一字涨停（28.23，仅 221万股），今日高开 29.86 后一路回落收 27.41，量比 6.23 显著放量——<b>涨停次日放量分歧</b>。</li>
+      <li><b>均线</b>：MA5 26.58 / MA20 25.48 / MA60 26.09，仍多头排列，回踩未破 MA5。</li>
+      <li><b>MACD</b>：dif 0.46 / dea 0.22 / 柱 0.48，多头结构未破坏。</li>
+      <li><b>缠论</b>：<span class="tag tag-amber">分歧信号=1</span>，中枢1个，最近枢轴高点；冲高回落属中枢上方震荡。</li>
+      <li><b>筹码</b>：获利盘 7.17%、净买 -10.7%、买压 32.5%，今日主力净流出，兑现盘占优。</li>
+    </ul>
+    <div class="warn">⚠️ <b>提示</b>：估值（PE 17.1）在 Top5 里最健康，是唯一有业绩支撑的；但放量长上影说明短线分歧大，看 MA5 能否守住，守住则中枢震荡，破位则短线转弱。</div>
+
+    <h3>5. 诚意药业（603811）<span class="tag tag-green">低位修复</span></h3>
+    <div class="grid">
+      <div class="kpi"><div class="k">现价/涨跌</div><div class="v up">7.43 (+2.62%)</div></div>
+      <div class="kpi"><div class="k">换手率</div><div class="v">1.19%</div></div>
+      <div class="kpi"><div class="k">量比</div><div class="v">0.61</div></div>
+      <div class="kpi"><div class="k">PE / PB</div><div class="v">17.6 / 2.52</div></div>
+      <div class="kpi"><div class="k">总市值</div><div class="v">34.0亿</div></div>
+    </div>
+    <ul>
+      <li><b>位置</b>：120日区间位置 6%（近半年低位），向下空间相对有限。</li>
+      <li><b>均线</b>：MA5 7.49 / MA20 7.34 / MA60 8.40，仍空头排列但今日收复 MA20 上方。</li>
+      <li><b>MACD</b>：dif -0.10 / dea -0.16 / 柱 <b>+0.12</b>，绿柱收敛转红，底背离修复进行中。</li>
+      <li><b>缠论</b>：无中枢，最近枢轴高点；无背驰信号，结构偏弱但企稳。</li>
+      <li><b>筹码</b>：获利盘 -3.96%、净买 -5.5%、买压 57.2%，抛压衰竭，筹码开始沉淀。</li>
+    </ul>
+    <div class="good">✅ <b>观察</b>：低估值（PE 17.6）+ 低位 + MACD 修复，是 Top5 里"风险收益比"最平衡的一只。缺点是无题材、换手低，弹性弱，适合等待右侧放量确认。</div>
+  </div>
+
+  <div class="card">
+    <h2>🛡️ 综合风险提示</h2>
+    <ul>
+      <li><b>高乖离集群</b>：海鸥住工、蓝盾光电均处极端乖离区（+22% / +98%），追涨容易接最后一棒。</li>
+      <li><b>估值警示</b>：海鸥住工 PE -21、蓝盾光电 PE -104（均亏损），ML 评分含动量因子，不代表基本面安全。</li>
+      <li><b>涨停次日效应</b>：华阳集团昨日涨停今日放量回落，Top10 中中关村（+10%）同属涨停阵营，明日分歧风险集中。</li>
+      <li><b>模型时滞</b>：评分快照为 08-24 收盘，今日两日涨停/高位换手变化未纳入模型，Top5 已人工核验修正。</li>
+      <li><b>整体环境</b>：今日 3959 家上涨、市场强势，但强势日里高位股更容易被资金兑现，注意节奏。</li>
+    </ul>
+    <p style="font-size:12px; color:#94a3b8; margin-top:10px;">本报告由 ML v12 模型 + 人工技术核验生成，仅供研究参考，不构成任何投资建议。市场有风险，决策需独立判断。</p>
+  </div>
+
+  <div class="footer">SClaw 🦀 · ML v12 深度选股日报 · 2026-08-25 15:00 收盘后</div>
+</div>
+</body>
+</html>

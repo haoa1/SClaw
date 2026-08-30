@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""
+fetch_screen_v12.py — v12 全市场选股 (云端版, 多进程加速).
+
+从 Sclaw stock_history.db 拉全市场 K 线 (含 turnover_rate),
+cloud_extra.db 拉估值/龙虎榜, sh000001_daily.json 拉指数,
+ml_screener_v12 计算 90 因子 + 8-seed MLP 集成评分.
+
+v2 变更: 多进程 (multiprocessing.Pool) 并行打分 + 复合索引优化后
+全市场 5337 只从 ~1 小时 降到 ~4 分钟 (2 核服务器).
+
+过滤: ST/退市, 北交所 (920), 仙股 (<1.0), 非最新交易日停牌.
+
+Usage:
+  python3 fetch_screen_v12.py [limit=30] [--no-st-filter] [--include-bse] [--workers=N]
+输出: JSON ranked results → stdout; 摘要 → stderr.
+"""
+import json
+import os
+import re
+import sqlite3
+import sys
+import time
+from multiprocessing import Pool
+
+SCLAW_DATA_DIR = "/root/sclaw/data"
+ML_DIR = "/root/sclaw/ml_screener"
+V12_WEIGHTS = os.path.join(ML_DIR, "v12_weights.json")
+IDX_DAILY = os.path.join(ML_DIR, "sh000001_daily.json")
+EXTRA_DB = os.path.join(SCLAW_DATA_DIR, "cloud_extra.db")
+
+_ST_RE = re.compile(r"ST|\*|退", re.IGNORECASE)
+_MIN_BARS = 60
+_Q_K = ("SELECT date, open, high, low, close, volume, amount, change_pct, turnover_rate "
+        "FROM stock_daily WHERE code=? ORDER BY date DESC LIMIT 120")
+_Q_VAL = ("SELECT date, pe_ttm, pb_mrq, ps_ttm, pcf_ocf_ttm, peg, "
+          "total_mktcap, float_mktcap, free_shares FROM value_daily "
+          "WHERE code=? AND date >= date(?,'-60 days') AND date <= ?")
+_Q_LHB = ("SELECT date, billboard_net FROM lhb_daily "
+          "WHERE code=? AND date >= date(?,'-60 days') AND date <= ?")
+
+
+def load_idx_daily():
+    dmap = {}
+    if os.path.exists(IDX_DAILY):
+        try:
+            d = json.load(open(IDX_DAILY))
+            last = None
+            for dt, cl in zip(d.get("dates", []), d.get("closes", [])):
+                if cl is not None:
+                    try:
+                        last = float(cl)
+                    except (TypeError, ValueError):
+                        pass
+                dmap[dt] = last
+        except Exception as e:
+            print(f"⚠ index load failed: {e}", file=sys.stderr)
+    return dmap
+
+
+_IDX_CACHE = None
+
+
+def _idx():
+    global _IDX_CACHE
+    if _IDX_CACHE is None:
+        _IDX_CACHE = load_idx_daily()
+    return _IDX_CACHE
+
+
+def align_idx_close(kline_dates):
+    dmap = _idx()
+    return [dmap.get(d, 0.0) for d in kline_dates]
+
+
+def _worker_init():
+    """每个 worker 进程初始化: 独立 DB 连接 + 模型."""
+    global _W_CON, _W_EX, _W_SCR
+    sys.path.insert(0, ML_DIR)
+    from ml_screener_v12 import compute_factors_v12, V12Screener  # noqa
+    _W_CON = sqlite3.connect(os.path.join(SCLAW_DATA_DIR, "stock_history.db"))
+    _W_CON.row_factory = sqlite3.Row
+    _W_EX = None
+    if os.path.exists(EXTRA_DB):
+        _W_EX = sqlite3.connect(EXTRA_DB)
+        _W_EX.row_factory = sqlite3.Row
+    _W_SCR = V12Screener(V12_WEIGHTS)
+
+
+def _score_one(arg):
+    """处理单只股票, 返回 dict 或 None. (模块级, 可 pickle)"""
+    code, name, latest = arg
+    if _ST_RE.search(name or ""):
+        return None
+    if code.startswith("920"):
+        return None
+    try:
+        ks = _W_CON.execute(_Q_K, (code,)).fetchall()
+        if len(ks) < _MIN_BARS:
+            return None
+        ks = list(reversed(ks))
+        if ks[-1][0] != latest:  # 停牌/退市残留
+            return None
+        closes = [k[4] for k in ks]
+        if closes[-1] < 1.0:
+            return None
+        kline = [{"date": k[0], "open": k[1], "high": k[2], "low": k[3],
+                  "close": k[4], "volume": k[5] or 0, "amount": k[6] or 0,
+                  "change_pct": k[7] or 0, "turnover_rate": k[8] or 0} for k in ks]
+        idx_close = align_idx_close([k["date"] for k in kline])
+        val_rows = lhb_rows = None
+        if _W_EX is not None:
+            d_min = kline[0]["date"]
+            val_rows = _W_EX.execute(_Q_VAL, (code, d_min, latest)).fetchall()
+            lhb_rows = _W_EX.execute(_Q_LHB, (code, d_min, latest)).fetchall()
+        from ml_screener_v12 import compute_factors_v12
+        factors = compute_factors_v12(kline, idx_close, val_rows, lhb_rows)
+        if factors is None:
+            return None
+        p = _W_SCR.score_one(factors)
+        return {"code": code, "name": name, "price": closes[-1],
+                "change_percent": kline[-1]["change_pct"],
+                "v12_prob": round(p, 4), "score": round(p * 100, 1),
+                "turnover_rate": kline[-1]["turnover_rate"]}
+    except Exception as e:
+        return {"code": code, "name": name, "error": str(e)}
+
+
+def main():
+    limit = 30
+    st_filter = True
+    include_bse = False
+    workers = 2
+    args = sys.argv[1:]
+    if args and args[0].isdigit():
+        limit = int(args[0])
+    if "--no-st-filter" in args:
+        st_filter = False
+    if "--include-bse" in args:
+        include_bse = True
+    for a in args:
+        if a.startswith("--workers="):
+            workers = int(a.split("=")[1])
+
+    t0 = time.time()
+    con = sqlite3.connect(os.path.join(SCLAW_DATA_DIR, "stock_history.db"))
+    latest = con.execute(
+        "SELECT MAX(date) FROM stock_daily WHERE code NOT GLOB 'sh*'").fetchone()[0]
+    print(f"  latest trade date: {latest}", file=sys.stderr)
+
+    codes = con.execute(
+        "SELECT code, COUNT(*) days FROM stock_daily "
+        "WHERE code NOT GLOB 'sh*' AND code NOT GLOB 'bj*' "
+        "GROUP BY code HAVING days >= ? ORDER BY code", (_MIN_BARS,)).fetchall()
+    print(f"  {len(codes)} stocks with >= {_MIN_BARS} days ({time.time()-t0:.0f}s)",
+          file=sys.stderr)
+
+    info_map = {}
+    try:
+        for r in con.execute("SELECT code, name FROM stock_info"):
+            info_map[r[0]] = r[1]
+    except Exception:
+        pass
+    con.close()
+
+    # 组装任务列表 (st_filter 在主进程做, 省 worker 时间; latest 随 task 传入, 不依赖 fork 继承)
+    tasks = []
+    n_skip_st = n_skip_bse = 0
+    for code, days in codes:
+        name = info_map.get(code, code)
+        if st_filter and _ST_RE.search(name or ""):
+            n_skip_st += 1
+            continue
+        if not include_bse and code.startswith("920"):
+            n_skip_bse += 1
+            continue
+        tasks.append((code, name, latest))
+
+    results = []
+    n_workers = min(workers, os.cpu_count() or 2)
+    print(f"  scoring {len(tasks)} stocks with {n_workers} workers...", file=sys.stderr)
+    with Pool(n_workers, initializer=_worker_init) as pool:
+        for ci, r in enumerate(pool.imap_unordered(_score_one, tasks, chunksize=32)):
+            if r is not None and "error" not in r:
+                results.append(r)
+            elif r is not None and "error" in r:
+                print(f"  ⚠ {r['code']} {r['name']}: {r['error']}", file=sys.stderr)
+            if ci % 1000 == 0:
+                print(f"  [{ci}/{len(tasks)}] done... ({time.time()-t0:.0f}s)",
+                      file=sys.stderr, flush=True)
+
+    results.sort(key=lambda r: -r["v12_prob"])
+    top = results[:limit]
+    for i, r in enumerate(top):
+        r["rank"] = i + 1
+    print(f"  scored {len(results)} stocks, skip: ST={n_skip_st} BSE={n_skip_bse} "
+          f"({time.time()-t0:.0f}s)", file=sys.stderr)
+    print(json.dumps({"date": latest, "model": "v12", "count": len(results),
+                      "results": top}, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif; background: #0b1120; color: #e2e8f0; margin: 0; padding: 20px; }
+.container { max-width: 860px; margin: 0 auto; }
+.header { background: linear-gradient(135deg, #1a2332 0%, #0f1729 100%); padding: 28px 24px; border-radius: 14px; margin-bottom: 18px; text-align: center; border: 1px solid #334155; position: relative; overflow: hidden; }
+.header::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #f59e0b, #ef4444, #8b5cf6); }
+.header h1 { color: #fbbf24; margin: 0 0 6px; font-size: 22px; letter-spacing: 1px; }
+.header .badge-row { display: flex; justify-content: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+.header .badge { display: inline-block; padding: 4px 14px; border-radius: 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; }
+.badge-chan { background: #312e81; color: #a5b4fc; border: 1px solid #4338ca; }
+.badge-chip { background: #1e3a5f; color: #93c5fd; border: 1px solid #2563eb; }
+.badge-vp { background: #5b0e2d; color: #f9a8d4; border: 1px solid #be185d; }
+.header .sub { color: #94a3b8; font-size: 13px; margin-top: 8px; }
+.section { background: #131c2b; border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; border: 1px solid #1e2d45; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+.section h2 { color: #fbbf24; font-size: 16px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid #1e2d45; display: flex; align-items: center; gap: 8px; }
+.section h2 .subtitle { color: #64748b; font-size: 13px; font-weight: normal; }
+.warning-box { background: linear-gradient(135deg, #422006, #291a00); border: 1px solid #a16207; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 14px; color: #fde68a; }
+.warning-box strong { color: #fbbf24; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; border-radius: 8px; overflow: hidden; }
+thead th { background: #1a2a42; color: #93c5fd; padding: 10px 6px; text-align: center; font-weight: 600; font-size: 12px; border-bottom: 2px solid #2563eb; white-space: nowrap; position: sticky; top: 0; }
+tbody td { padding: 7px 6px; text-align: center; border-bottom: 1px solid #1a2a42; font-size: 13px; transition: background 0.15s; }
+tbody tr:hover td { background: #1e2d45; }
+tbody tr:nth-child(even) td { background: #0f172940; }
+tbody tr:nth-child(even):hover td { background: #1e2d45; }
+.top-1 td { background: #42200640 !important; }
+.top-2 td { background: #1e3a5f40 !important; }
+.top-3 td { background: #3b0e2e40 !important; }
+.top-4 td, .top-5 td { background: #131c2b !important; }
+.rank-1 { color: #fbbf24; font-weight: bold; }
+.rank-2 { color: #cbd5e1; font-weight: bold; }
+.rank-3 { color: #d97706; font-weight: bold; }
+.score { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 13px; font-weight: 700; min-width: 30px; text-align: center; }
+.score-excellent { background: #065f46; color: #6ee7b7; }
+.score-good { background: #1e3a5f; color: #93c5fd; }
+.score-mid { background: #713f12; color: #fde68a; }
+.score-warn { background: #7f1d1d; color: #fca5a5; }
+.risk-low { color: #6ee7b7; font-weight: 600; }
+.risk-mid { color: #fde68a; font-weight: 600; }
+.risk-high { color: #fca5a5; font-weight: 600; }
+.risk-danger { color: #f87171; font-weight: 700; }
+.up { color: #ef4444; font-weight: 600; }
+.down { color: #34d399; font-weight: 600; }
+.flat { color: #94a3b8; }
+.zone-container { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
+.zone { flex: 1; min-width: 180px; padding: 12px 14px; border-radius: 10px; text-align: center; }
+.zone-priority { background: linear-gradient(135deg, #065f46, #064e3b); border: 1px solid #10b981; }
+.zone-watch { background: linear-gradient(135deg, #713f12, #451a03); border: 1px solid #f59e0b; }
+.zone-avoid { background: linear-gradient(135deg, #7f1d1d, #450a0a); border: 1px solid #ef4444; }
+.zone .zone-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.zone .zone-count { font-size: 28px; font-weight: 800; }
+.zone .zone-range { font-size: 12px; opacity: 0.8; }
+.zone-priority .zone-title { color: #6ee7b7; }
+.zone-priority .zone-count { color: #34d399; }
+.zone-watch .zone-title { color: #fde68a; }
+.zone-watch .zone-count { color: #fbbf24; }
+.zone-avoid .zone-title { color: #fca5a5; }
+.zone-avoid .zone-count { color: #f87171; }
+.card { background: #0b1120; border-radius: 10px; padding: 16px; margin-bottom: 14px; border: 1px solid #1e2d45; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #1e2d45; }
+.card-header .stock-name { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+.card-header .stock-code { color: #64748b; font-size: 13px; }
+.card-header .card-score { font-size: 18px; font-weight: 800; }
+.card-body { font-size: 14px; color: #cbd5e1; }
+.card-body p { margin: 6px 0; }
+.card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+.card-item { background: #131c2b; border-radius: 8px; padding: 10px 12px; border: 1px solid #1e2d45; }
+.card-item .label { color: #64748b; font-size: 12px; margin-bottom: 2px; }
+.card-item .value { font-size: 14px; font-weight: 600; }
+.signal-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.signal { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+.signal-bull { background: #065f4620; color: #34d399; border: 1px solid #065f46; }
+.signal-bear { background: #7f1d1d20; color: #f87171; border: 1px solid #7f1d1d; }
+.signal-neutral { background: #1e2d45; color: #94a3b8; border: 1px solid #334155; }
+.price-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 1px; }
+.price-buy { background: #065f46; color: #34d399; }
+.price-stop { background: #7f1d1d; color: #fca5a5; }
+.price-target { background: #312e81; color: #a5b4fc; }
+.summary-box { background: linear-gradient(135deg, #131c2b, #0b1120); border: 1px solid #1e2d45; border-radius: 10px; padding: 14px 18px; font-size: 14px; color: #cbd5e1; line-height: 1.7; }
+.summary-box strong { color: #f1f5f9; }
+.footer { text-align: center; padding: 18px; color: #475569; font-size: 12px; border-top: 1px solid #1e2d45; margin-top: 8px; }
+.footer a { color: #64748b; text-decoration: none; }
+@media (max-width: 600px) {
+  body { padding: 10px; }
+  .card-grid { grid-template-columns: 1fr; }
+  .zone-container { flex-direction: column; }
+  table { font-size: 11px; }
+  thead th, tbody td { padding: 5px 3px; }
+}
+.ticker { background: #0b1120; border: 1px solid #1e2d45; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ticker .item { display: flex; align-items: center; gap: 4px; }
+.ticker .item .val { font-weight: 700; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+<h1>🦀 SClaw 缠论·筹码·量价 三维度午盘分析</h1>
+<div class="badge-row">
+<span class="badge badge-chan">📐 缠论 40%</span>
+<span class="badge badge-chip">📊 筹码 30%</span>
+<span class="badge badge-vp">📈 量价 30%</span>
+</div>
+<div class="sub" id="header-sub">📅 2026年7月31日 14:30 CST · 全市场 4453↑ / 644↓ / 109平 · 85.6%个股上涨</div>
+</div>
+
+<!-- Market Status Warning -->
+<div class="warning-box" id="market-warning">
+⚠️ <strong>市场状态提示：</strong>今日普涨格局，85.6%个股飘红，情绪极度亢奋。但需警惕：日线一买/二买/三买策略今日<strong>零命中</strong>（5206只无一满足），说明当前上涨多为超跌反弹或中继反抽，<strong>非缠论标准买点结构</strong>。兜底策略chan-5filters-main捕捉到50只潜在标的，整体质量偏低，无一只综合分突破80。操作上建议<strong>多看少动</strong>，切勿追高，等待回踩确认。
+</div>
+
+<!-- Scoring Table -->
+<div class="section">
+<h2>📋 三维度综合评分总表</h2>
+<table id="score-table">
+<thead>
+<tr>
+<th>#</th><th>股票</th><th>现价</th><th>涨跌%</th><th>买点</th><th>缠论</th><th>筹码</th><th>量价</th><th>⚡综合</th><th>买入价</th><th>止损价</th><th>目标价</th><th>风险</th>
+</tr>
+</thead>
+<tbody id="score-body">
+<tr class="top-1">
+<td><span class="rank-1">🥇1</span></td>
+<td>600129 太极集团</td>
+<td>15.69</td>
+<td class="up">+2.42%</td>
+<td>底背驰·二买雏形</td>
+<td><span class="score score-good">72</span></td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-mid">58</span></td>
+<td><span class="score score-good">69.6</span></td>
+<td>15.50</td>
+<td>14.80</td>
+<td>17.00</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-2">
+<td><span class="rank-2">🥈2</span></td>
+<td>603185 弘元绿能</td>
+<td>16.12</td>
+<td class="up">+4.88%</td>
+<td>中枢·二买雏形</td>
+<td><span class="score score-good">65</span></td>
+<td><span class="score score-good">72</span></td>
+<td><span class="score score-good">70</span></td>
+<td><span class="score score-good">68.6</span></td>
+<td>15.80</td>
+<td>14.80</td>
+<td>17.60</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-3">
+<td><span class="rank-3">🥉3</span></td>
+<td>600143 金发科技</td>
+<td>15.53</td>
+<td class="up">+7.10%</td>
+<td>MACD金叉·底转折</td>
+<td><span class="score score-mid">52</span></td>
+<td><span class="score score-good">68</span></td>
+<td><span class="score score-good">70</span></td>
+<td><span class="score score-good">62.2</span></td>
+<td>15.20</td>
+<td>14.40</td>
+<td>16.80</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-4">
+<td>4</td>
+<td>600126 杭钢股份</td>
+<td>6.57</td>
+<td class="up">+7.00%</td>
+<td>底转折·顶背驰⚠️</td>
+<td><span class="score score-mid">50</span></td>
+<td><span class="score score-good">75</span></td>
+<td><span class="score score-mid">62</span></td>
+<td><span class="score score-mid">61.1</span></td>
+<td>6.20</td>
+<td>5.80</td>
+<td>7.00</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-5">
+<td>5</td>
+<td>600103 青山纸业</td>
+<td>2.79</td>
+<td class="up">+3.72%</td>
+<td>低位反弹·背离</td>
+<td><span class="score score-warn">45</span></td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-mid">60</span></td>
+<td><span class="score score-mid">52.5</span></td>
+<td>2.70</td>
+<td>2.55</td>
+<td>3.00</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>6</td>
+<td>600114 东睦股份</td>
+<td>26.69</td>
+<td class="up">+6.89%</td>
+<td>超跌反弹</td>
+<td><span class="score score-warn">48</span></td>
+<td><span class="score score-mid">60</span></td>
+<td><span class="score score-mid">50</span></td>
+<td><span class="score score-mid">52.2</span></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>7</td>
+<td>600360 华微电子</td>
+<td>9.44</td>
+<td class="up">+4.42%</td>
+<td>底背驰信号</td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-mid">62</span></td>
+<td><span class="score score-warn">38</span></td>
+<td><span class="score score-mid">52.0</span></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>8</td>
+<td>600172 黄河旋风</td>
+<td>9.83</td>
+<td class="up">+3.26%</td>
+<td>底背驰信号</td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-mid">50</span></td>
+<td><span class="score score-warn">40</span></td>
+<td><span class="score score-warn">49.0</span></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>9</td>
+<td>600397 江钨装备</td>
+<td>12.73</td>
+<td class="up">+3.16%</td>
+<td>底背驰信号</td>
+<td><span class="score score-mid">55</span></td>
+<td><span class="score score-mid">52</span></td>
+<td><span class="score score-warn">35</span></td>
+<td><span class="score score-warn">48.1</span></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><span class="risk-danger">🔴高</span></td>
+</tr>
+<tr>
+<td>10</td>
+<td>600110 诺德股份</td>
+<td>8.23</td>
+<td class="up">+2.62%</td>
+<td>无明确信号</td>
+<td><span class="score score-warn">35</span></td>
+<td><span class="score score-mid">52</span></td>
+<td><span class="score score-warn">35</span></td>
+<td><span class="score score-warn">40.1</span></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><span class="risk-danger">🔴高</span></td>
+</tr>
+<tr>
+<td>11</td>
+<td>600353 旭光电子</td>
+<td>22.47</td>
+<td class="up">+4.22%</td>
+<td>无明确信号</td>
+<td><span class="score score-warn">35</span></td>
+<td><span class="score score-mid">50</span></td>
+<td><span class="score score-warn">30</span></td>
+<td><span class="score score-warn">38.0</span></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><span class="risk-danger">🔴高</span></td>
+</tr>
+<tr>
+<td>12</td>
+<td>603283 赛腾股份</td>
+<td>39.06</td>
+<td class="up">+4.75%</td>
+<td>无明确信号</td>
+<td><span class="score score-warn">38</span></td>
+<td><span class="score score-warn">48</span></td>
+<td><span class="score score-warn">28</span></td>
+<td><span class="score score-warn">38.0</span></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><span class="risk-danger">🔴高</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Operation Suggestions -->
+<div class="section">
+<h2>📋 操作建议 <span class="subtitle">按综合评分分级</span></h2>
+<div class="zone-container" id="operation-zones">
+<div class="zone zone-priority">
+<div class="zone-title">⭐ 优先关注</div>
+<div class="zone-count" id="count-priority">0</div>
+<div class="zone-range">综合分 ≥ 70</div>
+</div>
+<div class="zone zone-watch">
+<div class="zone-title">👀 观察等待</div>
+<div class="zone-count" id="count-watch">4</div>
+<div class="zone-range">综合分 60 ~ 69</div>
+</div>
+<div class="zone zone-avoid">
+<div class="zone-title">⏸️ 暂时回避</div>
+<div class="zone-count" id="count-avoid">8</div>
+<div class="zone-range">综合分 &lt; 60</div>
+</div>
+</div>
+</div>
+
+<!-- Top 5 Deep Analysis -->
+<div class="section">
+<h2>🔍 前5名深度分析</h2>
+<div id="analysis-cards">
+
+<!-- Card 1: 600129 太极集团 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">🥇 太极集团</span>
+<span class="stock-code">600129.SH</span>
+<span class="card-score"><span class="score score-good">69.6</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">15.69</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+2.42%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">1.56</div></div>
+<div class="card-item"><div class="label">换手</div><div class="value">3.80%</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">77.5</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">86.5亿</div></div>
+</div>
+<p><strong>买点详解：</strong>日线级别疑似<b>第二类买点</b>雏形。前期下跌后形成日线中枢（15.0-15.8区间），MACD底背驰信号出现（chanBottomDivergence=1），DIF在DEA附近即将金叉。现价15.69在中枢上沿附近震荡，若回踩不破15.50并放量突破15.80，则二买确认。</p>
+<p><strong>缠论结构：</strong>日线下跌趋势尾声，已形成1个中枢。MACD DIF=0.31, DEA=0.41, 柱状体=-0.21（收窄中，即将翻红）。底背驰已触发，lastPivot=low。均线：站上MA5(15.55)和MA60(14.53)，MA20(15.74)构成短期压力。</p>
+<p><strong>筹码分析：</strong>HHI=16.56（集中度较高），净买入比+17.19%（强净流入），近期买压59.85。获利比例仅1.34%（几乎无人盈利），说明上方套牢盘极少。底部换手充分，筹码结构健康。</p>
+<p><strong>量价分析：</strong>量比1.56温和放量，MACD即将金叉。关键阻力15.80（中枢上沿），突破后看17.00。支撑15.00（中枢下沿）。距离近期VWAP(15.48)仅+1.4%，成本优势明显。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 15.50</span>
+<span class="price-badge price-stop">止损 14.80</span>
+<span class="price-badge price-target">目标1 17.00</span>
+<span class="price-badge price-target">目标2 18.50</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 底背驰确认</span>
+<span class="signal signal-bull">✅ 净买+17.2%</span>
+<span class="signal signal-bull">✅ 获利盘仅1.3%</span>
+<span class="signal signal-neutral">➡️ MACD即将金叉</span>
+<span class="signal signal-bear">❌ 仍在MA20下方</span>
+</div>
+</div>
+</div>
+
+<!-- Card 2: 603185 弘元绿能 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">🥈 弘元绿能</span>
+<span class="stock-code">603185.SH</span>
+<span class="card-score"><span class="score score-good">68.6</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">16.12</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+4.88%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">3.94</div></div>
+<div class="card-item"><div class="label">换手</div><div class="value">5.98%</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">亏损</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">110亿</div></div>
+</div>
+<p><strong>买点详解：</strong>日线级别<b>第二类买点</b>结构。前期低点12.49后反弹至MA20上方，有1个日线中枢。MACD柱状体0.78（强势翻红），DIF=-0.46正在快速上穿DEA=-0.85，金叉在即。今日放量（量比3.94）站上MA5和MA20，是典型的二买确认信号。</p>
+<p><strong>缠论结构：</strong>下跌趋势末端（日线中枢已形成），lastPivot=low确认底部转折。MACD柱状体持续扩大（0.78），动能强劲。均线：站上MA5(14.56)和MA20(14.13)，MA60(17.07)构成中期目标。rangePosition仅0.19（历史低位区域），安全边际充足。</p>
+<p><strong>筹码分析：</strong>HHI=13.06（集中度适中），近期买压高达85.02（极强！说明底部有大资金吸筹），获利比例13.19%（低位获利盘少）。距离近期VWAP(14.23)溢价+13.3%，底部筹码已获利但未大规模松动。</p>
+<p><strong>量价分析：</strong>量比3.94（极度放量），换手5.98%，MACD加速翻红。今日长阳+放量突破MA20，量价配合优异。阻力位17.07(MA60)，支撑14.80(MA20附近)。短期涨幅已达4.88%，不建议追高，等回踩MA20。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 15.80</span>
+<span class="price-badge price-stop">止损 14.80</span>
+<span class="price-badge price-target">目标1 17.60</span>
+<span class="price-badge price-target">目标2 19.00</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ MACD强势翻红</span>
+<span class="signal signal-bull">✅ 放量突破MA20</span>
+<span class="signal signal-bull">✅ 买压85（极强）</span>
+<span class="signal signal-neutral">➡️ PE亏损业绩风险</span>
+<span class="signal signal-bear">❌ 已涨4.88%不宜追</span>
+</div>
+</div>
+</div>
+
+<!-- Card 3: 600143 金发科技 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">🥉 金发科技</span>
+<span class="stock-code">600143.SH</span>
+<span class="card-score"><span class="score score-good">62.2</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">15.53</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+7.10%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">3.49</div></div>
+<div class="card-item"><div class="label">换手</div><div class="value">3.27%</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">34.4</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">415亿</div></div>
+</div>
+<p><strong>买点详解：</strong>MACD金叉+底转折后加速上行。DIF=-0.27已上穿DEA=-0.44，MACD柱0.33且持续扩大。但chanTopDivergence=1（顶背驰预警），说明短期涨幅过快已触发背驰信号，需要回踩确认。</p>
+<p><strong>缠论结构：</strong>底部转折后第一波上涨，MACD顺势金叉。但顶背驰信号出现，今日+7.1%的涨幅可能透支短期动能。无中枢结构，走势类型为下跌后的反弹段。均线站上MA5(14.68)和MA20(14.60)，MA60(15.96)近在咫尺。</p>
+<p><strong>筹码分析：</strong>HHI=17.69（集中度较好），近期买压77.26（强势），获利比例7.93%。底部换手充分，topBottomRatio=2.70说明底部成交活跃度远高于顶部。筹码结构偏多。</p>
+<p><strong>量价分析：</strong>量比3.49（巨量），MACD金叉翻红。但短期涨幅+7.1%偏大，且顶背驰信号出现。阻力16.00(MA60+整数关口)，支撑14.60(MA20)。今日追高风险较大，等回踩MA20更安全。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 15.20</span>
+<span class="price-badge price-stop">止损 14.40</span>
+<span class="price-badge price-target">目标1 16.80</span>
+<span class="price-badge price-target">目标2 17.80</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ MACD金叉</span>
+<span class="signal signal-bull">✅ 巨量配合</span>
+<span class="signal signal-bull">✅ 筹码集中</span>
+<span class="signal signal-bear">❌ 顶背驰预警</span>
+<span class="signal signal-bear">❌ +7.1%追高风险</span>
+</div>
+</div>
+</div>
+
+<!-- Card 4: 600126 杭钢股份 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">4. 杭钢股份</span>
+<span class="stock-code">600126.SH</span>
+<span class="card-score"><span class="score score-mid">61.1</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">6.57</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+7.00%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">1.69</div></div>
+<div class="card-item"><div class="label">换手</div><div class="value">3.41%</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">322.8</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">222亿</div></div>
+</div>
+<p><strong>买点详解：</strong>日线下跌后底部转折（lastPivot=low），MACD柱0.19持续翻红。但chanTopDivergence=1（顶背驰警报！），当前位置距离近期低点5.50已有+19.5%涨幅，短期追高风险较大。仅适合等回踩。</p>
+<p><strong>缠论结构：</strong>下跌趋势后的第一波反弹，MACD低位金叉。无中枢结构形成。顶背驰=1提示短期涨幅过大，需警惕回调。均线站上MA5(6.25)和MA20(6.07)，MA60(7.04)远在上方构成中期目标。</p>
+<p><strong>筹码分析：</strong>HHI=18.52（集中度最高！），买压76.96（极强），净买入比6.1%。获利比例仅3.08%，底部筹码锁定良好。筹码是本股最大的亮点。</p>
+<p><strong>量价分析：</strong>量比1.69温和放量，MACD柱0.19在收窄。涨幅+7%但量比仅1.69，量价略有背离。支撑6.07(MA20)，阻力6.85(前高)。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 6.20</span>
+<span class="price-badge price-stop">止损 5.80</span>
+<span class="price-badge price-target">目标1 7.00</span>
+<span class="price-badge price-target">目标2 7.40</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 筹码集中度18.5</span>
+<span class="signal signal-bull">✅ 买压77（极强）</span>
+<span class="signal signal-neutral">➡️ 获利盘仅3%</span>
+<span class="signal signal-bear">❌ 顶背驰预警</span>
+<span class="signal signal-bear">❌ PE 323估值偏高</span>
+</div>
+</div>
+</div>
+
+<!-- Card 5: 600103 青山纸业 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">5. 青山纸业</span>
+<span class="stock-code">600103.SH</span>
+<span class="card-score"><span class="score score-mid">52.5</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">2.79</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+3.72%</div></div>
+<div class="card-item"><div class="label">量比</div><div class="value">1.64</div></div>
+<div class="card-item"><div class="label">换手</div><div class="value">4.17%</div></div>
+<div class="card-item"><div class="label">PE</div><div class="value">159.7</div></div>
+<div class="card-item"><div class="label">市值</div><div class="value">62.5亿</div></div>
+</div>
+<p><strong>买点详解：</strong>日线低位反弹，rangePosition仅0.08（历史极低位）。MACD金叉（柱0.09），但chanTopDivergence=1（顶背驰）和divergenceSignal=1双重警示。底部放量换手尚可，但信号混杂，确定性不足。</p>
+<p><strong>缠论结构：</strong>历史低位（距最低2.57仅+8.6%），lastPivot=low确认底部。但无中枢、无背驰确认，仅为超跌后的技术反弹。MACD柱0.09极弱，DIF/DEA仍在零轴下方。</p>
+<p><strong>筹码分析：</strong>HHI=13.25（集中度一般），买压70.92（较强），净买入比-0.43%（微幅净流出）。获利比例5.4%，套牢盘庞大（priceToVwap=-31.4%）。底部筹码换手不充分。</p>
+<p><strong>量价分析：</strong>量比1.64温和放量，MACD极弱金叉。站上MA5(2.72)和MA20(2.74)，距离极近（不足2%），随时可能跌破。阻力3.12（前高），支撑2.57（历史低点）。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 2.70</span>
+<span class="price-badge price-stop">止损 2.55</span>
+<span class="price-badge price-target">目标1 3.00</span>
+<span class="price-badge price-target">目标2 3.30</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 历史极低位</span>
+<span class="signal signal-bull">✅ MACD金叉</span>
+<span class="signal signal-bear">❌ 顶背驰+背离双预警</span>
+<span class="signal signal-bear">❌ 套牢盘沉重</span>
+<span class="signal signal-neutral">➡️ 低价股波动大</span>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- Summary -->
+<div class="section">
+<h2>📌 总结</h2>
+<div class="summary-box" id="summary-box">
+<strong>今日综合评价：</strong>市场全面普涨（85.6%个股收红），情绪亢奋但<strong>缠论标准买点零命中</strong>——这是一个重要的警示信号。一买/二买/三买策略对5206只股票全部给出"不满足"判定，说明当前上涨缺乏缠论意义上的结构性支撑，更像超跌反弹或情绪驱动。<br><br>
+
+<strong>兜底策略表现：</strong>chan-5filters-main筛选出50只标的，经三维度评分后：<br>
+• 无一只综合分突破80（🟢低风险区）<br>
+• 4只进入60-69观察区（🟡中风险）：太极集团、弘元绿能、金发科技、杭钢股份<br>
+• 8只低于60分（回避区）<br><br>
+
+<strong>重点关注：</strong><br>
+🥇 <strong>太极集团(600129)</strong> — 底背驰确认+中枢结构+强净买，但MACD尚未金叉，等15.50回踩确认<br>
+🥈 <strong>弘元绿能(603185)</strong> — MACD强势翻红+巨量突破+买压85，但已涨4.88%需等回调<br><br>
+
+<strong>操作策略：</strong>今日不宜追高。等待明后日回踩确认，重点关注太极集团和弘元绿能的回踩买点。若市场继续普涨但缠论买点持续零命中，应提高警惕，防范情绪退潮后的快速回撤。仓位控制在3成以下。
+</div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+SClaw AI 分析系统 · 仅供参考，不构成投资建议 · 数据来源：东方财富 · 2026-07-31 14:30
+</div>
+
+</div>
+</body>
+</html>

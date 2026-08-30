@@ -16,6 +16,7 @@ import * as path from "path";
 import { ToolRegistry } from "../tools/registry";
 import { Memory } from "../memory/memory";
 import { Agent } from "./agent";
+import { UserStore } from "../user-store";
 
 export interface ScheduleNotification {
   taskId: string;
@@ -36,6 +37,7 @@ export class PerUserAgentManager {
   public systemPrompt: string = "";
   public allowedToolNames?: string[];
   public pendingNotifications = new Map<string, ScheduleNotification[]>();
+  public userStore?: UserStore;
 
   constructor(registry: ToolRegistry, dataDir: string, allowedToolNames?: string[]) {
     this.registry = registry;
@@ -43,7 +45,7 @@ export class PerUserAgentManager {
     this.allowedToolNames = allowedToolNames;
   }
 
-  /** Get or create an agent for a specific user. */
+  /** Get or create an agent for a specific user. Reads model from user config. */
   getAgent(userId: string): Agent {
     let agent = this.agents.get(userId);
     if (agent) return agent;
@@ -52,14 +54,55 @@ export class PerUserAgentManager {
     fs.mkdirSync(userMemoryDir, { recursive: true });
     const memory = new Memory(userMemoryDir);
 
+    // Read model from user config if available
+    let model: string | undefined;
+    if (this.userStore) {
+      const config = this.userStore.getConfig(userId);
+      model = config.model || undefined;
+      console.log(`[Manager] Creating agent for ${userId}, model from config: "${model}"`);
+    }
+
     agent = new Agent(this.registry, memory, {
       verbose: process.argv.includes("--verbose"),
       systemPrompt: this.systemPrompt,
       allowedToolNames: this.allowedToolNames,
+      model,
     });
 
     this.agents.set(userId, agent);
     return agent;
+  }
+
+  /** Switch model for a user's agent and persist to user config. */
+  switchModel(userId: string, model: string): { success: boolean; model: string; message: string } {
+    const DEFAULT_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"];
+
+    if (!DEFAULT_MODELS.includes(model)) {
+      return {
+        success: false,
+        model,
+        message: `Unsupported model: "${model}". Available: ${DEFAULT_MODELS.join(", ")}`,
+      };
+    }
+
+    // Update user config if we have UserStore
+    if (this.userStore) {
+      const config = this.userStore.getConfig(userId);
+      config.model = model;
+      this.userStore.saveConfig(userId, config);
+    }
+
+    // Update agent if it already exists
+    const agent = this.agents.get(userId);
+    if (agent) {
+      agent.setModel(model);
+    }
+
+    return {
+      success: true,
+      model,
+      message: `Model switched to "${model}". New conversations will use this model.`,
+    };
   }
 
   /** Push a schedule execution notification for a user. */

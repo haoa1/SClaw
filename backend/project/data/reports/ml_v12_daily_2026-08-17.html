@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🤖 ML v12 深度选股日报 2026-08-17</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:#0f172a; color:#e2e8f0; padding:24px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  .header { background:linear-gradient(135deg,#1e3a8a,#312e81 60%,#4c1d95); border-radius:16px; padding:28px; margin-bottom:20px; border:1px solid #334155; }
+  .header h1 { font-size:26px; font-weight:800; letter-spacing:1px; }
+  .header .sub { margin-top:8px; font-size:14px; color:#a5b4fc; }
+  .badges { margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+  .badge { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2); padding:4px 12px; border-radius:999px; font-size:12px; }
+  .badge.green { background:rgba(16,185,129,.15); border-color:rgba(16,185,129,.4); color:#6ee7b7; }
+  .badge.red { background:rgba(239,68,68,.15); border-color:rgba(239,68,68,.4); color:#fca5a5; }
+  .badge.blue { background:rgba(99,102,241,.15); border-color:rgba(99,102,241,.4); color:#a5b4fc; }
+  .panel { background:#1e293b; border-radius:14px; padding:22px; margin-bottom:18px; border:1px solid #334155; }
+  .panel h2 { font-size:18px; font-weight:700; margin-bottom:14px; color:#f1f5f9; border-left:4px solid #6366f1; padding-left:10px; }
+  .panel h2 .icon { margin-right:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { background:#334155; color:#94a3b8; text-align:left; padding:9px 10px; font-weight:600; }
+  td { padding:9px 10px; border-bottom:1px solid #293548; }
+  tr:nth-child(even) td { background:#243244; }
+  .up { color:#f87171; } .down { color:#34d399; }
+  .rank1 td { background:rgba(245,158,11,.08) !important; }
+  .card { border:1px solid #334155; border-radius:12px; padding:16px; margin-bottom:14px; background:#172033; }
+  .card .top { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; }
+  .card .name { font-size:17px; font-weight:700; }
+  .card .code { font-size:12px; color:#94a3b8; margin-left:6px; }
+  .card .score { background:#4f46e5; padding:3px 10px; border-radius:8px; font-size:13px; font-weight:700; }
+  .card .price { font-size:20px; font-weight:800; }
+  .metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+  .metric { background:#1e293b; border-radius:10px; padding:10px 12px; border:1px solid #293548; }
+  .metric .k { font-size:11px; color:#94a3b8; margin-bottom:4px; }
+  .metric .v { font-size:14px; font-weight:600; }
+  .verdict { margin-top:12px; font-size:13px; line-height:1.7; background:rgba(99,102,241,.08); border-left:3px solid #6366f1; padding:10px 14px; border-radius:0 8px 8px 0; }
+  .verdict.good { background:rgba(16,185,129,.08); border-left-color:#10b981; }
+  .verdict.warn { background:rgba(245,158,11,.08); border-left-color:#f59e0b; }
+  .verdict.bad { background:rgba(239,68,68,.08); border-left-color:#ef4444; }
+  .risk { font-size:12px; color:#fca5a5; margin-top:8px; }
+  .footer { font-size:11px; color:#64748b; text-align:center; margin-top:20px; line-height:1.8; }
+  .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:6px; margin-right:4px; }
+  .tag.r { background:rgba(239,68,68,.2); color:#fca5a5; }
+  .tag.g { background:rgba(16,185,129,.2); color:#6ee7b7; }
+  .tag.y { background:rgba(245,158,11,.2); color:#fcd34d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>🤖 ML v12 深度选股日报</h1>
+    <div class="sub">2026-08-17（周一） · 15:00 收盘 · 模型：v12-mlp-87（87核心特征 / 8模型集成 / IC 0.133）</div>
+    <div class="badges">
+      <span class="badge green">📈 上涨 4058</span>
+      <span class="badge red">📉 下跌 996</span>
+      <span class="badge">➖ 平盘 152</span>
+      <span class="badge green">上涨占比 78% · 普涨日</span>
+      <span class="badge blue">🤖 高分池共振</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">🏆</span>ML v12 全市场评分 Top 10</h2>
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:10px;">评分基于 08-14 收盘特征；涨跌幅/量比/换手/PE/PB 为今日 08-17 收盘实时核验</div>
+    <table>
+      <tr><th>#</th><th>代码</th><th>名称</th><th>评分</th><th>今日涨跌</th><th>换手</th><th>量比</th><th>PE</th><th>PB</th><th>核验</th></tr>
+      <tr class="rank1"><td>1</td><td>688231</td><td>隆达股份</td><td><b>80.7</b></td><td class="up">+7.10%</td><td>1.57%</td><td>1.40</td><td>110.4</td><td>3.68</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>2</td><td>300321</td><td>同大股份</td><td><b>79.6</b></td><td class="up">+2.06%</td><td>3.49%</td><td>1.03</td><td>355.1</td><td>4.95</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>3</td><td>603898</td><td>好莱客</td><td><b>78.4</b></td><td class="down">-1.35%</td><td>1.17%</td><td>0.95</td><td>亏损</td><td>1.17</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>4</td><td>301276</td><td>嘉曼服饰</td><td><b>77.0</b></td><td class="up">+8.36%</td><td>6.77%</td><td>3.32</td><td>26.3</td><td>1.39</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>5</td><td>605318</td><td>法狮龙</td><td><b>76.9</b></td><td class="up">+3.13%</td><td>1.07%</td><td>1.08</td><td>极高</td><td>15.89</td><td><span class="tag y">深核验</span></td></tr>
+      <tr><td>6</td><td>688273</td><td>麦澜德</td><td>76.4</td><td class="up">+2.05%</td><td>1.07%</td><td>1.02</td><td>37.7</td><td>2.45</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>7</td><td>688163</td><td>赛伦生物</td><td>75.4</td><td class="up">+3.90%</td><td>1.14%</td><td>1.16</td><td>77.1</td><td>3.45</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>8</td><td>001226</td><td>拓山重工</td><td>74.0</td><td class="up">+6.02%</td><td>3.12%</td><td>2.16</td><td>146.4</td><td>4.51</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>9</td><td>688112</td><td>鼎阳科技</td><td>73.5</td><td class="up">+10.80%</td><td>2.54%</td><td>1.51</td><td>66.2</td><td>6.04</td><td><span class="tag g">候选</span></td></tr>
+      <tr><td>10</td><td>301387</td><td>光大同创</td><td>73.4</td><td class="up">+2.56%</td><td>5.60%</td><td>0.91</td><td>亏损</td><td>3.98</td><td><span class="tag g">候选</span></td></tr>
+    </table>
+    <div class="risk" style="margin-top:10px;">⚠️ 核验剔除：好莱客（PE为负/亏损）、光大同创（PE为负/亏损）、法狮龙（PE≈3.3万/几乎无盈利）基本面瑕疵明显，列为高风险观察；其余无 ST/退市/停牌/仙股问题。</div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">🔍</span>Top 5 深度分析（缠论 + 筹码 + MACD + 均线 + 量价）</h2>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">🥇 隆达股份</span><span class="code">688231 · 科创板</span></div>
+        <div style="text-align:right"><span class="score">80.7 分</span><br><span class="price up">32.14 (+7.10%)</span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <span class="tag g">📈 放量突破</span><span class="tag g">💰 买压 78.6</span><span class="tag g">净买入 +5.3%</span><span class="tag g">📊 MACD 红柱放大</span><span class="tag r">⚠️ 日线顶背驰</span><span class="tag y">🔶 2中枢</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线 MA5/20/60</div><div class="v">29.89 / 27.12 / 32.46</div></div>
+        <div class="metric"><div class="k">MACD DIF/DEA/H</div><div class="v">-0.23 / -1.11 / +1.76</div></div>
+        <div class="metric"><div class="k">筹码 获利盘</div><div class="v">11.4%</div></div>
+        <div class="metric"><div class="k">PE / PB</div><div class="v">110.4 / 3.68</div></div>
+      </div>
+      <div class="verdict warn"><b>缠论：</b>2中枢后上行段，日线顶背驰预警；MA60（32.46）近在咫尺，盘中最高 32.30 贴近未破。<b>筹码：</b>买压 78.6 强势、净买入 +5.3%，获利盘仅 11.4%（低位筹码为主）。<b>结论：</b>ML 第一 + 今日放量共振，走势最强；但顶背驰 + MA60 压制是核心矛盾——放量站稳 32.5 打开空间，跌破 30 前低则背驰确认。高弹性标的，控仓参与。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">🥈 同大股份</span><span class="code">300321 · 创业板</span></div>
+        <div style="text-align:right"><span class="score">79.6 分</span><br><span class="price up">35.19 (+2.06%)</span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <span class="tag g">📊 MACD 红柱放大</span><span class="tag r">⚠️ 净卖出 -2.8%</span><span class="tag r">⚠️ 高估值 PE 355</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线 MA5/20/60</div><div class="v">33.90 / 32.07 / 41.68</div></div>
+        <div class="metric"><div class="k">MACD DIF/DEA/H</div><div class="v">-2.00 / -3.01 / +2.04</div></div>
+        <div class="metric"><div class="k">筹码 获利盘/买压</div><div class="v">6.8% / 72.6</div></div>
+        <div class="metric"><div class="k">PE / PB</div><div class="v">355.1 / 4.95</div></div>
+      </div>
+      <div class="verdict warn"><b>缠论：</b>1中枢、无背驰；站上 MA5/MA20 但距 MA60（41.68）约 -15%，属下跌后反弹修复段。<b>筹码：</b>获利盘仅 6.8%、套牢盘沉重，净卖出 -2.8%，量能一般。<b>结论：</b>PE 355 极高 + 中期均线压制 + 资金净流出三重瑕疵，反弹偏弱，不追，等放量突破 MA60 再评估。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">🥉 好莱客</span><span class="code">603898 · 沪主板</span></div>
+        <div style="text-align:right"><span class="score">78.4 分</span><br><span class="price down">11.67 (-1.35%)</span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <span class="tag r">📉 冲高回落</span><span class="tag g">💰 净买入 +8.6%</span><span class="tag g">🔔 底部放量</span><span class="tag r">⚠️ 亏损（PE负）</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线 MA5/20/60</div><div class="v">11.34 / 10.80 / 12.47</div></div>
+        <div class="metric"><div class="k">MACD DIF/DEA/H</div><div class="v">-0.30 / -0.52 / +0.44</div></div>
+        <div class="metric"><div class="k">筹码 获利盘/净买</div><div class="v">5.5% / +8.6%</div></div>
+        <div class="metric"><div class="k">PE / PB</div><div class="v">亏损 / 1.17</div></div>
+      </div>
+      <div class="verdict warn"><b>缠论：</b>1中枢、无买卖点；站上 MA5/MA20，仍被 MA60（12.47）压制。<b>筹码：</b>检测到底部放量信号，净买入 +8.6%，PB 1.17 低估值，困境反转逻辑。<b>结论：</b>今日冲高回落收阴、量能不足；公司亏损状态下 ML 高分持续性存疑，仅适合低吸埋伏，突破 12.5 前保持耐心。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">4️⃣ 嘉曼服饰</span><span class="code">301276 · 创业板</span></div>
+        <div style="text-align:right"><span class="score">77.0 分</span><br><span class="price up">22.56 (+8.36%)</span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <span class="tag g">📈 放量大涨</span><span class="tag g">💰 买压 85.5 极强</span><span class="tag g">📈 全均线多头</span><span class="tag g">✅ 估值最健康</span><span class="tag r">⚠️ 日线顶背驰</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线 MA5/20/60</div><div class="v">21.15 / 19.21 / 22.43</div></div>
+        <div class="metric"><div class="k">MACD DIF/DEA/H</div><div class="v">-0.10 / -0.60 / +1.01</div></div>
+        <div class="metric"><div class="k">筹码 获利盘/集中度</div><div class="v">8.5% / 18.4</div></div>
+        <div class="metric"><div class="k">PE / PB</div><div class="v">26.3 / 1.39</div></div>
+      </div>
+      <div class="verdict good"><b>缠论：</b>MA5/MA20/MA60 全均线多头，Top10 中均线结构最干净；DIF 即将上穿 0 轴。但日线顶背驰预警，急涨后距 MA5 已 +6.7%。<b>筹码：</b>买压 85.5 全榜最强、净买入 +5.8%、量比 3.32 放量确认；PE 26 / PB 1.39 全榜估值最健康。<b>结论：</b>攻守兼备的标的，但短线急涨 + 顶背驰，不追高，回踩 MA60（22.4）/MA5（21.1）不破再考虑。</div>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div><span class="name">5️⃣ 法狮龙</span><span class="code">605318 · 沪主板</span></div>
+        <div style="text-align:right"><span class="score">76.9 分</span><br><span class="price up">80.83 (+3.13%)</span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <span class="tag g">🔔 日线底背驰</span><span class="tag r">⚠️ 净卖出 -7.1%</span><span class="tag r">⚠️ PE≈3.3万 / PB 15.9</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="k">均线 MA5/20/60</div><div class="v">78.43 / 76.44 / 95.50</div></div>
+        <div class="metric"><div class="k">MACD DIF/DEA/H</div><div class="v">-3.35 / -5.12 / +3.54</div></div>
+        <div class="metric"><div class="k">筹码 获利盘/净买</div><div class="v">4.7% / -7.1%</div></div>
+        <div class="metric"><div class="k">PE / PB</div><div class="v">≈32833 / 15.89</div></div>
+      </div>
+      <div class="verdict bad"><b>缠论：</b>唯一出现日线底背驰的标的，MACD 红柱 3.54 放大，超跌修复动能存在；但距 MA60（95.5）约 -15%，属下跌趋势反抽。<b>筹码：</b>获利盘仅 4.7%、资金净卖出 -7.1%，反弹缺乏配合。<b>结论：</b>估值极端、基本面支撑极弱，纯超跌博弈；底背驰是唯一看点但趋势未反转，列为高风险观察，不参与。</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">👀</span>第 6-10 名速览（观察池）</h2>
+    <table>
+      <tr><th>代码</th><th>名称</th><th>评分</th><th>今日涨跌</th><th>PE</th><th>PB</th><th>点评</th></tr>
+      <tr><td>688273</td><td>麦澜德</td><td>76.4</td><td class="up">+2.05%</td><td>37.7</td><td>2.45</td><td>医疗器械，估值温和，量价平稳，等买点</td></tr>
+      <tr><td>688163</td><td>赛伦生物</td><td>75.4</td><td class="up">+3.90%</td><td>77.1</td><td>3.45</td><td>生物疫苗，温和放量上行，趋势未破</td></tr>
+      <tr><td>001226</td><td>拓山重工</td><td>74.0</td><td class="up">+6.02%</td><td>146.4</td><td>4.51</td><td>工程机械，量比 2.16 放量上攻，PE 偏高</td></tr>
+      <tr><td>688112</td><td>鼎阳科技</td><td>73.5</td><td class="up">+10.80%</td><td>66.2</td><td>6.04</td><td>电子测量仪器，Top10 涨幅王，动量强</td></tr>
+      <tr><td>301387</td><td>光大同创</td><td>73.4</td><td class="up">+2.56%</td><td>亏损</td><td>3.98</td><td>消费电子，亏损股 + 换手 5.6%，波动大</td></tr>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">🚨</span>风险提示</h2>
+    <div style="font-size:13px;line-height:1.9;color:#e2e8f0;">
+      <p>1️⃣ <b style="color:#fca5a5">顶背驰预警（隆达股份 / 嘉曼服饰）</b>：两只今日强势标的均出现日线顶背驰预警，急涨后存在回调风险，切忌追高。</p>
+      <p>2️⃣ <b style="color:#fca5a5">高估值陷阱（同大股份 / 法狮龙）</b>：PE 355 / PB 15.9 已脱离基本面锚，资金撤退回撤空间大。</p>
+      <p>3️⃣ <b style="color:#fca5a5">亏损股（好莱客 / 光大同创）</b>：PE 为负，ML 得分高不代表盈利兑现，只适合小仓位博弈。</p>
+      <p>4️⃣ <b style="color:#fca5a5">模型局限</b>：ML v12 打分基于 08-14 收盘特征，今日已普涨兑现部分涨幅，追高风险自行评估。</p>
+      <p>5️⃣ <b style="color:#fca5a5">普涨后分化</b>：今日 78% 个股上涨属情绪高点，次日大概率分化，注意仓位与止损纪律。</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="icon">📌</span>今日总结</h2>
+    <div style="font-size:13px;line-height:1.9;">
+      <p><b style="color:#a5b4fc">市场定调：</b>普涨日（4058 涨 / 996 跌），ML 高分池与市场共振，Top5 中 4 只收红，隆达股份（+7.1%）与嘉曼服饰（+8.4%）领涨。</p>
+      <p><b style="color:#6ee7b7">⭐ 重点（建议跟踪）：</b>🥇 <b>嘉曼服饰</b>——全均线多头 + 买压 85.5 最强 + 估值全榜最健康（PE 26/PB 1.4），攻守兼备；🥈 <b>隆达股份</b>——ML 第一 + 放量突破，但顶背驰 + MA60 压制，看突破确认。</p>
+      <p><b style="color:#fcd34d">👀 观察（等买点）：</b>麦澜德、赛伦生物（温和放量）、鼎阳科技（动量强但已大涨 10.8%，等回踩）、拓山重工（放量上攻）。</p>
+      <p><b style="color:#fca5a5">⏸️ 回避：</b>法狮龙（估值极端、净卖出）、同大股份（高 PE + 中期均线压制）、好莱客 / 光大同创（亏损股）。</p>
+      <p><b style="color:#a5b4fc">操作策略：</b>不追今日已大涨标的。<b style="color:#6ee7b7">嘉曼服饰回踩 MA60 22.4 / MA5 21.1 不破再考虑；隆达股份放量站稳 32.5 视为突破有效，跌破 30 则顶背驰确认离场。</b>普涨次日注意分化，整体仓位中等，留子弹。</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    🦀 SClaw ML v12 深度选股日报 · 仅供研究参考，不构成投资建议<br>
+    模型：v12-mlp-87（87核心特征 / 8模型集成 / 664万样本 / IC 0.133）· 数据源：实时行情 + 缠论/筹码/量价指标<br>
+    Generated by AI · 2026-08-17 15:00
+  </div>
+
+</div>
+</body>
+</html>

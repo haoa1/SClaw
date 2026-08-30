@@ -5,7 +5,8 @@ import PluginPanel from './components/PluginPanel'
 import StrategyConfig from './components/StrategyConfig'
 import ResultsTable from './components/ResultsTable'
 import LoadingSpinner from './components/LoadingSpinner'
-import ChatPanel from './components/ChatPanel'
+import ChatPanel, { ChatPanelHandle } from './components/ChatPanel'
+import ChatStockList, { AiStock } from './components/ChatStockList'
 import ResultsModal from './components/ResultsModal'
 import WatchAlertToast from './components/WatchAlertToast'
 import WatchAlertPanel from './components/WatchAlertPanel'
@@ -52,6 +53,11 @@ export default function App() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [agentHighlight, setAgentHighlight] = useState<string | null>(null)
   const highlightTimeout = useRef<ReturnType<typeof setTimeout>>()
+  const chatRef = useRef<ChatPanelHandle>(null)
+  // AI 选股列表 — 左栏 (来自 run_screen / ml_screen action)
+  const [aiStocks, setAiStocks] = useState<AiStock[]>([])
+  const [stockPanelOpen, setStockPanelOpen] = useState(true)
+  const [viewingStock, setViewingStock] = useState<AiStock | null>(null)
 
   // Watch alerts
   const {
@@ -271,6 +277,24 @@ export default function App() {
         break
       case 'run_screen':
         setError('')
+        // 收集 AI 选股结果 → 左栏 AI选股列表
+        if (payload?.results?.length) {
+          setAiStocks(prev => {
+            const merged = [...prev]
+            for (const r of payload.results) {
+              if (!merged.some(x => x.code === r.code)) {
+                merged.push({
+                  code: r.code,
+                  name: r.name || r.code,
+                  score: typeof r.score === 'number' ? r.score : 0,
+                  signals: Array.isArray(r.signals) ? r.signals : [],
+                })
+              }
+            }
+            return merged
+          })
+          setStockPanelOpen(true)
+        }
         if (payload.results && payload.stats) {
           // Use results from backend (AI's run_screen tool)
           setResults(payload.results)
@@ -310,6 +334,34 @@ export default function App() {
           })
         } else {
           runScreen()
+        }
+        break
+      case 'ml_screen':
+        // ML 因子选股结果: 直接显示到中间列表 (不弹 modal)
+        setError('')
+        // 收集 AI 选股结果 → 左栏 AI选股列表
+        if (payload?.results?.length) {
+          setAiStocks(prev => {
+            const merged = [...prev]
+            for (const r of payload.results) {
+              if (!merged.some(x => x.code === r.code)) {
+                merged.push({
+                  code: r.code,
+                  name: r.name || r.code,
+                  score: typeof r.score === 'number' ? r.score : 0,
+                  signals: Array.isArray(r.signals) ? r.signals : [],
+                })
+              }
+            }
+            return merged
+          })
+          setStockPanelOpen(true)
+        }
+
+        if (payload.results) {
+          setResults(payload.results)
+          if (payload.stats) setStats(payload.stats)
+          setTab('results')
         }
         break
       case 'set_highlight':
@@ -651,6 +703,20 @@ export default function App() {
               </Suspense>
             </div>
           )}
+
+          {/* AI 选股列表 — 固定在左栏底部 */}
+          <div className="sticky bottom-0 z-10 -mx-3 md:-mx-6">
+            <ChatStockList
+              stocks={aiStocks}
+              open={stockPanelOpen}
+              onToggle={() => setStockPanelOpen(o => !o)}
+              onSelect={s => setViewingStock(s)}
+              onDiscuss={s => {
+                chatRef.current?.send(`请用缠论帮我深入讨论 ${s.name} (${s.code}):当前买卖点、中枢位置、背驰情况,以及后续操作建议`)
+              }}
+              onClear={() => setAiStocks([])}
+            />
+          </div>
         </div>
 
         {/* Right: AI Chat — sidebar on desktop, overlay on mobile */}
@@ -658,6 +724,7 @@ export default function App() {
           showMobileChat ? 'fixed inset-0 top-[57px] z-50 md:static md:inset-auto md:flex' : 'hidden'
         }`}>
           <ChatPanel
+            ref={chatRef}
             onHighlight={setAgentHighlight}
             highlightTimeout={highlightTimeout}
             onAction={handleAgentAction}
@@ -689,6 +756,28 @@ export default function App() {
           />
         )}
       </div>
+      )}
+
+      {/* 缠论图 overlay — 点击左栏 AI选股列表中的股票查看 */}
+      {viewingStock && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
+            <span className="text-bronze font-mono text-sm">
+              🔍 缠论分析: {viewingStock.name} ({viewingStock.code})
+            </span>
+            <button
+              onClick={() => setViewingStock(null)}
+              className="text-gray-500 hover:text-red-400 text-xs font-mono px-3 py-1 border border-gray-800 rounded hover:border-red-900 transition-colors cursor-pointer"
+            >
+              ✕ 关闭
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500 text-sm font-mono">Loading Chan...</div>}>
+              <ChanPanel onBack={() => setViewingStock(null)} initialCode={viewingStock.code} />
+            </Suspense>
+          </div>
+        </div>
       )}
 
       {/* AI Results Popup Modal */}

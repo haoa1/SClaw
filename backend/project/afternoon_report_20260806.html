@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+/* ============================================================
+   SClaw 午盘选股邮件模板 · 浅色主题 · 邮件客户端兼容版
+   - 浅色背景，白卡片，深灰文字（不用纯黑 #000）
+   - A股红涨绿跌：红 #dc2626 / 绿 #16a34a
+   - 表格 + inline-block 布局（邮件客户端兼容，不用 flex/grid）
+   - 所有 AI 填充锚点 ID/类名与原模板一致
+   ============================================================ */
+body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9; color: #334155; margin: 0; padding: 20px; }
+.container { max-width: 860px; margin: 0 auto; }
+
+/* ===== Header ===== */
+.header { background: #ffffff; border: 1px solid #e2e8f0; border-top: 4px solid #2d5a8e; border-radius: 12px; padding: 24px 20px; margin-bottom: 16px; text-align: center; }
+.header h1 { color: #1e3a5f; margin: 0 0 8px; font-size: 22px; letter-spacing: 1px; }
+.header .badge-row { text-align: center; margin: 10px 0; }
+.header .badge { display: inline-block; padding: 4px 14px; border-radius: 12px; font-size: 12px; font-weight: 600; margin: 2px 4px; }
+.badge-chan { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+.badge-chip { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.badge-vp { background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8; }
+.header .sub { color: #64748b; font-size: 13px; margin-top: 8px; }
+
+/* ===== Sections ===== */
+.section { background: #ffffff; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; border: 1px solid #e2e8f0; }
+.section h2 { color: #1e3a5f; font-size: 16px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+.section h2 .subtitle { color: #94a3b8; font-size: 13px; font-weight: normal; }
+
+/* ===== Warning Box ===== */
+.warning-box { background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; color: #92400e; }
+.warning-box strong { color: #b45309; }
+
+/* ===== Table ===== */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #f1f5f9; color: #1e3a5f; padding: 8px 6px; text-align: center; font-weight: 600; font-size: 12px; border-bottom: 2px solid #cbd5e1; white-space: nowrap; }
+tbody td { padding: 7px 6px; text-align: center; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+tbody tr:nth-child(even) td { background: #f8fafc; }
+
+/* Top 5 highlight */
+.top-1 td { background: #fffbeb !important; }
+.top-2 td { background: #f0f9ff !important; }
+.top-3 td { background: #fdf2f8 !important; }
+.top-4 td, .top-5 td { background: #f8fafc !important; }
+
+/* Rank medals */
+.rank-1 { color: #d97706; font-weight: bold; }
+.rank-2 { color: #64748b; font-weight: bold; }
+.rank-3 { color: #b45309; font-weight: bold; }
+
+/* Score badges */
+.score { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 13px; font-weight: 700; min-width: 30px; text-align: center; }
+.score-excellent { background: #dcfce7; color: #15803d; }
+.score-good { background: #dbeafe; color: #1d4ed8; }
+.score-mid { background: #fef9c3; color: #a16207; }
+.score-warn { background: #fee2e2; color: #b91c1c; }
+
+/* Risk badges */
+.risk-low { color: #15803d; font-weight: 600; }
+.risk-mid { color: #a16207; font-weight: 600; }
+.risk-high { color: #ea580c; font-weight: 600; }
+.risk-danger { color: #dc2626; font-weight: 700; }
+
+/* Price colors (A股: 红涨绿跌) */
+.up { color: #dc2626; font-weight: 600; }
+.down { color: #16a34a; font-weight: 600; }
+.flat { color: #94a3b8; }
+
+/* ===== Operation Zones (inline-block 3列) ===== */
+.zone-container { margin: 12px 0; text-align: center; }
+.zone { width: 31%; display: inline-block; vertical-align: top; padding: 12px 8px; border-radius: 10px; text-align: center; margin: 0 0.5%; }
+.zone-priority { background: #f0fdf4; border: 1px solid #86efac; }
+.zone-watch { background: #fffbeb; border: 1px solid #fcd34d; }
+.zone-avoid { background: #fef2f2; border: 1px solid #fca5a5; }
+.zone .zone-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.zone .zone-count { font-size: 26px; font-weight: 800; }
+.zone .zone-range { font-size: 12px; color: #64748b; }
+.zone-priority .zone-title { color: #15803d; }
+.zone-priority .zone-count { color: #16a34a; }
+.zone-watch .zone-title { color: #a16207; }
+.zone-watch .zone-count { color: #d97706; }
+.zone-avoid .zone-title { color: #b91c1c; }
+.zone-avoid .zone-count { color: #dc2626; }
+
+/* ===== Deep Analysis Card ===== */
+.card { background: #f8fafc; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
+.card-header { overflow: hidden; padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
+.card-header .stock-name { float: left; font-size: 16px; font-weight: 700; color: #0f172a; }
+.card-header .stock-code { float: left; color: #64748b; font-size: 13px; margin-left: 6px; padding-top: 3px; }
+.card-header .card-score { float: right; font-size: 18px; font-weight: 800; }
+.card-body { font-size: 14px; color: #334155; }
+.card-body p { margin: 6px 0; }
+
+/* Card detail grid (inline-block 2列) */
+.card-grid { margin: 8px 0; }
+.card-item { width: 47.5%; display: inline-block; vertical-align: top; background: #ffffff; border-radius: 8px; padding: 8px 10px; border: 1px solid #e2e8f0; margin: 0 0 8px 0; }
+.card-item:nth-child(odd) { margin-right: 2%; }
+.card-item .label { color: #94a3b8; font-size: 12px; margin-bottom: 2px; }
+.card-item .value { font-size: 14px; font-weight: 600; color: #1e293b; }
+
+/* Signal tags */
+.signal-row { margin: 8px 0; }
+.signal { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }
+.signal-bull { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.signal-bear { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+.signal-neutral { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+
+/* Key price badges */
+.price-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 1px 2px; }
+.price-buy { background: #dcfce7; color: #15803d; }
+.price-stop { background: #fee2e2; color: #b91c1c; }
+.price-target { background: #eef2ff; color: #4338ca; }
+
+/* ===== Summary ===== */
+.summary-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #2d5a8e; border-radius: 10px; padding: 12px 16px; font-size: 14px; color: #334155; line-height: 1.7; }
+.summary-box strong { color: #0f172a; }
+
+/* ===== Ticker ===== */
+.ticker { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.ticker .item { display: inline-block; margin-right: 14px; }
+.ticker .item .val { font-weight: 700; font-size: 14px; color: #1e293b; }
+
+/* ===== Footer ===== */
+.footer { text-align: center; padding: 16px; color: #94a3b8; font-size: 12px; border-top: 1px solid #e2e8f0; margin-top: 8px; }
+.footer a { color: #64748b; text-decoration: none; }
+
+/* ===== Responsive ===== */
+@media (max-width: 600px) {
+  body { padding: 10px; }
+  table { font-size: 11px; }
+  thead th, tbody td { padding: 5px 3px; }
+  .zone { width: 100%; margin: 4px 0; }
+  .card-item { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+<h1>🦀 SClaw 缠论·筹码·量价 三维度午盘分析</h1>
+<div class="badge-row">
+<span class="badge badge-chan">📐 缠论 40%</span>
+<span class="badge badge-chip">📊 筹码 30%</span>
+<span class="badge badge-vp">📈 量价 30%</span>
+</div>
+<div class="sub" id="header-sub">📅 2026-08-06 14:33 CST · 全市场 2445↑ / 2580↓ / 181平 · 46.97%个股上涨</div>
+</div>
+
+<!-- Market Status Warning -->
+<div class="warning-box" id="market-warning">
+⚠️ <strong>市场状态提示</strong>：今日全市场跌多涨少（2445涨 / 2580跌，上涨占比46.97%），结构性分化明显。资金集中在短线题材（粮食/农业、煤炭、通信设备），多只个股涨停；权重与高位股走弱。短线情绪偏谨慎，热点轮动加速，追高需防涨停炸板，注意量能持续性。
+</div>
+
+<!-- Scoring Table -->
+<div class="section">
+<h2>📋 三维度综合评分总表</h2>
+<table id="score-table">
+<thead>
+<tr>
+<th>#</th><th>股票</th><th>现价</th><th>涨跌%</th><th>买点</th><th>缠论</th><th>筹码</th><th>量价</th><th>⚡综合</th><th>买入价</th><th>止损价</th><th>目标价</th><th>风险</th>
+</tr>
+</thead>
+<tbody id="score-body">
+<tr class="top-1">
+<td><span class="rank-1">🥇 1</span></td>
+<td>301356 天振股份</td>
+<td>19.34</td>
+<td><span class="up">+3.37%</span></td>
+<td>🔥 30F二买+三买</td>
+<td><span class="score score-excellent">88</span></td>
+<td><span class="score score-excellent">82</span></td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-excellent">83.2</span></td>
+<td>19.27</td>
+<td>17.94</td>
+<td>22.68</td>
+<td><span class="risk-low">🟢低</span></td>
+</tr>
+<tr class="top-2">
+<td><span class="rank-2">🥈 2</span></td>
+<td>600121 郑州煤电</td>
+<td>4.30</td>
+<td><span class="up">+9.97%</span></td>
+<td>5条件·涨停突破</td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-excellent">84</span></td>
+<td><span class="score score-excellent">82</span></td>
+<td><span class="score score-excellent">81.0</span></td>
+<td>4.30</td>
+<td>3.90</td>
+<td>4.55</td>
+<td><span class="risk-low">🟢低</span></td>
+</tr>
+<tr class="top-3">
+<td><span class="rank-3">🥉 3</span></td>
+<td>600199 金种子酒</td>
+<td>8.18</td>
+<td><span class="up">+4.60%</span></td>
+<td>5条件·中枢多头</td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-excellent">85</span></td>
+<td><span class="score score-excellent">80</span></td>
+<td><span class="score score-excellent">80.7</span></td>
+<td>8.18</td>
+<td>7.72</td>
+<td>8.59</td>
+<td><span class="risk-low">🟢低</span></td>
+</tr>
+<tr class="top-4">
+<td>4</td>
+<td>600990 四创电子</td>
+<td>18.07</td>
+<td><span class="up">+1.69%</span></td>
+<td>🔥 30F二买</td>
+<td><span class="score score-excellent">84</span></td>
+<td><span class="score score-mid">68</span></td>
+<td><span class="score score-good">76</span></td>
+<td><span class="score score-good">76.8</span></td>
+<td>18.10</td>
+<td>17.07</td>
+<td>19.80</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr class="top-5">
+<td>5</td>
+<td>603220 中贝通信</td>
+<td>20.30</td>
+<td><span class="up">+3.68%</span></td>
+<td>5条件·回踩确认</td>
+<td><span class="score score-good">76</span></td>
+<td><span class="score score-mid">74</span></td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-good">76.0</span></td>
+<td>20.30</td>
+<td>18.89</td>
+<td>22.40</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr>
+<td>6</td>
+<td>600127 金健米业</td>
+<td>6.17</td>
+<td><span class="up">+9.98%</span></td>
+<td>5条件·涨停突破</td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-mid">70</span></td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-good">75.6</span></td>
+<td>6.17</td>
+<td>5.60</td>
+<td>6.59</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr>
+<td>7</td>
+<td>600162 香江控股</td>
+<td>3.47</td>
+<td><span class="up">+2.66%</span></td>
+<td>5条件·中枢突破</td>
+<td><span class="score score-mid">74</span></td>
+<td><span class="score score-good">78</span></td>
+<td><span class="score score-mid">74</span></td>
+<td><span class="score score-good">75.2</span></td>
+<td>3.47</td>
+<td>3.03</td>
+<td>3.67</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr>
+<td>8</td>
+<td>600313 农发种业</td>
+<td>5.94</td>
+<td><span class="up">+5.32%</span></td>
+<td>5条件·放量突破</td>
+<td><span class="score score-mid">70</span></td>
+<td><span class="score score-mid">72</span></td>
+<td><span class="score score-excellent">80</span></td>
+<td><span class="score score-mid">73.6</span></td>
+<td>5.94</td>
+<td>5.64</td>
+<td>6.09</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr>
+<td>9</td>
+<td>600151 航天机电</td>
+<td>11.06</td>
+<td><span class="up">+6.80%</span></td>
+<td>5条件·反弹</td>
+<td><span class="score score-mid">72</span></td>
+<td><span class="score score-mid">70</span></td>
+<td><span class="score score-mid">74</span></td>
+<td><span class="score score-mid">72.0</span></td>
+<td>11.06</td>
+<td>9.91</td>
+<td>11.48</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr>
+<td>10</td>
+<td>603585 苏利股份</td>
+<td>10.10</td>
+<td><span class="up">+0.20%</span></td>
+<td>🔥 30F二买</td>
+<td><span class="score score-mid">72</span></td>
+<td><span class="score score-mid">66</span></td>
+<td><span class="score score-mid">74</span></td>
+<td><span class="score score-mid">70.8</span></td>
+<td>10.10</td>
+<td>9.63</td>
+<td>10.37</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr>
+<td>11</td>
+<td>603002 宏昌电子</td>
+<td>13.99</td>
+<td><span class="up">+3.48%</span></td>
+<td>5条件·底背离</td>
+<td><span class="score score-mid">72</span></td>
+<td><span class="score score-mid">68</span></td>
+<td><span class="score score-mid">70</span></td>
+<td><span class="score score-mid">70.2</span></td>
+<td>13.99</td>
+<td>12.90</td>
+<td>14.57</td>
+<td><span class="risk-mid">🟡中</span></td>
+</tr>
+<tr>
+<td>12</td>
+<td>600353 旭光电子</td>
+<td>26.33</td>
+<td><span class="up">+3.74%</span></td>
+<td>5条件·反弹</td>
+<td><span class="score score-mid">65</span></td>
+<td><span class="score score-mid">68</span></td>
+<td><span class="score score-mid">65</span></td>
+<td><span class="score score-warn">65.9</span></td>
+<td>26.33</td>
+<td>24.27</td>
+<td>28.72</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+<tr>
+<td>13</td>
+<td>603061 金海通</td>
+<td>306.20</td>
+<td><span class="up">+4.49%</span></td>
+<td>5条件·超跌反弹</td>
+<td><span class="score score-mid">62</span></td>
+<td><span class="score score-mid">65</span></td>
+<td><span class="score score-warn">60</span></td>
+<td><span class="score score-warn">62.3</span></td>
+<td>306.20</td>
+<td>275.00</td>
+<td>312.52</td>
+<td><span class="risk-high">🟠较高</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- Operation Suggestions -->
+<div class="section">
+<h2>📋 操作建议 <span class="subtitle">按综合评分分级</span></h2>
+<div class="zone-container" id="operation-zones">
+<div class="zone zone-priority">
+<div class="zone-title">⭐ 优先关注</div>
+<div class="zone-count" id="count-priority">11</div>
+<div class="zone-range">综合分 ≥ 70</div>
+</div>
+<div class="zone zone-watch">
+<div class="zone-title">👀 观察等待</div>
+<div class="zone-count" id="count-watch">2</div>
+<div class="zone-range">综合分 60 ~ 69</div>
+</div>
+<div class="zone zone-avoid">
+<div class="zone-title">⏸️ 暂时回避</div>
+<div class="zone-count" id="count-avoid">0</div>
+<div class="zone-range">综合分 &lt; 60</div>
+</div>
+</div>
+</div>
+
+<!-- Top 5 Deep Analysis -->
+<div class="section">
+<h2>🔍 前5名深度分析</h2>
+<div id="analysis-cards">
+
+<!-- Card 1 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">天振股份</span>
+<span class="stock-code">301356</span>
+<span class="card-score"><span class="score score-excellent">83.2</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">19.34</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+3.37%</div></div>
+<div class="card-item"><div class="label">量比 / 换手</div><div class="value">0.95 / 2.03%</div></div>
+<div class="card-item"><div class="label">PE / 总市值</div><div class="value">43.8 / 41.8亿</div></div>
+</div>
+<p><strong>买点详解：</strong>🔥 ML高分(62.7, Top30) + 30分钟级别同时命中<strong>缠论二买(80分)</strong>与<strong>缠论三买(80分)</strong>——二买：一买后回调不破前低18.49，MACD动能增强；三买：突破中枢(16.16-17.48)后回踩确认，DIF&gt;0。日线级别1个中枢，双买点共振为今日最强信号。</p>
+<p><strong>缠论结构：</strong>日线底部中枢构筑后向上离开，最近分型为低点；MACD DIF -1.30 → DEA -1.75 金叉后红柱放大(+0.90)，价格站上MA5(18.19)/MA20(17.86)，但仍在MA60(22.68)下方——属于底部反转确认段，趋势未完全扭转。</p>
+<p><strong>筹码分析：</strong>HHI 14.07 筹码集中度良好；净买入比+10.38%，买压85.32强，买卖比1.23；获利比例仅10.55%说明上方套牢盘重、但底部换手充分，主力低位吸筹迹象明显。</p>
+<p><strong>量价分析：</strong>量比0.95量能尚未完全释放，换手2.03%；价格高于近期VWAP(17.49)约10%，MACD红柱持续放大，短线动能向上，但突破需放量配合。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 19.27</span>
+<span class="price-badge price-stop">止损 17.94</span>
+<span class="price-badge price-target">目标1 22.68</span>
+<span class="price-badge price-target">目标2 24.89</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ ML高分+30F双买点</span>
+<span class="signal signal-bull">✅ MACD金叉红柱放大</span>
+<span class="signal signal-bull">✅ 筹码净买入</span>
+<span class="signal signal-neutral">➡️ 量能待放大</span>
+<span class="signal signal-bear">❌ 仍处MA60下方</span>
+</div>
+</div>
+</div>
+
+<!-- Card 2 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">郑州煤电</span>
+<span class="stock-code">600121</span>
+<span class="card-score"><span class="score score-excellent">81.0</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">4.30</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+9.97% 涨停</div></div>
+<div class="card-item"><div class="label">量比 / 换手</div><div class="value">3.18 / 12.26%</div></div>
+<div class="card-item"><div class="label">PE / 总市值</div><div class="value">-4.9 / 52.4亿</div></div>
+</div>
+<p><strong>买点详解：</strong>缠论5条件策略命中，今日<strong>放量涨停突破</strong>，量比3.18、换手12.26%，属于资金强攻型突破；日线1个中枢，涨停突破中枢上沿并回踩确认，接近第三类买点的延伸形态。</p>
+<p><strong>缠论结构：</strong>均线多头排列（MA5 3.94 / MA20 3.73 / MA60 4.07 全部站上），MACD DIF 0.03 金叉红柱+0.14，最近分型为高点，突破动能强。</p>
+<p><strong>筹码分析：</strong>HHI 14.63 高度集中，净买入比+21.23%强资金流入，买压76.2，获利比例11.43%低——主力吸筹+拉升特征明显。</p>
+<p><strong>量价分析：</strong>涨停放量（量比3.18）、换手12.26%充分活跃，价格远离近期VWAP(3.86)约11%，短线动能极强，但需防涨停打开/炸板风险。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 4.30(谨慎)</span>
+<span class="price-badge price-stop">止损 3.90</span>
+<span class="price-badge price-target">目标1 4.55</span>
+<span class="price-badge price-target">目标2 5.00</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 放量涨停突破</span>
+<span class="signal signal-bull">✅ 均线多头排列</span>
+<span class="signal signal-bull">✅ 净买入+21%</span>
+<span class="signal signal-neutral">➡️ 涨停追高需谨慎</span>
+<span class="signal signal-bear">❌ 亏损股(PE负)</span>
+</div>
+</div>
+</div>
+
+<!-- Card 3 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">金种子酒</span>
+<span class="stock-code">600199</span>
+<span class="card-score"><span class="score score-excellent">80.7</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">8.18</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+4.60%</div></div>
+<div class="card-item"><div class="label">量比 / 换手</div><div class="value">1.40 / 10.15%</div></div>
+<div class="card-item"><div class="label">PE / 总市值</div><div class="value">-30.8 / 53.8亿</div></div>
+</div>
+<p><strong>买点详解：</strong>缠论5条件策略命中，日线1个中枢，价格站上全部均线（MA5 7.92 / MA20 7.24 / MA60 7.27），MACD多头——中枢上移+均线多头的上升盘整结构。</p>
+<p><strong>缠论结构：</strong>均线多头排列，MACD DIF 0.29 &gt; DEA 0.16 红柱+0.25，日线中枢向上延伸，尚未出现顶背驰，走势类型健康。</p>
+<p><strong>筹码分析：</strong>净买入比<strong>+36.5%</strong>全场最强资金流入，买压<strong>89.03</strong>极强，HHI 12.17 筹码快速集中，获利比例5.66%低——拉升途中主力仍在吸筹。</p>
+<p><strong>量价分析：</strong>量比1.40、换手10.15%充分换手，价格高于近期VWAP(7.72)约6%，MACD红柱健康，量价配合良好。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 8.18</span>
+<span class="price-badge price-stop">止损 7.72</span>
+<span class="price-badge price-target">目标1 8.59</span>
+<span class="price-badge price-target">目标2 9.12</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 均线多头排列</span>
+<span class="signal signal-bull">✅ 净买入+36.5%极强</span>
+<span class="signal signal-bull">✅ 买压89</span>
+<span class="signal signal-neutral">➡️ 换手偏高防分歧</span>
+<span class="signal signal-bear">❌ 亏损股(PE负)</span>
+</div>
+</div>
+</div>
+
+<!-- Card 4 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">四创电子</span>
+<span class="stock-code">600990</span>
+<span class="card-score"><span class="score score-good">76.8</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">18.07</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+1.69%</div></div>
+<div class="card-item"><div class="label">量比 / 换手</div><div class="value">1.86 / 2.34%</div></div>
+<div class="card-item"><div class="label">PE / 总市值</div><div class="value">-15.0 / 48.6亿</div></div>
+</div>
+<p><strong>买点详解：</strong>🔥 ML高分(57.4, Top30) + 30分钟级别<strong>缠论二买(80分)</strong>——一买后回调不破前低17.60，MACD动能增强，距低点仅1.7%，回调确认充分。</p>
+<p><strong>缠论结构：</strong>日线MACD DIF -0.14 → DEA -0.37 金叉红柱+0.45，价格站上MA5(17.70)/MA20(17.08)，贴近MA60(18.50)下方；中枢结构尚在构筑，最近分型低点——反弹初期。</p>
+<p><strong>筹码分析：</strong>HHI 12.33 集中度一般，净买入比+2.17%温和，买压56.24中性，获利比例仅3.98%——套牢盘沉重，反弹初期典型特征。</p>
+<p><strong>量价分析：</strong>量比1.86放量，换手2.34%，价格高于近期VWAP(17.38)，MACD红柱放大，短线动能转强；上方MA60(18.50)为第一压力位。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 18.10</span>
+<span class="price-badge price-stop">止损 17.07</span>
+<span class="price-badge price-target">目标1 18.50</span>
+<span class="price-badge price-target">目标2 19.80</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ ML高分+30F二买</span>
+<span class="signal signal-bull">✅ 放量</span>
+<span class="signal signal-bull">✅ MACD金叉</span>
+<span class="signal signal-neutral">➡️ 逼近MA60压力</span>
+<span class="signal signal-bear">❌ 亏损股(PE负)</span>
+</div>
+</div>
+</div>
+
+<!-- Card 5 -->
+<div class="card">
+<div class="card-header">
+<span class="stock-name">中贝通信</span>
+<span class="stock-code">603220</span>
+<span class="card-score"><span class="score score-good">76.0</span></span>
+</div>
+<div class="card-body">
+<div class="card-grid">
+<div class="card-item"><div class="label">现价</div><div class="value">20.30</div></div>
+<div class="card-item"><div class="label">涨幅</div><div class="value up">+3.68%</div></div>
+<div class="card-item"><div class="label">量比 / 换手</div><div class="value">1.92 / 9.33%</div></div>
+<div class="card-item"><div class="label">PE / 总市值</div><div class="value">174.1 / 108.9亿</div></div>
+</div>
+<p><strong>买点详解：</strong>缠论5条件策略命中，日线1个中枢，价格站上MA20(18.61)，MACD红柱放大(+0.85)，回踩确认后放量上攻——低位启动形态。</p>
+<p><strong>缠论结构：</strong>日线中枢构筑后向上离开，MACD DIF -0.55 → DEA -0.97 红柱连续放大，最近分型低点，反弹动能良好；仍在MA60(22.40)下方，上方空间待突破确认。</p>
+<p><strong>筹码分析：</strong>HHI 12.97 集中度尚可，买压82.46强，净买入+7.08%，获利比例7.47%低，底部换手充分。</p>
+<p><strong>量价分析：</strong>量比1.92放量，换手9.33%活跃，价格高于近期VWAP(18.89)约7.5%，量价齐升；处于120日区间低分位(0.19)，位置安全边际较高。</p>
+<p><strong>关键价位：</strong>
+<span class="price-badge price-buy">买入 20.30</span>
+<span class="price-badge price-stop">止损 18.89</span>
+<span class="price-badge price-target">目标1 21.53</span>
+<span class="price-badge price-target">目标2 22.40</span>
+</p>
+<div class="signal-row">
+<span class="signal signal-bull">✅ 放量上攻</span>
+<span class="signal signal-bull">✅ 站上MA20</span>
+<span class="signal signal-bull">✅ 买压82</span>
+<span class="signal signal-neutral">➡️ 低位启动</span>
+<span class="signal signal-bear">❌ 高PE(174)</span>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- Summary -->
+<div class="section">
+<h2>📌 今日总结</h2>
+<div class="summary-box" id="summary-box">
+<p><strong>📊 市场概况：</strong>全市场2445涨/2580跌，上涨占比46.97%，跌多涨少、结构性分化。题材端（粮食/农业、煤炭、通信）资金活跃，权重与高位股走弱。</p>
+<p><strong>📐 缠论扫描：</strong>三个主力策略（一买/二买/三买）午盘扫描<strong>0命中</strong>——日线级别买点尚未出现，市场缺乏右侧确认。启用 chan-5filters-main 兜底，命中43只；叠加ML模型Top30与30分钟买点确认，仅<strong>3只</strong>（天振股份、四创电子、苏利股份）通过"ML高分+30F买点"双重验证。</p>
+<p><strong>🔥 最强信号：</strong>301356 天振股份（30F二买+三买共振，综合83.2）、600990 四创电子（30F二买，综合76.8）、603585 苏利股份（30F二买，综合70.8）。三者均属超跌反弹初期，日线趋势尚未完全扭转，需控制仓位。</p>
+<p><strong>🎯 操作策略：</strong>整体仓位建议3~5成，轻仓试错为主。优先关注30F买点确认+ML高分的3只；对涨停/突破类（郑州煤电、金健米业等）<strong>不追高</strong>，等待回踩不破关键位再介入。严格按止损位执行，跌破即走。</p>
+<p><strong>⚠️ 风险提示：</strong>市场跌多涨少、热点轮动快，注意量能持续性；若大盘走弱跌破关键支撑，所有买点信号降级处理。ML Top30中多只个股今日大跌（300208/300280/300526等-12%），说明模型打分的"超跌反弹"预期尚未兑现，仅作观察。</p>
+</div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+🦀 SClaw 缠论·筹码·量价 午盘分析 · 仅供参考，不构成投资建议<br>
+Generated by AI · Data source: Real-time A-share market
+</div>
+
+</div>
+</body>
+</html>

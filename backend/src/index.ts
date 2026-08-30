@@ -33,6 +33,7 @@ import { createSchedulerRoutes } from "./routes/scheduler";
 // Backtest
 import { createBacktestRoutes } from "./routes/backtest";
 import { LocalDatabase } from "./data/local-database";
+import { DataManager } from "./data/data-manager";
 import { LocalDBDataProvider } from "./backtest/data-provider";
 
 // Data sync
@@ -44,8 +45,15 @@ import { createGarudaRoutes } from "./routes/garuda";
 // Trade routes (proxy to Garuda Trade Bridge on Mac:5001)
 import { createTradeRoutes } from "./routes/trade";
 
+// Model routes
+import { createModelRoutes } from "./routes/model";
+
 // Chat (for saving AI analysis results)
 import { saveMessages, loadMessages, chatUpdateNotify } from "./routes/chat";
+
+// Memory organization (daily dedup/cleanup)
+import { organizeAllUsersMemory } from "./memory/organize";
+import cron from "node-cron";
 
 // LLM client (for silent agent analysis — currently unused, import kept for reference)
 // import { LLMClient } from "./agent/llm";
@@ -66,6 +74,8 @@ import { registerEmailTools } from "./tools/email-tools";
 import { registerDeepAnalysisTool } from "./tools/deep-analysis";
 import { registerCompactTool } from "./tools/compact-tool";
 import { registerGoalTool } from "./tools/goal-tools";
+import { registerMlScreenerTool } from "./tools/ml-screener";
+import { registerBuyPoint30minTool } from "./tools/buy-point-30min";
 
 // Watch engine (盯盘)
 import { WatchEngine } from "./watch-engine";
@@ -96,6 +106,10 @@ const SYSTEM_PROMPT = `You are the **main agent** — a coordinator for SClaw st
 - Buy/sell: always show details, get user confirmation first.
 - Never fabricate data. If a tool fails, explain clearly.
 - Rely on tool function definitions for parameter details.
+
+## Persistent Memory
+
+Your system prompt ends with a \`## 对你(当前用户)的记忆\` section containing recent memories (persist across sessions). Use \`memory_recall\` to search memory.
 `;
 
 /**
@@ -167,6 +181,8 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   registerDeepAnalysisTool(toolRegistry);
   registerCompactTool(toolRegistry);
   registerGoalTool(toolRegistry);
+  registerMlScreenerTool(toolRegistry);
+  registerBuyPoint30minTool(toolRegistry);
   registerManageWatchTool(toolRegistry, watchEngine, () => {
     const { getCurrentUserId } = require("./request-context");
     return getCurrentUserId();
@@ -195,7 +211,7 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
     // Stock data
     "stock", "stock_indicators",
     // Screening
-    "screen", "run_screen",
+    "screen", "run_screen", "ml_screener", "buy_point_30min",
     // Strategy
     "strategy", "list_strategies", "run_multi_strategy",
     // Risk
@@ -220,6 +236,8 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
   const agentManager = new PerUserAgentManager(toolRegistry, dataDir, MAIN_AGENT_TOOLS);
   // Override system prompt
   agentManager.systemPrompt = SYSTEM_PROMPT;
+  // Wire user store for per-user model persistence
+  agentManager.userStore = userStore;
 
   // ===== Initialize skill system =====
   const skillManager = new SkillManager();
@@ -260,6 +278,8 @@ export async function createApp(options?: { pluginsDir?: string; dataDir?: strin
       agent.reset(); // Fresh start — no leftover state from previous failed runs
 
       // Build context: use custom prompt if provided, otherwise default stock analysis
+      const htmlFormatNote = `\n\n==== 输出要求 ====\n你的报告将被嵌入HTML邮件中发送。请使用HTML标签构建报告（不要使用Markdown语法）：\n- 标题使用 <h3> 或 <h4>（不要用 # 号）\n- 表格使用 <table><tr><th><td>\n- 强调使用 <strong>（不要用 **）\n- 换行使用 <br>，段落使用 <p>\n- 分隔线使用 <hr>\n- 不要使用 \`\`\` 代码块，直接用标签\n- 不要使用 > 引用语法\n- 不要使用 Markdown 列表标记（- 或 *），用 HTML <ul><li>\n- 报告中只包含可读的内容，不要输出<style>或<head>标签`;
+
       const context = customPrompt
         ? `📋 [定时任务] "${taskLabel}"\n\n${customPrompt}`
         : `📊 [定时选股任务] "${taskLabel}"
@@ -276,7 +296,7 @@ ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.
 3. 📈 缠论买卖点分析 — 拉取日K线数据，分析每只股票的中枢位置、是否出现背驰信号、一/二/三类买卖点判断
 4. 🏆 综合评级与建议 — 综合以上分析给出操作建议（强烈推荐/推荐/观望/回避），并说明理由
 
-请直接开始分析，用工具获取数据后给出完整报告。`;
+请直接开始分析，用工具获取数据后给出完整报告。${htmlFormatNote}`;
 
       const result = await agent.run(
         context,
@@ -406,6 +426,10 @@ ${topResults.map((r, i) => `${i + 1}. ${r.code} ${r.name} — 评分: ${r.score.
   const subAgentRoutes = createSubAgentRoutes(subAgentManager);
   app.use("/api/subagent", subAgentRoutes);
 
+  // Model routes (get/set AI model)
+  const modelRoutes = createModelRoutes(agentManager);
+  app.use(modelRoutes);
+
   // Wire scheduler to run backtest tasks
   scheduler.runBacktest = async (config) => {
     const { BacktestEngine } = require('./backtest/backtest-engine');
@@ -503,6 +527,33 @@ async function main() {
     console.log(`📊 Plugins loaded: ${pluginManager.getAll().length}`);
     console.log(`🔧 Tools registered: ${toolRegistry.getAll().length}`);
     console.log(`⚡ Hot-reload watching: enabled\n`);
+  });
+
+  // ===== Daily memory organization (3:00 AM) =====
+  const dataDir = process.env.DATA_DIR || path.resolve(process.cwd(), "data");
+  console.log(`[MemoryOrganize] Scheduling daily organization at 0 3 * * * (dataDir=${dataDir})`);
+  cron.schedule("0 3 * * *", () => {
+    try {
+      const result = organizeAllUsersMemory(dataDir);
+      console.log(`[MemoryOrganize] Daily run: merged ${result.totalMerged}, removed ${result.totalRemoved}, ${result.userCount} users`);
+    } catch (err) {
+      console.error("[MemoryOrganize] Daily run failed:", err);
+    }
+  });
+
+  // ===== Daily data sync (17:00 Beijing time = 09:00 UTC, after market close) =====
+  const tushareTokenDaily = process.env.TUSHARE_TOKEN || '';
+  console.log(`[DataSync] Scheduling daily data sync at 0 9 * * 1-5 (weekdays 17:00 CST)`);
+  cron.schedule("0 9 * * 1-5", () => {
+    const db = new LocalDatabase(dataDir);
+    const manager = new DataManager(db, { tushareToken: tushareTokenDaily, dataDir });
+    manager.syncAll().then(result => {
+      console.log(`[DataSync] Daily sync: +${result.newDays} days (migrated=${result.migrated}, errors=${result.errors.length})`);
+      db.close();
+    }).catch(err => {
+      console.error('[DataSync] Daily sync failed:', err);
+      db.close();
+    });
   });
 }
 

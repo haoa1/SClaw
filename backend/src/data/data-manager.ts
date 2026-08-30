@@ -95,8 +95,8 @@ export class DataManager {
     for (let i = 0; i < allDates.length; i++) {
       const date = allDates[i];
 
-      // 跳过已同步的日期
-      if (this.db.isDateSynced(date, 'tushare')) {
+      // 跳过已同步的日期（0 股的成功记录不算完成，需重试补齐）
+      if (this.db.isDateSynced(date, 'tushare') && !this.db.isZeroStockDate(date, 'tushare')) {
         continue;
       }
 
@@ -147,6 +147,53 @@ export class DataManager {
         const fClose = fields.indexOf('close');
         const fVol = fields.indexOf('vol');
         const fAmount = fields.indexOf('amount');
+        // ===== turnover: 单日增量同步时用 daily_basic 补齐 (与训练同源, 限频1次/小时) =====
+        let turnoverMap = new Map<string, number>();
+        if (allDates.length === 1) {
+          try {
+            const dbRes = await fetch(TUSHARE_API, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                api_name: 'daily_basic',
+                token,
+                params: { trade_date: tushareDate, fields: 'ts_code,turnover_rate' },
+              }),
+              signal: AbortSignal.timeout(15000),
+            });
+            const dbJson: any = await dbRes.json();
+            if (dbJson.code === 0 && dbJson.data && dbJson.data.items) {
+              const dFields = dbJson.data.fields as string[];
+              const dTs = dFields.indexOf('ts_code');
+              const dTr = dFields.indexOf('turnover_rate');
+              for (const it of dbJson.data.items) {
+                const code = String(it[dTs]).split('.')[0];
+                turnoverMap.set(code, parseFloat(it[dTr]) || 0);
+              }
+              console.log(`[DataManager] daily_basic turnover for ${date}: ${turnoverMap.size} stocks`);
+            } else {
+              console.log(`[DataManager] daily_basic skipped for ${date}: ${dbJson.msg || dbJson.code}`);
+            }
+          } catch (err: any) {
+            console.log(`[DataManager] daily_basic failed for ${date}: ${err.message}`);
+          }
+        }
+
+        // daily_basic 不可用时保留库内原值, 避免 INSERT OR REPLACE 覆盖成 0
+        if (turnoverMap.size === 0) {
+          try {
+            const existing = this.db.query<{ code: string; turnover_rate: number }>(
+              'SELECT code, turnover_rate FROM stock_daily WHERE date = ?', [date]
+            );
+            for (const r of existing) {
+              turnoverMap.set(r.code, r.turnover_rate || 0);
+            }
+            if (existing.length > 0) {
+              console.log(`[DataManager] daily_basic unavailable, kept ${existing.length} existing turnover values for ${date}`);
+            }
+          } catch { /* ignore */ }
+        }
+
         const fPctChg = fields.indexOf('pct_chg');
 
         const klines: DailyKLine[] = [];
@@ -169,7 +216,7 @@ export class DataManager {
             volume: parseFloat(item[fVol]) || 0,
             amount: parseFloat(item[fAmount]) || 0,
             changePct: parseFloat(item[fPctChg]) || 0,
-            turnoverRate: 0,
+            turnoverRate: turnoverMap.get(code) ?? 0,
           });
 
           // 积累股票信息
@@ -289,7 +336,8 @@ export class DataManager {
 
         this.db.insertIndexDailyBatch(items);
         console.log(`[DataManager] Synced ${idx.name} (${items.length} days)`);
-        await new Promise(r => setTimeout(r, 1000));
+        // index_daily 接口限频 1次/分钟，必须等 65s
+        await new Promise(r => setTimeout(r, 65000));
       } catch (err: any) {
         console.error(`[DataManager] Failed to sync ${idx.code}: ${err.message}`);
       }
@@ -444,12 +492,25 @@ export class DataManager {
     const allWeekdays = this.generateWeekdays(range.minDate, effectiveEnd);
     const gaps = allWeekdays.filter(d => !existingDates.has(d));
 
-    if (gaps.length > 0) {
-      console.log(`[DataManager] Found ${gaps.length} date gaps (out of ${allWeekdays.length} weekdays)`);
-      console.log(`  Missing: ${gaps.slice(0, 5).join(', ')}${gaps.length > 5 ? '...' : ''}`);
+    // 🔁 Retry recent dates that were previously marked as 0-stock (e.g. "Not a trading day"
+    //    but actually the data wasn't available yet at sync time, e.g. same-day early sync)
+    const recentZeroStockDates = this.db.query<{ date: string }>(
+      `SELECT DISTINCT date FROM data_sync_log
+       WHERE status = 'success' AND stock_count = 0
+         AND date > date('now', '-30 days')
+         AND date NOT IN (SELECT DISTINCT date FROM stock_daily)`
+    ).map(r => r.date);
+
+    // Merge gaps with zero-stock retry candidates, deduplicate
+    const merged = [...new Set([...gaps, ...recentZeroStockDates])].sort();
+
+    if (merged.length > 0) {
+      const extra = recentZeroStockDates.filter(d => !gaps.includes(d));
+      console.log(`[DataManager] Found ${merged.length} date gaps (${gaps.length} plain + ${extra.length} retry candidates)`);
+      console.log(`  Missing: ${merged.slice(0, 5).join(', ')}${merged.length > 5 ? '...' : ''}`);
     }
 
-    return gaps;
+    return merged;
   }
 
   /**

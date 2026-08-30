@@ -1,0 +1,524 @@
+#!/usr/bin/env python3
+"""
+30分钟买点确认工具 — 缠论(一买/二买/三买) + 技术辅助(KDJ/RSI/MA20)
+
+用于「两步选股流水线」第二步:
+  Step1: v12 全市场打分 → top N 候选 (fetch_screen_v12.py)
+  Step2: 本工具对候选逐只拉取30分钟K线, 识别买点
+
+Usage:
+  python3 buy_point_30min.py --codes=000001,600519        # 指定代码
+  python3 buy_point_30min.py --auto-top=30                 # 自动跑v12选股→取top30
+  python3 buy_point_30min.py --input-json=ml_results.json  # 从已有选股结果读代码
+  python3 buy_point_30min.py --codes=... --min-score=60    # 只显示评分>=60
+  python3 buy_point_30min.py --codes=... --verbose         # 每只显示详细信号
+
+Output: JSON (stdout), 摘要 (stderr)
+
+数据源: 新浪 30分钟K线 (scale=30, 320根 ≈ 40个交易日)
+买点规则:
+  缠论一买: 30分钟下跌末端 底背驰(价格新低+DIF不新低) + 底分型 + MACD绿柱缩小
+  缠论二买: 一买后回调不破前低 (最强买点, 风险最低)
+  缠论三买: 突破中枢后回调不进中枢
+  技术辅助: KDJ超卖金叉 / RSI超卖回升 / 放量突破MA20
+"""
+
+import json, sys, os, subprocess, re, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+SINA_KLINE_URL = "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData"
+FETCH_SCREEN = "/root/sclaw/ml_screener/fetch_screen_v12.py"
+MIN_KLINES = 120        # 至少120根30分钟线(≈15个交易日)才分析
+CONCURRENCY = 8
+TIMEOUT = 12            # 每只数据拉取超时(秒)
+
+
+# ===================== 数据获取 =====================
+def fetch_kline_30min(code, market):
+    """拉取30分钟K线, 返回 [{day, open, high, low, close, volume}]"""
+    prefix = {'SH': 'sh', 'SZ': 'sz', 'BJ': 'bj'}.get(market, 'sz')
+    symbol = prefix + code
+    url = f"{SINA_KLINE_URL}?symbol={symbol}&scale=30&ma=no&datalen=320"
+    try:
+        res = subprocess.run(
+            ["curl", "-s", "--max-time", str(TIMEOUT), url,
+             "-H", "Referer: https://finance.sina.com.cn",
+             "-H", "User-Agent: Mozilla/5.0"],
+            capture_output=True, text=True, timeout=TIMEOUT + 5)
+        text = res.stdout
+        if not text or text == 'null' or text.startswith('<'):
+            return None
+        rows = json.loads(text)
+        if not isinstance(rows, list) or len(rows) == 0:
+            return None
+        out = []
+        for r in rows:
+            try:
+                out.append({
+                    "day": str(r.get("day", "")),
+                    "open": float(r.get("open", 0)),
+                    "high": float(r.get("high", 0)),
+                    "low": float(r.get("low", 0)),
+                    "close": float(r.get("close", 0)),
+                    "volume": int(float(r.get("volume", 0))),
+                })
+            except (TypeError, ValueError):
+                continue
+        return out if len(out) >= MIN_KLINES else (out if len(out) >= 60 else None)
+    except Exception as e:
+        return None
+
+
+def detect_market(code):
+    if code.startswith(('6', '9')):
+        return 'SH'
+    if code.startswith(('4', '8')):
+        return 'BJ'
+    return 'SZ'
+
+
+# ===================== 技术指标 =====================
+def ema(values, period):
+    result = []
+    k = 2 / (period + 1)
+    if not values:
+        return result
+    prev = values[0]
+    result.append(prev)
+    for v in values[1:]:
+        prev = (v - prev) * k + prev
+        result.append(prev)
+    return result
+
+
+def compute_macd(closes, fast=12, slow=26, signal=9):
+    ema_fast = ema(closes, fast)
+    ema_slow = ema(closes, slow)
+    dif = [f - s for f, s in zip(ema_fast, ema_slow)]
+    dea = ema(dif, signal)
+    macd = [2 * (d - e) for d, e in zip(dif, dea)]
+    return dif, dea, macd
+
+
+def is_bottom_fractal(k1, k2, k3):
+    return k2['low'] < k1['low'] and k2['low'] < k3['low']
+
+
+def is_top_fractal(k1, k2, k3):
+    return k2['high'] > k1['high'] and k2['high'] > k3['high']
+
+
+def compute_kdj(klines, n=9):
+    k_vals, d_vals, j_vals = [], [], []
+    k = d = 50.0
+    for i in range(len(klines)):
+        start = max(0, i - n + 1)
+        hh = max(x['high'] for x in klines[start:i + 1])
+        ll = min(x['low'] for x in klines[start:i + 1])
+        rsv = 50.0 if hh == ll else (klines[i]['close'] - ll) / (hh - ll) * 100
+        k = 2 / 3 * k + 1 / 3 * rsv
+        d = 2 / 3 * d + 1 / 3 * k
+        j = 3 * k - 2 * d
+        k_vals.append(k)
+        d_vals.append(d)
+        j_vals.append(j)
+    return k_vals, d_vals, j_vals
+
+
+def compute_rsi(closes, period=14):
+    if len(closes) <= period:
+        return [50.0] * len(closes)
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i - 1]
+        gains.append(max(diff, 0.0))
+        losses.append(max(-diff, 0.0))
+    rsi = [50.0] * period
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    rsi.append(100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss))
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        rsi.append(100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss))
+    return rsi
+
+
+def sma(values, period):
+    result = [None] * len(values)
+    for i in range(len(values)):
+        if i < period - 1:
+            continue
+        result[i] = sum(values[i - period + 1:i + 1]) / period
+    return result
+
+
+def find_swing_lows(klines, min_gap=3):
+    """找到所有底分型低点, 合并min_gap根内的邻近低点(取更低者)"""
+    lows = []
+    for i in range(1, len(klines) - 1):
+        if is_bottom_fractal(klines[i - 1], klines[i], klines[i + 1]):
+            if lows and i - lows[-1]['idx'] < min_gap:
+                if klines[i]['low'] < klines[lows[-1]['idx']]['low']:
+                    lows[-1] = {'idx': i, 'price': klines[i]['low']}
+            else:
+                lows.append({'idx': i, 'price': klines[i]['low']})
+    return lows
+
+
+def find_swing_highs(klines, min_gap=3):
+    highs = []
+    for i in range(1, len(klines) - 1):
+        if is_top_fractal(klines[i - 1], klines[i], klines[i + 1]):
+            if highs and i - highs[-1]['idx'] < min_gap:
+                if klines[i]['high'] > klines[highs[-1]['idx']]['high']:
+                    highs[-1] = {'idx': i, 'price': klines[i]['high']}
+            else:
+                highs.append({'idx': i, 'price': klines[i]['high']})
+    return highs
+
+
+def find_last_zhongshu(klines, min_bars=20, max_range_pct=8.0):
+    """从后往前找最近一个横盘中枢区间 [low, high], 返回 {start, end, low, high}"""
+    n = len(klines)
+    start_scan = max(0, n - 120)
+    for end in range(n - min_bars, start_scan - 1, -1):
+        for start in range(end - min_bars, start_scan - 1, -1):
+            zone_high = max(x['high'] for x in klines[start:end])
+            zone_low = min(x['low'] for x in klines[start:end])
+            mid = (zone_high + zone_low) / 2
+            if mid <= 0:
+                continue
+            range_pct = (zone_high - zone_low) / mid * 100
+            if range_pct <= max_range_pct and range_pct >= 1.0:
+                # 确认中枢两端都有明显价格波动(非单调下跌/上涨中的"平台")
+                return {'start': start, 'end': end, 'low': zone_low, 'high': zone_high, 'range_pct': range_pct}
+    return None
+
+
+# ===================== 买点识别 =====================
+def detect_buy_points(code, name, klines):
+    """核心: 识别30分钟买点. 返回 (buy_points, all_signals)"""
+    n = len(klines)
+    if n < MIN_KLINES:
+        return [], []
+    closes = [k['close'] for k in klines]
+    highs = [k['high'] for k in klines]
+    lows = [k['low'] for k in klines]
+    vols = [k['volume'] for k in klines]
+
+    dif, dea, macd = compute_macd(closes)
+    k_vals, d_vals, j_vals = compute_kdj(klines)
+    rsi = compute_rsi(closes)
+    ma20 = sma(closes, 20)
+
+    buy_points = []
+    all_signals = []
+
+    # ---------- 缠论一买: 底背驰 + 底分型 + MACD绿柱缩小 ----------
+    try:
+        lookback = min(40, n // 3)
+        recent_slice = lows[-lookback:]
+        recent_min = min(recent_slice)
+        recent_idx = n - lookback + recent_slice.index(recent_min)
+        # 必须不是最后3根才形成(需要底分型确认空间), 且历史足够
+        if recent_idx >= 20 and recent_idx <= n - 3:
+            # 前低: recent_idx 之前的 swing 低点
+            swing_lows = find_swing_lows(klines[:recent_idx])
+            if swing_lows:
+                prev = swing_lows[-1]
+                prev_low = prev['price']
+                prev_idx = prev['idx']
+                if recent_idx - prev_idx >= 8:
+                    price_new_low = recent_min < prev_low
+                    dif_divergence = price_new_low and dif[recent_idx] > dif[prev_idx]
+                    # 底分型确认 (recent_idx 附近 ±3 根)
+                    has_fractal = False
+                    for i in range(max(1, recent_idx - 3), min(n - 1, recent_idx + 4)):
+                        if is_bottom_fractal(klines[i - 1], klines[i], klines[i + 1]):
+                            has_fractal = True
+                            break
+                    # MACD绿柱面积缩小
+                    def neg_area(center):
+                        s = max(0, center - 3)
+                        e = min(n, center + 4)
+                        return sum(v for v in macd[s:e] if v < 0)
+                    prev_area = neg_area(prev_idx)
+                    recent_area = neg_area(recent_idx)
+                    macd_shrink = prev_area < 0 and recent_area < 0 and recent_area > prev_area
+
+                    if dif_divergence and has_fractal and macd_shrink:
+                        score = 60
+                        signals = ['缠论一买']
+                        if price_new_low:
+                            score += 5
+                            signals.append('价格新低')
+                        signals.append('DIF底背驰')
+                        signals.append('底分型确认')
+                        signals.append('MACD绿柱缩小')
+                        # 缩量见底
+                        prev_vol = sum(vols[max(0, prev_idx - 2):prev_idx + 3]) / 5
+                        recent_vol = sum(vols[max(0, recent_idx - 2):recent_idx + 3]) / 5
+                        if recent_vol < prev_vol * 0.8 and prev_vol > 0:
+                            score += 8
+                            signals.append('缩量见底')
+                        # 价格回升
+                        cur = closes[-1]
+                        pct_from_low = (cur - recent_min) / recent_min * 100 if recent_min > 0 else 0
+                        if pct_from_low > 2:
+                            score += 8
+                            signals.append(f'回升{pct_from_low:.1f}%')
+                        # DIF拐头向上
+                        if dif[recent_idx] < 0 and recent_idx + 3 < n:
+                            if dif[recent_idx + 3] > dif[recent_idx]:
+                                score += 8
+                                signals.append('DIF拐头向上')
+                        # 背驰段确认(之前有盘整)
+                        swing_highs = find_swing_highs(klines[prev_idx:recent_idx])
+                        if swing_highs:
+                            score += 6
+                            signals.append('背驰段确认')
+                        buy_points.append({
+                            'type': '缠论一买', 'score': min(95, score),
+                            'signals': signals,
+                            'ref_price': round(closes[-1], 2),
+                            'stop_loss': round(recent_min * 0.97, 2),
+                            'low_price': round(recent_min, 2),
+                            'low_time': klines[recent_idx]['day'],
+                        })
+                        all_signals.extend(signals)
+    except Exception:
+        pass
+
+    # ---------- 缠论二买: 一买后回调不破前低 ----------
+    try:
+        swing_lows_all = find_swing_lows(klines)
+        if len(swing_lows_all) >= 2:
+            low1, low2 = swing_lows_all[-2], swing_lows_all[-1]
+            if low2['idx'] > low1['idx'] and low2['idx'] <= n - 2:
+                # 二买低点高于一买低点(不破前低), 允许极小误差0.3%
+                higher_low = low2['price'] > low1['price'] * 0.997
+                cur = closes[-1]
+                recovered = cur > low2['price'] * 1.01
+                if higher_low and recovered:
+                    score = 50
+                    signals = ['缠论二买']
+                    # 一买确认(前低附近有底背驰)
+                    if dif[low2['idx']] > dif[low1['idx']]:
+                        score += 15
+                        signals.append('MACD动能增强')
+                    if low2['idx'] - low1['idx'] >= 8:
+                        score += 10
+                        signals.append('间隔充分')
+                    # 回调不破前低
+                    signals.append(f'不破前低({low1["price"]:.2f})')
+                    score += 10
+                    # 当前价离二买低点距离
+                    pct = (cur - low2['price']) / low2['price'] * 100 if low2['price'] > 0 else 0
+                    if pct < 15:
+                        score += 5
+                        signals.append(f'距低点{pct:.1f}%')
+                    buy_points.append({
+                        'type': '缠论二买', 'score': min(95, score),
+                        'signals': signals,
+                        'ref_price': round(cur, 2),
+                        'stop_loss': round(low1['price'] * 0.97, 2),
+                        'low_price': round(low2['price'], 2),
+                        'low_time': klines[low2['idx']]['day'],
+                    })
+                    all_signals.extend(signals)
+    except Exception:
+        pass
+
+    # ---------- 缠论三买: 突破中枢后回调不进中枢 ----------
+    try:
+        zs = find_last_zhongshu(klines)
+        if zs:
+            cur = closes[-1]
+            above = cur > zs['high']
+            if above:
+                # 中枢后最近 swing 低点 > 中枢上沿
+                post_lows = [s for s in find_swing_lows(klines) if s['idx'] > zs['end']]
+                post_low_ok = all(s['price'] > zs['high'] for s in post_lows[-2:]) if post_lows else False
+                if post_low_ok:
+                    score = 55
+                    signals = ['缠论三买']
+                    signals.append(f'突破中枢({zs["low"]:.2f}-{zs["high"]:.2f})')
+                    # 放量突破
+                    vol5 = sum(vols[-6:-1]) / 5 if len(vols) >= 6 else 0
+                    if vol5 > 0 and vols[-1] > vol5 * 1.3:
+                        score += 10
+                        signals.append('放量突破')
+                    # 回踩确认
+                    if post_lows and (cur - post_lows[-1]['price']) / post_lows[-1]['price'] * 100 < 10:
+                        score += 15
+                        signals.append('回踩确认')
+                    # MACD 0轴上方
+                    if dif[-1] > 0:
+                        score += 10
+                        signals.append('DIF>0')
+                    buy_points.append({
+                        'type': '缠论三买', 'score': min(95, score),
+                        'signals': signals,
+                        'ref_price': round(cur, 2),
+                        'stop_loss': round(zs['high'] * 0.97, 2),
+                        'low_price': round(zs['high'], 2),
+                        'low_time': klines[zs['end']]['day'],
+                    })
+                    all_signals.extend(signals)
+    except Exception:
+        pass
+
+    # ---------- 技术辅助: KDJ / RSI / MA20 ----------
+    tech_signals = []
+    # KDJ 超卖金叉
+    if len(k_vals) >= 2 and k_vals[-1] > d_vals[-1] and k_vals[-2] <= d_vals[-2]:
+        if k_vals[-1] < 40 or min(k_vals[-10:]) < 25:
+            tech_signals.append('KDJ超卖金叉')
+    elif min(k_vals[-10:]) < 20 and k_vals[-1] > 25:
+        tech_signals.append('KDJ超卖回升')
+    # RSI 超卖回升
+    if min(rsi[-10:]) < 30 and rsi[-1] > 30:
+        tech_signals.append('RSI超卖回升')
+    # 放量突破 MA20
+    if ma20[-1] and ma20[-1] > 0:
+        vol5 = sum(vols[-6:-1]) / 5 if len(vols) >= 6 else 0
+        if closes[-1] > ma20[-1] and vols[-1] > vol5 * 1.5 and closes[-2] <= (ma20[-2] or 0):
+            tech_signals.append('放量突破MA20')
+    if tech_signals:
+        all_signals.extend(tech_signals)
+
+    return buy_points, all_signals
+
+
+# ===================== 主流程 =====================
+def load_candidates(codes_str, auto_top, input_json):
+    """解析输入, 返回 [(code, name), ...]"""
+    cands = []
+    if codes_str:
+        for c in codes_str.replace('，', ',').split(','):
+            c = c.strip()
+            if re.fullmatch(r'\d{6}', c):
+                cands.append((c, c))
+    elif auto_top:
+        print(f"🔗 自动串联: 运行 v12 全市场选股 (top {auto_top})...", file=sys.stderr)
+        res = subprocess.run(
+            ["python3", FETCH_SCREEN, f"limit={auto_top}"],
+            capture_output=True, text=True, timeout=420)
+        try:
+            data = json.loads(res.stdout)
+            for r in data.get("results", []):
+                cands.append((r.get("code", ""), r.get("name", "")))
+            print(f"  v12 选股完成: {len(cands)} 只候选进入30分钟确认", file=sys.stderr)
+        except Exception as e:
+            print(f"❌ v12 选股解析失败: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif input_json:
+        with open(input_json) as f:
+            data = json.load(f)
+        for r in data.get("results", []):
+            cands.append((r.get("code", ""), r.get("name", "")))
+    return cands
+
+
+def analyze_one(code, name):
+    """分析单只股票, 返回 dict"""
+    market = detect_market(code)
+    klines = fetch_kline_30min(code, market)
+    if not klines:
+        return {'code': code, 'name': name, 'error': '数据不足'}
+    # 数据新鲜度检查: 最新K线日期距今 > STALE_DAYS 天 → 停牌/数据陈旧, 不推荐买点
+    last_day = klines[-1]['day'][:10]
+    try:
+        from datetime import datetime
+        last_dt = datetime.strptime(last_day, '%Y-%m-%d')
+        stale_days = (datetime.now() - last_dt).days
+    except Exception:
+        stale_days = 0
+    if stale_days > 7:
+        return {
+            'code': code, 'name': name, 'price': round(klines[-1]['close'], 2),
+            'error': f'数据陈旧({last_day}, {stale_days}天前) 可能停牌', 'stale': True,
+        }
+    buy_points, all_signals = detect_buy_points(code, name, klines)
+    cur = klines[-1]['close']
+    return {
+        'code': code, 'name': name, 'price': round(cur, 2),
+        'buy_points': buy_points,
+        'signals': all_signals,
+    }
+
+
+def main():
+    args = sys.argv[1:]
+    codes_str = ''
+    auto_top = 0
+    input_json = ''
+    min_score = 0
+    verbose = False
+    for a in args:
+        if a.startswith('--codes='):
+            codes_str = a[8:]
+        elif a.startswith('--auto-top='):
+            auto_top = int(a[11:])
+        elif a.startswith('--input-json='):
+            input_json = a[13:]
+        elif a.startswith('--min-score='):
+            min_score = int(a[12:])
+        elif a == '--verbose':
+            verbose = True
+
+    if not codes_str and not auto_top and not input_json:
+        print(__doc__)
+        sys.exit(1)
+
+    cands = load_candidates(codes_str, auto_top, input_json)
+    if not cands:
+        print(json.dumps({'total': 0, 'buy_points': [], 'checked': 0, 'error': '无候选'}, ensure_ascii=False))
+        sys.exit(0)
+
+    t0 = time.time()
+    print(f"🔍 30分钟买点确认: {len(cands)} 只候选, 并发{CONCURRENCY}...", file=sys.stderr)
+    results = []
+    with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+        futs = {pool.submit(analyze_one, c, n): (c, n) for c, n in cands}
+        for fut in as_completed(futs):
+            results.append(fut.result())
+
+    results.sort(key=lambda r: (max([b['score'] for b in r.get('buy_points', [])], default=0)), reverse=True)
+    checked = len([r for r in results if 'error' not in r])
+
+    buy_points = []
+    for r in results:
+        if r.get('error'):
+            continue
+        for bp in r.get('buy_points', []):
+            bp['code'] = r['code']
+            bp['name'] = r['name']
+            bp['price'] = r['price']
+            buy_points.append(bp)
+    buy_points.sort(key=lambda b: b['score'], reverse=True)
+
+    if min_score > 0:
+        buy_points = [b for b in buy_points if b['score'] >= min_score]
+
+    out = {'total': len(cands), 'checked': checked, 'buy_points': buy_points}
+
+    # 摘要
+    print(f"  ✅ 完成 {time.time()-t0:.0f}s, 分析 {checked}/{len(cands)} 只, 命中 {len(buy_points)} 个买点", file=sys.stderr)
+    if buy_points:
+        print(f"\n🎯 30分钟买点确认 (Top {min(10, len(buy_points))}):", file=sys.stderr)
+        for b in buy_points[:10]:
+            sigs = " ".join(b['signals'])
+            print(f"  {b['name']}({b['code']}) {b['type']} 评分:{b['score']} 现价:{b['price']} 止损:{b['stop_loss']} | {sigs}", file=sys.stderr)
+    else:
+        print("  ⚠️ 无买点信号", file=sys.stderr)
+
+    if verbose:
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+if __name__ == '__main__':
+    main()

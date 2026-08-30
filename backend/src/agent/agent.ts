@@ -44,6 +44,22 @@ export class Agent {
   public abort(): void {
     this.aborted = true;
   }
+
+  /** Expose Memory instance for stop_hook to use */
+  public getMemory(): Memory {
+    return this.memory;
+  }
+
+  /** Dynamically change the model for subsequent LLM calls */
+  public setModel(model: string): void {
+    this.config.model = model;
+    console.log(`[Agent] Model switched to: ${model}`);
+  }
+
+  /** Get current model name */
+  public getModel(): string {
+    return this.config.model || process.env["LLM_MODEL"] || "deepseek-v4-flash";
+  }
   /** Callback to notify frontend of prompt dumps (debug mode) */
   private onDebugPrompt?: (dump: {filePath: string; messageCount: number; totalTokens: number}) => void;
 
@@ -226,28 +242,61 @@ Use tools when you need to perform actions. Be concise and helpful.`,
 
   /** Reload SOUL.md + loaded skills - replaces system message[0] with freshest personality, instructions, and skills.
    *  Called at startup, after each agent loop turn, and on load/unload skill. */
+  /** Build a formatted memory context block from recent memory entries */
+  private buildMemoryContext(): string {
+    const recent = this.memory.recent(10);
+    if (recent.length === 0) return '';
+
+    const lines = recent.map(m => {
+      const time = new Date(m.timestamp).toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+        hour12: false,
+      });
+      const preview = m.content.slice(0, 200);
+      return `  [${m.type}] ${time} | ${preview}`;
+    }).join('\n');
+
+    return `## 对你(当前用户)的记忆\n\n${lines}`;
+  }
+
   private rebuildSystemMessage(): void {
+    let content: string;
+
+    // Try reading SOUL.md; fallback to systemPrompt alone
     try {
       const soulContent = fs.readFileSync(this.config.soulPath, 'utf-8').trim();
-      let content = soulContent
+      content = soulContent
         ? `${soulContent}\n\n---\n\n${this.config.systemPrompt}`
         : this.config.systemPrompt;
-
-      // Append loaded skills
-      if (this.loadedSkills.size > 0) {
-        const skillsSection = Array.from(this.loadedSkills.entries())
-          .map(([name, body]) => `<skill name="${name}">\n${body}\n</skill>`)
-          .join('\n\n');
-        content += `\n\n## Loaded Skills\n\n${skillsSection}`;
-      }
-
-      if (this.messages.length > 0 && this.messages[0].role === 'system') {
-        this.messages[0].content = content;
-      }
-      if (this.config.verbose) console.log(`  [SOUL] Rebuilt (${this.loadedSkills.size} skills loaded)`);
     } catch {
-      // SOUL.md not found or unreadable - fall through gracefully
+      content = this.config.systemPrompt;
       if (this.config.verbose) console.log('  [SOUL] No SOUL.md at ' + this.config.soulPath + ', using systemPrompt only');
+    }
+
+    // Always append loaded skills
+    if (this.loadedSkills.size > 0) {
+      const skillsSection = Array.from(this.loadedSkills.entries())
+        .map(([name, body]) => `<skill name="${name}">\n${body}\n</skill>`)
+        .join('\n\n');
+      content += `\n\n## Loaded Skills\n\n${skillsSection}`;
+    }
+
+    // Always append per-user memory context
+    const memoryContext = this.buildMemoryContext();
+    if (memoryContext) {
+      content += `\n\n${memoryContext}`;
+    }
+
+    // Update system message[0]
+    if (this.messages.length > 0 && this.messages[0].role === 'system') {
+      this.messages[0].content = content;
+    }
+    if (this.config.verbose) console.log(`  [SOUL] Rebuilt (${this.loadedSkills.size} skills, ${this.buildMemoryContext() ? this.memory.recent(10).length : 0} memories)`);
+    if (this.config.verbose) {
+      const memCount = content.match(/\[(observation|strategy|decision|error|result)\]/g);
+      console.log(`  [MEMORY] Context injected, ${memCount ? memCount.length : 0} entries`);
     }
   }
 
@@ -353,18 +402,19 @@ Use tools when you need to perform actions. Be concise and helpful.`,
       if (!query) return "Please provide a query to search memory.";
 
       // Build sub-agent system prompt with memory architecture
+      const memoryFilePath = this.memory.getFilePath();
       const subAgentSystemPrompt = `You are a memory search specialist. Your ONLY task is to search through memory files and find information relevant to the user's query.
 
 ## MEMORY STRUCTURE
 
-Memory is stored in \`data/<username>/memory.json\` as a JSON array of entries. Each entry has:
+Memory is stored in \`${memoryFilePath}\` as a JSON array of entries. Each entry has:
 - type: "strategy" | "decision" | "observation" | "error" | "result"
 - timestamp: ISO date string
 - content: text content
 - tags: string array
 
 ## SEARCH STRATEGY
-1. First read the memory file: use \`read_file\` on data/<username>/memory.json (or find it first with \`bash ls -la data/\`)
+1. First read the memory file: use \`read_file\` on ${memoryFilePath}
 2. Use \`grep\` to search for keywords in memory files
 3. Analyze the results and pick the most relevant ones
 4. Summarize findings in a clear format
@@ -488,6 +538,8 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
   }
 
   private addUserMessage(content: string): void {
+    // Refresh system prompt with latest per-user memory context before user speaks
+    this.rebuildSystemMessage();
     // Attach current time as <attachment> tag so AI always knows when user spoke
     const now = new Date();
     const timeStr = now.toLocaleString('zh-CN', {
@@ -610,10 +662,6 @@ Limit results to ${limit} most relevant. Use ${detailLevel} detail level.`;
     }
 
     this.messages = valid;
-  }
-
-  getMemory(): Memory {
-    return this.memory;
   }
 
   getStats(): { inputTokens: number; outputTokens: number } {

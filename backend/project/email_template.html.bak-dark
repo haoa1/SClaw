@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #0f172a; color: #f1f5f9; margin: 0; padding: 16px; }
+.container { max-width: 800px; margin: 0 auto; }
+.header { background: linear-gradient(135deg, #1e293b, #0f172a); padding: 24px; border-radius: 12px; margin-bottom: 16px; text-align: center; border: 1px solid #475569; }
+.header h1 { color: #fbbf24; margin: 0 0 8px; font-size: 24px; }
+.header .sub { color: #cbd5e1; font-size: 14px; }
+.section { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #475569; }
+.section h2 { color: #fbbf24; font-size: 17px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid #475569; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { background: #334155; color: #fbbf24; padding: 10px 8px; text-align: center; font-weight: 600; }
+td { padding: 8px; text-align: center; border-bottom: 1px solid #1e293b; }
+tr:nth-child(even) { background: #0f172a40; }
+tr:hover { background: #33415560; }
+.buy { color: #34d399; }
+.sell { color: #f87171; }
+.neutral { color: #cbd5e1; }
+.score-high { background: #065f46; color: #34d399; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+.score-mid { background: #92400e; color: #fbbf24; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+.score-low { background: #7f1d1d; color: #fca5a5; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+.rank-1 { color: #fbbf24; font-weight: bold; }
+.rank-2 { color: #cbd5e1; font-weight: bold; }
+.rank-3 { color: #d97706; font-weight: bold; }
+.card { background: #0f172a; border-radius: 8px; padding: 12px; margin-bottom: 8px; border: 1px solid #334155; }
+.card h3 { margin: 0 0 8px; font-size: 14px; }
+.good { color: #34d399; }
+.warn { color: #fbbf24; }
+.bad { color: #f87171; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.info-item { text-align: center; padding: 8px; background: #1e293b; border-radius: 6px; }
+.info-item .label { color: #cbd5e1; font-size: 14px; }
+.info-item .value { font-size: 16px; font-weight: bold; margin-top: 2px; }
+.footer { text-align: center; padding: 16px; color: #94a3b8; font-size: 13px; }
+.market-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.market-item { text-align: center; padding: 10px; border-radius: 6px; }
+.market-up { background: #065f4620; border: 1px solid #065f46; }
+.market-down { background: #7f1d1d20; border: 1px solid #7f1d1d; }
+.market-flat { background: #1e293b; border: 1px solid #334155; }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 14px; margin: 1px; }
+.tag-buy { background: #065f46; color: #34d399; }
+.tag-risk { background: #7f1d1d; color: #fca5a5; }
+.tag-trend { background: #92400e; color: #fbbf24; }
+.tag-div { background: #312e81; color: #a5b4fc; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+<h1>🦀 SClaw 5条件做T + 缠论(午盘) 分析报告</h1>
+<div class="sub">2026-07-01 14:25 CST · 全市场 3992↑ / 1160↓ / 54平 · 76%个股上涨</div>
+</div>
+
+<!-- 市场概况 -->
+<div class="section">
+<h2>📊 市场概况</h2>
+<div class="market-summary">
+<div class="market-item market-up"><div class="label">上涨</div><div style="font-size:24px;font-weight:bold;color:#34d399;">3992</div><div style="font-size:13px;color:#34d399;">+76.6%</div></div>
+<div class="market-item market-down"><div class="label">下跌</div><div style="font-size:24px;font-weight:bold;color:#f87171;">1160</div><div style="font-size:13px;color:#f87171;">-22.3%</div></div>
+<div class="market-item market-flat"><div class="label">平盘</div><div style="font-size:24px;font-weight:bold;color:#94a3b8;">54</div><div style="font-size:13px;color:#94a3b8;">+1.0%</div></div>
+</div>
+<p style="color:#94a3b8;font-size:14px;text-align:center;">
+今日大盘强势，76%个股上涨，午盘做T环境良好。
+5条件筛选(涨幅3~5%+量比>1+换手3~15%+市值50~500亿) 共匹配 <strong style="color:#fbbf24;">37只</strong> 标的。
+</p>
+</div>
+
+<!-- 缠论评分总表 (全部已评分) -->
+<div class="section">
+<h2>📋 缠论评分总表 · 全部已评分标的</h2>
+<p style="color:#94a3b8;font-size:13px;margin:-8px 0 8px;">
+评分维度：买点信号(60分) + 趋势强度(20分) + 风险控制(20分) = 总分100
+</p>
+<table>
+<thead>
+<tr><th>#</th><th>代码</th><th>名称</th><th>总分</th><th>买点</th><th>趋势</th><th>风控</th><th>涨幅%</th><th>量比</th><th>换手%</th><th>市值亿</th><th>PE</th><th>振幅%</th><th>分时</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>🥇</td>
+<td><strong>000404</strong></td>
+<td>长虹华意</td>
+<td><span class="score-high">81</span></td>
+<td>45</td>
+<td>20</td>
+<td>16</td>
+<td>4.45</td>
+<td>1.77</td>
+<td>5.09</td>
+<td>57.1</td>
+<td>11.21</td>
+<td>8.68</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>🥈</td>
+<td><strong>600737</strong></td>
+<td>中粮糖业</td>
+<td><span class="score-high">80</span></td>
+<td>45</td>
+<td>18</td>
+<td>17</td>
+<td>4.22</td>
+<td>1.76</td>
+<td>3.32</td>
+<td>274.8</td>
+<td>27.76</td>
+<td>6.75</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>🥉</td>
+<td><strong>688333</strong></td>
+<td>铂力特</td>
+<td><span class="score-high">78</span></td>
+<td>48</td>
+<td>18</td>
+<td>12</td>
+<td>3.89</td>
+<td>1.27</td>
+<td>5.64</td>
+<td>291.8</td>
+<td>123.91</td>
+<td>7.48</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>603236</strong></td>
+<td>移远通信</td>
+<td><span class="score-mid">77</span></td>
+<td>45</td>
+<td>16</td>
+<td>16</td>
+<td>3.28</td>
+<td>2.02</td>
+<td>3.96</td>
+<td>213.0</td>
+<td>27.78</td>
+<td>6.21</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>688222</strong></td>
+<td>成都先导</td>
+<td><span class="score-mid">76</span></td>
+<td>48</td>
+<td>18</td>
+<td>10</td>
+<td>3.64</td>
+<td>1.24</td>
+<td>6.33</td>
+<td>133.4</td>
+<td>108.66</td>
+<td>11.41</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>688786</strong></td>
+<td>悦安新材</td>
+<td><span class="score-mid">75</span></td>
+<td>48</td>
+<td>18</td>
+<td>9</td>
+<td>3.56</td>
+<td>1.21</td>
+<td>7.5</td>
+<td>82.3</td>
+<td>96.66</td>
+<td>8.57</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>688765</strong></td>
+<td>禾元生物-U</td>
+<td><span class="score-mid">74</span></td>
+<td>50</td>
+<td>14</td>
+<td>10</td>
+<td>4.67</td>
+<td>1.8</td>
+<td>9.68</td>
+<td>190.8</td>
+<td>-131.71</td>
+<td>8.79</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>688443</strong></td>
+<td>智翔金泰-U</td>
+<td><span class="score-mid">73</span></td>
+<td>45</td>
+<td>18</td>
+<td>10</td>
+<td>4.26</td>
+<td>1.38</td>
+<td>5.02</td>
+<td>88.9</td>
+<td>-15.75</td>
+<td>10.81</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>688712</strong></td>
+<td>北芯生命</td>
+<td><span class="score-mid">72</span></td>
+<td>48</td>
+<td>15</td>
+<td>9</td>
+<td>4.13</td>
+<td>1.29</td>
+<td>8.22</td>
+<td>161.9</td>
+<td>153.99</td>
+<td>6.76</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>601696</strong></td>
+<td>中银证券</td>
+<td><span class="score-mid">71</span></td>
+<td>40</td>
+<td>16</td>
+<td>15</td>
+<td>3.72</td>
+<td>1.34</td>
+<td>3.88</td>
+<td>364.5</td>
+<td>32.36</td>
+<td>6.72</td>
+<td>❌</td>
+</tr>
+
+</tbody>
+</table>
+<p style="color:#64748b;font-size:12px;margin-top:8px;">
+* 买点评分基于分时均线位置、量能、振幅、PE合理性；趋势评分基于涨幅位置、换手适中、量比趋势；风控评分基于PE/PB估值、市值大小
+</p>
+</div>
+
+<!-- 前5详细分析 -->
+<div class="section">
+<h2>🔍 TOP 5 深度分析</h2>
+
+<div class="card">
+<h3>🥇 000404 长虹华意 · <span class="score-high">总分81</span> <span class="tag tag-buy">低PE</span> <span class="tag tag-buy">放量上涨</span> <span class="tag tag-div">换手适中</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:14px;">⭐⭐⭐ 偏多 — 低PE叠加放量是强信号</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:14px;color:#fbbf24;">若午后回踩均价线企稳可低吸，目标涨幅+2%做T止盈；止损设开盘价-2%</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:14px;color:#f87171;">分时未站稳均价线，需观察午后能否突破；市值57亿偏小，波动性较大</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:14px;">
+<strong style="color:#34d399;">✅ 优势：</strong>PE仅11.2倍，全市场最低估值之一；量比1.77显着放量；涨幅4.45%处于最佳做T区间；换手5.09%配合温和，筹码换手充分但未过热<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>分时未站稳均价线，需观察午后能否突破；市值57亿偏小，波动性较大
+</div>
+</div>
+
+<div class="card">
+<h3>🥈 600737 中粮糖业 · <span class="score-high">总分80</span> <span class="tag tag-buy">低PE</span> <span class="tag tag-div">量比1.76</span> <span class="tag tag-div">大盘蓝筹</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:14px;">⭐⭐⭐ 偏多 — 估值+放量共振，适合稳健做T</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:14px;color:#fbbf24;">适合中线底仓+做T结合；沿分时均线附近分批低吸，冲高+1.5%分批兑现</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:14px;color:#f87171;">换手3.32%偏低，动能可能不足；涨幅4.22%若午后补量不足可能回落</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:14px;">
+<strong style="color:#34d399;">✅ 优势：</strong>PE仅27.8，估值合理；量比1.76显着放大；市值275亿流动性好；PB仅2.36处于历史低位，安全边际高<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>换手3.32%偏低，动能可能不足；涨幅4.22%若午后补量不足可能回落
+</div>
+</div>
+
+<div class="card">
+<h3>🥉 688333 铂力特 · <span class="score-high">总分78</span> <span class="tag tag-buy">分时强势✅</span> <span class="tag tag-trend">高振幅</span> <span class="tag tag-div">科创板</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:14px;">⭐⭐⭐⭐ 强买 — 分时强势+高振幅，典型做T标的</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:14px;color:#fbbf24;">午后回踩均价线时低吸，拉高+3%以上分批出；设均价线下-2%止损</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:14px;color:#f87171;">PE124倍偏高，缺乏安全边际；科创板20%涨跌幅限制，波动更大</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:14px;">
+<strong style="color:#34d399;">✅ 优势：</strong>分时站稳均价线上方✅，买点信号明确；振幅7.48%，做T空间充裕；换手5.64%适中；市值292亿属于科创板大盘股<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>PE124倍偏高，缺乏安全边际；科创板20%涨跌幅限制，波动更大
+</div>
+</div>
+
+<div class="card">
+<h3>4 603236 移远通信 · <span class="score-mid">总分77</span> <span class="tag tag-div">量比2.02</span> <span class="tag tag-buy">低PE</span> <span class="tag tag-div">5G通信</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:14px;">⭐⭐ 中性偏多 — 放量是好事但涨幅不够，需确认方向</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:14px;color:#fbbf24;">关注午后量能持续情况，若量比维持1.5以上可跟随，否则观望</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:14px;color:#f87171;">涨幅3.28%偏低，动能偏弱；分时未站稳均价线，短线抛压存在</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:14px;">
+<strong style="color:#34d399;">✅ 优势：</strong>量比2.02全市场最高放量倍数之一；PE27.8估值合理；市值213亿流动性好；通信物联赛道景气<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>涨幅3.28%偏低，动能偏弱；分时未站稳均价线，短线抛压存在
+</div>
+</div>
+
+<div class="card">
+<h3>5 688222 成都先导 · <span class="score-mid">总分76</span> <span class="tag tag-buy">分时强势✅</span> <span class="tag tag-trend">振幅11.4%</span> <span class="tag tag-div">科创板</span></h3>
+<div class="info-grid">
+<div class="info-item"><div class="label">买点信号</div><div class="value" style="font-size:14px;">⭐⭐⭐⭐ 强买 — 最大振幅+分时强势，做T首选标的</div></div>
+<div class="info-item"><div class="label">策略建议</div><div class="value" style="font-size:14px;color:#fbbf24;">回踩均价线大胆低吸，极端振幅下可博+4~+5%反弹；均价线下-3%严格止损</div></div>
+<div class="info-item"><div class="label">风控提示</div><div class="value" style="font-size:14px;color:#f87171;">PE109倍偏高；科创板波动大需要严格止损</div></div>
+</div>
+<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;font-size:14px;">
+<strong style="color:#34d399;">✅ 优势：</strong>分时站稳均价线✅；振幅11.4%全市场最大，做T空间极佳；换手6.33%配合活跃；科创板生物医药股弹性好<br>
+<strong style="color:#f87171;">⚠️ 风险：</strong>PE109倍偏高；科创板波动大需要严格止损
+</div>
+</div>
+
+</div>
+
+<!-- 做T信号汇总 -->
+<div class="section">
+<h2>⚡ 午盘做T信号汇总</h2>
+<table>
+<thead>
+<tr><th>标的</th><th>代码</th><th>信号类型</th><th>操作方向</th><th>参考价位</th><th>目标</th><th>止损</th><th>优先级</th></tr>
+</thead>
+<tbody>
+<tr><td>铂力特</td><td>688333</td><td><span class="tag tag-buy">分时强势</span></td><td class="buy">低吸做多</td><td>105~107</td><td>+3%</td><td>-2%</td><td>🥇</td></tr>
+<tr><td>成都先导</td><td>688222</td><td><span class="tag tag-buy">分时强势</span></td><td class="buy">低吸做多</td><td>32~33</td><td>+5%</td><td>-3%</td><td>🥇</td></tr>
+<tr><td>长虹华意</td><td>000404</td><td><span class="tag tag-trend">放量突破</span></td><td class="buy">回踩低吸</td><td>8.0~8.1</td><td>+2%</td><td>-2%</td><td>🥈</td></tr>
+<tr><td>中粮糖业</td><td>600737</td><td><span class="tag tag-div">估值修复</span></td><td class="buy">分批建仓</td><td>12.7~12.8</td><td>+1.5%</td><td>-2%</td><td>🥈</td></tr>
+<tr><td>移远通信</td><td>603236</td><td><span class="tag tag-trend">放量待确认</span></td><td class="neutral">观望</td><td>52.5~53</td><td>确认后+2%</td><td>-1.5%</td><td>🥉</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- 风险提示 -->
+<div class="section" style="background:#1e293b80;border-color:#7f1d1d;">
+<h2 style="color:#f87171;">⚠️ 风险提示</h2>
+<p style="font-size:14px;color:#94a3b8;line-height:1.6;">
+1. 本报告为技术面量化筛选，仅供参考，不构成投资建议<br>
+2. 科创板（688开头）实行±20%涨跌幅，波动风险更大<br>
+3. 做T策略需盯盘执行，非专业投资者谨慎使用<br>
+4. 今日上涨个股达76%，午后需警惕获利回吐<br>
+5. 以上分析基于{date_str}午盘数据，市场瞬息万变<br>
+6. 股市有风险，投资需谨慎
+</p>
+</div>
+
+<div class="footer">
+🦀 SClaw 5条件做T · 缠论午盘分析 · {date_str}<br>
+Generated by AI · Data source: Real-time A-share market
+</div>
+
+</div>
+</body>
+</html>

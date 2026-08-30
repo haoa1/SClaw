@@ -350,15 +350,54 @@ function executeChan5FilterStrategy(data: StockData[], params: Record<string, an
     let mcapYi = mcap / 100000000;
     if (mcapYi < minMcapYi || mcapYi > maxMcapYi) continue;
     
-    // ====== 缠论分析 ======
+    // ====== 缠论分析 (R4v4 引擎预分析优先, 简化版兜底) ======
     const kline = item.kline;
     let zhongshu = { exists: false, upper: 0, lower: 0, clarity: 0 };
     let beichi = { hasBeichi: false, type: '数据不足', detail: '' };
     let buyPoint = { level: '数据不足', price: 0, description: '' };
     let sellPoint = { level: '数据不足', price: 0, description: '', warning: '' };
     let chanScore = { total: 50, breakdown: { zhongshu: 0, beichi: 0, buyPoint: 0, limitUp: 0 } };
-    
-    if (kline && kline.length >= 20) {
+
+    // 优先使用 /api/screen 预跑的 R4v4 缠论分析结果（真实笔/线段/中枢/买卖点/背驰）
+    const chanR = (item as any).chanResult;
+    if (chanR && kline && kline.length > 0 && (chanR.zhongshus || chanR.tradePoints || chanR.divergences)) {
+      const zs = chanR.zhongshus && chanR.zhongshus.length > 0 ? chanR.zhongshus[chanR.zhongshus.length - 1] : null;  // 最近中枢（可能无）
+      const tps: any[] = chanR.tradePoints || [];
+      const divs: any[] = chanR.divergences || [];
+      const lastBuy = [...tps].reverse().find((t: any) => t.type && t.type.startsWith('B'));
+      const lastSell = [...tps].reverse().find((t: any) => t.type && t.type.startsWith('S'));
+      const lastDiv = divs.length > 0 ? divs[divs.length - 1] : null;
+
+      const maxHigh = Math.max(...kline.map((k: any) => k.high));
+      const minLow = Math.min(...kline.map((k: any) => k.low));
+      const priceRange = (maxHigh - minLow) || 1;
+      zhongshu = zs ? {
+        exists: true,
+        upper: zs.zg,
+        lower: zs.zd,
+        clarity: Math.min(100, Math.round(((zs.zg - zs.zd) / priceRange) * 100)),
+      } : { exists: false, upper: 0, lower: 0, clarity: 0 };
+      beichi = lastDiv
+        ? { hasBeichi: true, type: lastDiv.type === 'bottom' ? '底背驰' : '顶背驰', detail: lastDiv.note || '' }
+        : { hasBeichi: false, type: '无背驰', detail: 'R4v4引擎未检测到背驰' };
+
+      const buyMap: Record<string, string> = {
+        B1: '第一类买点（R4v4）', B2: '第二类买点（R4v4）', B3: '第三类买点（R4v4）',
+      };
+      const sellMap: Record<string, string> = {
+        S1: '第一类卖点（R4v4）', S2: '第二类卖点（R4v4）', S3: '第三类卖点（R4v4）',
+      };
+      const lastClose = kline[kline.length - 1].close;
+      const zsRange = zs ? `中枢${zs.zd.toFixed(2)}~${zs.zg.toFixed(2)}` : '无中枢';
+      buyPoint = lastBuy
+        ? { level: buyMap[lastBuy.type] || lastBuy.type, price: lastBuy.price, description: lastBuy.note || `${zsRange} 对应买点` }
+        : { level: '观察区', price: lastClose, description: `R4v4: 趋势${chanR.trend || 'side'}, ${zsRange}, 暂无三类买点信号` };
+      sellPoint = lastSell
+        ? { level: sellMap[lastSell.type] || lastSell.type, price: lastSell.price, description: lastSell.note || '', warning: '注意卖点信号' }
+        : { level: '暂无卖点信号', price: lastClose, description: 'R4v4: 未触发三类卖点', warning: '继续持有' };
+      chanScore = computeChanScore(kline, zhongshu, beichi, buyPoint, verifiedLimitUp);
+    } else if (kline && kline.length >= 20) {
+      // 兜底：简化版分析（无 R4v4 预分析时）
       zhongshu = analyzeZhongshu(kline);
       beichi = analyzeBeichi(kline);
       buyPoint = analyzeBuyPoints(kline, zhongshu);

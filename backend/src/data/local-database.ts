@@ -366,6 +366,16 @@ export class LocalDatabase {
     return row.cnt > 0;
   }
 
+  /** 检查某日期是否为 0 股的成功记录（最近30天内，需要重试补齐） */
+  isZeroStockDate(date: string, source: string = 'tushare'): boolean {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as cnt FROM data_sync_log
+      WHERE date = ? AND source = ? AND status = 'success' AND stock_count = 0
+        AND date > date('now', '-30 days')
+    `).get(date, source) as any;
+    return row.cnt > 0;
+  }
+
   // ===== Index Data (for benchmark) =====
 
   /** 插入指数日线数据 */

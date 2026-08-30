@@ -156,119 +156,179 @@ export function buildBis(fractals: Fractal[], klines: KLine[]): Bi[] {
   return bis;
 }
 
-// ==================== 线段 ====================
+// ==================== 线段 (R4 正统缠论线段) ====================
 
-/** 由笔构建线段：连续三笔有重叠构成一段 */
+/**
+ * 正统缠论线段构建 (R4v4)
+ * 参照缠中说禅 62 课：特征序列分型法
+ *
+ * 核心逻辑:
+ *  1. 线段方向 = 首笔方向; 特征序列 = 反向笔
+ *  2. 突破保护: 反向笔终点突破线段起点价 → 线段提前结束
+ *     (up 线段: down笔终点 < 起点; down 线段: up笔终点 > 起点)
+ *  3. 包含处理只用于特征序列分型检测 (不污染突破保护的原始笔数据)
+ *  4. 分型 = 最近 3 个合并后特征元素 (up 段看高点顶分型, down 段看低点底分型)
+ *  5. 线段 ≥3 笔, 不足则丢弃跳过
+ */
 export function buildSegments(bis: Bi[]): Segment[] {
   const segments: Segment[] = [];
   if (bis.length < 3) return segments;
-  for (let i = 0; i <= bis.length - 3; i++) {
-    const b1 = bis[i];
-    const b2 = bis[i + 1];
-    const b3 = bis[i + 2];
-    // 方向必须交替：上-下-上 或 下-上-下
-    if (b1.direction === b2.direction || b2.direction === b3.direction) continue;
-    // 三笔价格区间重叠
-    const overlapHigh = Math.min(b1.high, b2.high, b3.high);
-    const overlapLow = Math.max(b1.low, b2.low, b3.low);
-    if (overlapHigh > overlapLow) {
-      const direction = b1.direction;
-      segments.push({
-        direction,
-        biStart: i,
-        biEnd: i + 2,
-        startIdx: b1.startIdx,
-        endIdx: b3.endIdx,
-        startPrice: b1.startPrice,
-        endPrice: b3.endPrice,
-        high: Math.max(b1.high, b2.high, b3.high),
-        low: Math.min(b1.low, b2.low, b3.low),
-      });
-      // 跳过已用笔，避免重复
-      i += 2;
+
+  let i = 0;
+  while (i < bis.length) {
+    const dir = bis[i].direction;
+    const startPrice = bis[i].startPrice;
+    let segEndBi = -1;
+    let nextStart = -1;
+    const feats: { bi: number; high: number; low: number }[] = []; // 已包含处理的特征序列元素
+    let j = i;
+
+    while (j < bis.length) {
+      const b = bis[j];
+      if (b.direction === dir) {
+        segEndBi = j;
+      } else {
+        // (a) 突破保护: 用原始反向笔终点 vs 线段起点价 (不能被包含合并污染)
+        let broken = false;
+        if (dir === 'up' && b.endPrice < startPrice) broken = true;
+        if (dir === 'down' && b.endPrice > startPrice) broken = true;
+        if (broken) {
+          segEndBi = j - 1;
+          nextStart = j;
+          break;
+        }
+
+        // (b) 特征序列元素 + 包含合并 (仅用于分型检测)
+        let fe = { bi: j, high: b.high, low: b.low };
+        if (feats.length > 0) {
+          const last = feats[feats.length - 1];
+          const isContained = (fe.high <= last.high && fe.low >= last.low) ||
+                              (fe.high >= last.high && fe.low <= last.low);
+          if (isContained) {
+            fe.high = Math.max(fe.high, last.high);
+            fe.low = Math.min(fe.low, last.low);
+            fe.bi = last.bi;
+            feats[feats.length - 1] = fe;
+          } else {
+            feats.push(fe);
+          }
+        } else {
+          feats.push(fe);
+        }
+
+        // (c) 特征序列分型: 最近 3 个合并后元素
+        if (feats.length >= 3) {
+          const f1 = feats[feats.length - 3];
+          const f2 = feats[feats.length - 2];
+          const f3 = feats[feats.length - 1];
+          let fractalHit = false;
+          if (dir === 'up') {
+            if (f2.high > f1.high && f2.high > f3.high) fractalHit = true;
+          } else {
+            if (f2.low < f1.low && f2.low < f3.low) fractalHit = true;
+          }
+          if (fractalHit) {
+            segEndBi = f2.bi - 1;
+            nextStart = f2.bi;
+            break;
+          }
+        }
+      }
+      j++;
+    }
+
+    if (segEndBi >= 0) {
+      const biCount = segEndBi - i + 1;
+      if (biCount >= 3) {
+        const segBis = bis.slice(i, segEndBi + 1);
+        segments.push({
+          direction: dir,
+          biStart: i,
+          biEnd: segEndBi,
+          startIdx: bis[i].startIdx,
+          endIdx: bis[segEndBi].endIdx,
+          startPrice: bis[i].startPrice,
+          endPrice: bis[segEndBi].endPrice,
+          high: Math.max(...segBis.map(b => b.high)),
+          low: Math.min(...segBis.map(b => b.low)),
+        });
+        i = nextStart >= 0 ? nextStart : segEndBi + 1;
+      } else {
+        i = nextStart >= 0 ? nextStart : i + 1;
+      }
+    } else {
+      break;
     }
   }
   return segments;
 }
 
-// ==================== 中枢 ====================
+// ==================== 中枢 (R4 线段重叠) ====================
 
 /**
- * 中枢：连续三个次级别走势类型的重叠区间
- * 用笔近似：连续三笔（上-下-上 或 下-上-下）的重叠区间
- * ZG = 三笔高点最小值（中枢上沿）
- * ZD = 三笔低点最大值（中枢下沿）
+ * 线段中枢: 连续 ≥3 条线段的重叠区间 (缠论正统: 中枢 = 次级别走势类型重叠)
+ * ZG = 线段高点最小值 (中枢上沿)
+ * ZD = 线段低点最大值 (中枢下沿)
+ *
+ * 规则:
+ *  - 方向必须交替 (上-下-上 或 下-上-下)
+ *  - 第3条线段显著逃逸 (端点离开 > 50% 箱宽) → 不构成中枢 (单边行情)
+ *  - 延伸: 后续线段与区间重叠且未显著逃逸 → 延伸 (最多 9 段)
+ *  - 穿透率过滤: 中枢区间内 K 线若大量穿透上下沿 (>60%) → 放弃 (假中枢)
  */
-export function findZhongShus(bis: Bi[], level: string): ZhongShu[] {
+export function findZhongShus(segments: Segment[], level: string, klines?: KLine[]): ZhongShu[] {
   const zhongshus: ZhongShu[] = [];
-  if (bis.length < 3) return zhongshus;
-  // 笔端点显著离开中枢区间的判定（离开幅度 > 50% 箱宽 → 中枢被破坏）
-  // 避免"擦边"笔（端点略出区间）误杀中枢，只有明显突破/跌破才结束中枢
+  if (segments.length < 3) return zhongshus;
   const escapeThresh = 0.5;
-  const isEscape = (b: Bi, zd: number, zg: number): boolean => {
+  const isEscape = (s: Segment, zd: number, zg: number): boolean => {
     const w = zg - zd;
     if (w <= 0) return false;
-    if (b.endPrice < zd && zd - b.endPrice > w * escapeThresh) return true;
-    if (b.endPrice > zg && b.endPrice - zg > w * escapeThresh) return true;
+    if (s.endPrice < zd && zd - s.endPrice > w * escapeThresh) return true;
+    if (s.endPrice > zg && s.endPrice - zg > w * escapeThresh) return true;
     return false;
   };
-  const MIN_1BI_LEN = 10; // 1 笔中枢需足够长（K线数）才有意义，否则是单边行情的噪音
-  for (let i = 0; i <= bis.length - 3; i++) {
-    const b1 = bis[i];
-    const b2 = bis[i + 1];
-    const b3 = bis[i + 2];
-    if (b1.direction === b2.direction || b2.direction === b3.direction) continue;
-    // 中枢区间 = 三段重叠
-    const zg = Math.min(b1.high, b2.high, b3.high); // 上沿
-    const zd = Math.max(b1.low, b2.low, b3.low);    // 下沿
+  const pierceRatio = (startIdx: number, endIdx: number, zg: number, zd: number): number => {
+    if (!klines || klines.length === 0) return 0;
+    const ks = klines.slice(startIdx, endIdx + 1);
+    const pierce = ks.filter(k => k.high > zg || k.low < zd).length;
+    return ks.length ? pierce / ks.length : 1;
+  };
+  for (let i = 0; i <= segments.length - 3; i++) {
+    const s1 = segments[i];
+    const s2 = segments[i + 1];
+    const s3 = segments[i + 2];
+    if (s1.direction === s2.direction || s2.direction === s3.direction) continue;
+    const zg = Math.min(s1.high, s2.high, s3.high);
+    const zd = Math.max(s1.low, s2.low, s3.low);
     if (zg > zd) {
+      // 第3段显著逃逸 → 单边行情, 非中枢
+      if (isEscape(s3, zd, zg)) continue;
       let endIdx = i + 2;
-      let endKIdx = b3.endIdx;
-      // 形成阶段：b3 端点显著离开（突破上沿/跌破下沿）→ 中枢在离开处结束
-      if (isEscape(b3, zd, zg)) {
-        if (isEscape(b2, zd, zg)) {
-          // b2、b3 都显著离开 → 仅 b1 一段：长度足够才保留为 1 笔中枢
-          const len = b1.endIdx - b1.startIdx + 1;
-          if (len >= MIN_1BI_LEN) {
-            zhongshus.push({
-              zg, zd,
-              gg: b1.high, dd: b1.low,
-              startIdx: b1.startIdx, endIdx: b1.endIdx,
-              startPrice: b1.startPrice, endPrice: b1.endPrice,
-              segmentStart: i, segmentEnd: i, level, direction: 'side',
-            });
-          }
-          continue; // b1 已处理，从 b2 继续（for 循环 i++）
-        } else {
-          endIdx = i + 1; endKIdx = b2.endIdx; // b1,b2 两笔形成有效中枢
-        }
-      }
-      // 中枢延伸：笔与区间重叠 且 端点未显著离开 → 延伸（最多 6 段，防止框过长）
-      for (let j = endIdx + 1; j < bis.length; j++) {
-        if (endIdx - i + 1 >= 6) break; // 3 段形成 + 3 段延伸（缠论标准最多 9 段，视觉上 6 段更紧凑）
-        const b = bis[j];
-        if (b.high >= zd && b.low <= zg && !isEscape(b, zd, zg)) {
+      let endKIdx = s3.endIdx;
+      // 延伸: 后续线段与区间重叠且未显著逃逸
+      for (let j = endIdx + 1; j < segments.length; j++) {
+        if (endIdx - i + 1 >= 9) break; // 缠论标准最多 9 段
+        const s = segments[j];
+        if (s.high >= zd && s.low <= zg && !isEscape(s, zd, zg)) {
           endIdx = j;
-          endKIdx = b.endIdx;
-        } else {
-          break;
-        }
+          endKIdx = s.endIdx;
+        } else break;
       }
-      const segBis = bis.slice(i, endIdx + 1);
-      const gg = Math.max(...segBis.map(b => b.high));
-      const dd = Math.min(...segBis.map(b => b.low));
-      zhongshus.push({
-        zg, zd, gg, dd,
-        startIdx: b1.startIdx,
-        endIdx: endKIdx,
-        startPrice: b1.startPrice,
-        endPrice: bis[endIdx].endPrice,
-        segmentStart: i,
-        segmentEnd: endIdx,
-        level,
-        direction: 'side',
-      });
-      i = endIdx; // 不共享笔：for 循环 i++ 后从 endIdx+1 继续
+      const segSegs = segments.slice(i, endIdx + 1);
+      const z: ZhongShu = {
+        zg, zd,
+        gg: Math.max(...segSegs.map(s => s.high)),
+        dd: Math.min(...segSegs.map(s => s.low)),
+        startIdx: s1.startIdx, endIdx: endKIdx,
+        startPrice: s1.startPrice, endPrice: segments[endIdx].endPrice,
+        segmentStart: i, segmentEnd: endIdx, level, direction: 'side',
+      };
+      // 穿透率过滤: K线大量穿透上下沿 → 假中枢
+      if (pierceRatio(z.startIdx, z.endIdx, zg, zd) <= 0.6) {
+        zhongshus.push(z);
+        i = endIdx; // 仅通过时推进, 避免跳过后续有效窗口
+      }
+      // 穿透率过高 → 不推进 i, 让后续窗口重新评估
     }
   }
   return zhongshus;
@@ -476,7 +536,14 @@ export function analyzeChan(klines: KLine[], code: string, level: 'daily' | 'm30
   const fractals = findFractals(merged, klines);
   const bis = buildBis(fractals, klines);
   const segments = buildSegments(bis);
-  const zhongshus = findZhongShus(bis, level);
+  let zhongshus = findZhongShus(segments, level, klines);
+  // R3: K线穿透质量过滤 —— 中枢区间内 K线穿透率 > 60% 判定为"悬空框"（笔重叠但价格不驻留），剔除
+  zhongshus = zhongshus.filter((z) => {
+    const ks = klines.slice(z.startIdx, z.endIdx + 1);
+    if (ks.length < 5) return false;
+    const pierce = ks.filter((k) => k.high > z.zg || k.low < z.zd).length;
+    return pierce / ks.length <= 0.6;
+  });
   const divergences = findDivergences(klines, fractals, macd);
   const tradePoints = findTradePoints(klines, fractals, bis, zhongshus, divergences);
   const trend = judgeTrend(bis, zhongshus);

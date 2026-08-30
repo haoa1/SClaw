@@ -1,129 +1,159 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
-body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; }
-.container { max-width: 960px; margin: 0 auto; }
-.header { background: linear-gradient(135deg, #1e293b, #0f172a); padding: 24px; border-radius: 12px; margin-bottom: 16px; text-align: center; border: 1px solid #334155; }
-.header h1 { color: #fbbf24; margin: 0 0 8px; font-size: 22px; }
-.header .sub { color: #94a3b8; font-size: 13px; }
-.header .stats { display: flex; justify-content: center; gap: 24px; margin-top: 12px; flex-wrap: wrap; }
-.header .stats span { color: #e2e8f0; font-size: 14px; }
-.header .stats .num { color: #fbbf24; font-weight: bold; font-size: 18px; }
-.section { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
-.section h2 { color: #fbbf24; font-size: 16px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+/* ===== Base ===== */
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:16px;line-height:1.6;-webkit-text-size-adjust:100%}
+.container{max-width:900px;margin:0 auto}
 
-table.summary { width: 100%; border-collapse: collapse; font-size: 12px; }
-table.summary th { background: #334155; color: #94a3b8; padding: 8px 6px; border: 1px solid #475569; text-align: center; font-weight: 600; white-space: nowrap; }
-table.summary td { padding: 8px 6px; border: 1px solid #334155; text-align: center; }
-table.summary tr:hover { background: #1e293b80; }
-table.summary .stock-name { font-weight: 600; color: #e2e8f0; }
-table.summary .stock-code { color: #94a3b8; font-size: 11px; }
+/* ===== Header ===== */
+.header{background:linear-gradient(135deg,#1e293b,#0f172a);padding:28px 20px;border-radius:12px;margin-bottom:20px;text-align:center;border:1px solid #334155}
+.header h1{color:#fbbf24;margin:0 0 6px;font-size:24px}
+.header .sub{color:#94a3b8;font-size:13px}
 
-.score-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
-.score-high { background: #065f46; color: #34d399; }
-.score-mid { background: #92400e; color: #fbbf24; }
-.score-low { background: #7f1d1d; color: #fca5a5; }
+/* ===== Section ===== */
+.section{background:#1e293b;border-radius:12px;padding:20px;margin-bottom:20px;border:1px solid #334155}
+.section h2{color:#fbbf24;font-size:17px;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid #334155}
 
-.tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
-.tag-buy { background: #065f46; color: #34d399; }
-.tag-partial { background: #92400e; color: #fbbf24; }
-.tag-risk { background: #7f1d1d; color: #fca5a5; }
-.tag-watch { background: #312e81; color: #a5b4fc; }
+/* ===== Card ===== */
+.card{background:#0f172a;border-radius:8px;padding:14px;margin-bottom:10px;border:1px solid #334155}
+.card h3{margin:0 0 10px;font-size:15px}
 
-.card { background: #0f172a; border-radius: 8px; padding: 14px; margin-bottom: 10px; border: 1px solid #334155; }
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #334155; flex-wrap: wrap; gap: 4px; }
-.card-header .name { font-size: 15px; font-weight: bold; color: #fbbf24; }
-.card-header .price { font-size: 14px; }
-.card-header .price .up { color: #34d399; }
-.card-header .price .down { color: #f87171; }
-.card-header .total-score { font-size: 18px; font-weight: bold; }
+/* ===== Table — responsive: wrap cells on narrow screens ===== */
+table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;word-break:break-word}
+th{background:#1e293b;color:#fbbf24;padding:8px 6px;border:1px solid #334155;text-align:center}
+td{padding:6px;border:1px solid #334155;text-align:center;vertical-align:middle}
+tr:nth-child(even){background:#1e293b}
+tr:nth-child(odd){background:#0f172a}
 
-.card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.card-item { background: #1e293b; border-radius: 6px; padding: 10px; }
-.card-item .label { color: #94a3b8; font-size: 10px; margin-bottom: 4px; }
-.card-item .value { font-size: 13px; font-weight: 600; }
-.card-item .detail { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+/* ===== Floating scroll wrapper for wide tables (falls back gracefully on email clients that don't support overflow:auto) ===== */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px 0}
 
-.buy-point-detail { margin-top: 8px; }
-.buy-point-detail table { width: 100%; border-collapse: collapse; font-size: 11px; }
-.buy-point-detail th { background: #334155; color: #94a3b8; padding: 4px 6px; border: 1px solid #475569; text-align: center; }
-.buy-point-detail td { padding: 4px 6px; border: 1px solid #334155; text-align: center; }
+/* ===== Price grid (table-based for email client compatibility) ===== */
+.price-table{width:100%;border-collapse:collapse;margin:8px 0}
+.price-table td{width:25%;background:#0f172a;border:1px solid #334155;padding:10px;text-align:center;vertical-align:middle}
+.price-table .label{display:block;color:#94a3b8;font-size:10px;line-height:1.4}
+.price-table .value{display:block;font-size:15px;font-weight:bold;margin-top:2px;line-height:1.4}
 
-.key-levels { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.key-level { flex: 1; min-width: 80px; text-align: center; padding: 6px; border-radius: 4px; font-size: 11px; }
-.key-support { background: #065f4640; border: 1px solid #065f46; }
-.key-resist { background: #7f1d1d40; border: 1px solid #7f1d1d; }
-.key-current { background: #312e8140; border: 1px solid #312e81; }
-.key-level .klabel { color: #94a3b8; font-size: 10px; }
-.key-level .kvalue { font-weight: bold; font-size: 13px; margin-top: 2px; }
+/* ===== Detail table ===== */
+.detail-table td:first-child{text-align:left;color:#94a3b8;width:25%;font-weight:bold}
+.detail-table td:last-child{text-align:left}
 
-.verdict { padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 13px; }
-.verdict-bullish { background: #065f4620; border-left: 4px solid #34d399; }
-.verdict-neutral { background: #92400e20; border-left: 4px solid #fbbf24; }
-.verdict-bearish { background: #7f1d1d20; border-left: 4px solid #f87171; }
+/* ===== Badges ===== */
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:bold}
+.badge-low{background:#065f46;color:#34d399}
+.badge-mid{background:#78350f;color:#fbbf24}
+.badge-high{background:#7f1d1d;color:#fca5a5}
+.badge-severe{background:#4c0519;color:#f87171}
 
-.footer { text-align: center; padding: 16px; color: #475569; font-size: 11px; }
+/* ===== Buy-point tags ===== */
+.buy-point-tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;margin:0 2px}
+.tag-b1{background:#065f46;color:#34d399}
+.tag-b2{background:#1e3a5f;color:#60a5fa}
+.tag-b3{background:#5b21b6;color:#a78bfa}
+
+/* ===== Highlight boxes ===== */
+.highlight-box{padding:12px;margin:10px 0;border-radius:8px;font-size:13px}
+.highlight-box.green{background:linear-gradient(135deg,#064e3b,#1e293b);border-left:4px solid #34d399}
+.highlight-box.red{background:linear-gradient(135deg,#7f1d1d,#1e293b);border-left:4px solid #f87171}
+.highlight-box.yellow{background:linear-gradient(135deg,#78350f,#1e293b);border-left:4px solid #fbbf24}
+
+/* ===== Colored text ===== */
+.good{color:#34d399;font-weight:bold}
+.bad{color:#f87171;font-weight:bold}
+.warn{color:#fbbf24;font-weight:bold}
+.emoji{font-size:16px}
+
+/* ===== Footer ===== */
+.footer{text-align:center;padding:20px;color:#64748b;font-size:11px}
+
+/* ===== 📱 Mobile Responsive ===== */
+@media only screen and (max-width:600px){
+  body{padding:8px}
+  .header{padding:18px 14px;border-radius:8px}
+  .header h1{font-size:18px}
+  .header .sub{font-size:11px}
+  .section{padding:12px;border-radius:8px}
+  .section h2{font-size:15px}
+  .card{padding:10px}
+  .card h3{font-size:13px}
+
+  /* Tables: smaller padding & font on mobile */
+  table{font-size:11px}
+  th{padding:5px 3px;font-size:10px}
+  td{padding:4px 3px;font-size:11px}
+  .detail-table td:first-child{width:30%}
+  .detail-table td:last-child{width:70%}
+
+  /* Price grid mobile */
+  .price-table td{padding:6px 4px}
+  .price-table .value{font-size:13px}
+
+  /* Badge & tags */
+  .badge{font-size:9px;padding:1px 5px}
+  .buy-point-tag{font-size:9px;padding:1px 4px}
+
+  /* Footer */
+  .footer{font-size:10px;padding:12px}
+}
 </style>
 </head>
 <body>
+
 <div class="container">
 
+<!-- ========== HEADER ========== -->
 <div class="header">
-  <h1>🦀 缠论买卖点深度分析报告</h1>
-  <div class="sub">{{DATE}} · {{TIME}} CST</div>
-  <div class="stats">
-    <span>全市场扫描 <span class="num">{{TOTAL_SCREEN}}</span> 只</span>
-    <span>策略: 日线第一类买点 ∩ 30分第二类买点</span>
-    <span>入围 <span class="num">{{MATCH_COUNT}}</span> 只</span>
-  </div>
+  <h1>🦀 缠论三买点 · 深度分析报告</h1>
+  <div class="sub">{{DATE}} · {{TIME}} CST<br>
+  一买 ⊕ 二买 ⊕ 三买 并集筛选 | 缠论 + 筹码 + 量价 三维量化<br>
+  全市场 {{TOTAL_SCREEN}} 只 → 命中 {{MATCH_COUNT}} 只</div>
 </div>
 
+<!-- ========== 市场环境 ========== -->
 <div class="section">
   <h2>📊 市场环境</h2>
-  <p style="color:#94a3b8; font-size:13px;">{{MARKET_CONTEXT}}</p>
+  {{MARKET_CONTEXT}}
 </div>
 
+<!-- ========== 综合排名总览 ========== -->
 <div class="section">
-  <h2>🏆 综合排名总览</h2>
-  <table class="summary">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>股票</th>
-        <th>收盘</th>
-        <th>涨跌幅</th>
-        <th>量比</th>
-        <th>换手率</th>
-        <th>日线一类<br>买点 /50</th>
-        <th>30分二类<br>买点 /50</th>
-        <th>⚡总分<br>/100</th>
-        <th>当前阶段</th>
-        <th>信号</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{SUMMARY_ROWS}}
-    </tbody>
-  </table>
-</div>
-
-<div class="section">
-  <h2>📋 操作建议</h2>
-  <div style="color:#94a3b8; font-size:13px; line-height:1.8;">
-    {{CONCLUSION}}
+  <h2>🏆 综合评分总览</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>股票</th><th>现价</th><th>涨跌%</th>
+          <th>买点类型</th><th>缠论/100</th><th>筹码/100</th><th>量价/100</th>
+          <th>⚡综合</th><th>买入参考价</th><th>止损价</th><th>目标价</th><th>风险</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{SUMMARY_ROWS}}
+      </tbody>
+    </table>
   </div>
 </div>
 
+<!-- ========== 操作建议 ========== -->
 <div class="section">
-  <h2>🔍 个股深度分析</h2>
+  <h2>📋 操作建议</h2>
+  {{CONCLUSION}}
+</div>
+
+<!-- ========== 前5深度分析 ========== -->
+<div class="section">
+  <h2>🔍 深度分析</h2>
   {{CARDS}}
 </div>
 
+<!-- ========== FOOTER ========== -->
 <div class="footer">
-  🦀 报告生成时间: {{DATE}} {{TIME}} · 仅供技术参考，不构成投资建议<br>
-  SClaw — chill but sharp
+  ⏰ 报告生成：{{DATE}} {{TIME}} CST<br>
+  📊 数据来源：SClaw 实时行情 · 技术分析仅供参考 · 不构成投资建议<br>
+  🦀 Powered by SClaw
 </div>
 
 </div>
