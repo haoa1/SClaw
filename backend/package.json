@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^12.10.0",
     "chokidar": "^3.6.0",
     "cors": "^2.8.5",
@@ -20,7 +21,8 @@
     "js-yaml": "^5.2.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.7",
-    "openai": "^6.37.0"
+    "openai": "^6.37.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

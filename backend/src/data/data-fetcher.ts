@@ -5,6 +5,13 @@ import { StockData, KLineData, KLineMeta } from '../types';
 
 // ===== Local Database (direct SQLite for K-line) =====
 const DB_PATH = path.resolve(__dirname, '../../data/stock_history.db');
+// 前复权干净库（与回测 / 毒性排除同一口径）——读取优先，原始库仅作回退
+//   clean_daily.db :: daily  (日线前复权, 1993~今)
+//   clean_m30.db   :: m30    (30分钟前复权, 与 clean_daily 同日因子保证同口径)
+//   clean_m60.db   :: m60    (60分钟前复权)
+const CLEAN_DAILY_DB = path.resolve(__dirname, '../../data/clean_daily.db');
+const CLEAN_M30_DB = path.resolve(__dirname, '../../data/clean_m30.db');
+const CLEAN_M60_DB = path.resolve(__dirname, '../../data/clean_m60.db');
 // 磁盘缓存已移除：用户需要实时数据，直接走网络刷新
 
 /**
@@ -93,12 +100,17 @@ export class DataFetcher {
   // ===== Public API =====
 
   /** 获取全市场数据：每次实时从网络拉取，不做缓存 */
-  async fetchAllStocks(markets: ('SH' | 'SZ' | 'BJ')[] = ['SH', 'SZ', 'BJ']): Promise<StockData[]> {
+  async fetchAllStocks(
+    markets: ('SH' | 'SZ' | 'BJ')[] | 'SH' | 'SZ' | 'BJ' = ['SH', 'SZ', 'BJ'],
+  ): Promise<StockData[]> {
+    // ⚠️ 容错：调用方可能传单市场字符串（如 /api/screen 的 request.market='SH'），
+    // 直接透传会导致 markets.join(...) 抛 "markets.join is not a function" → 整个选股 500
+    const mkts: ('SH' | 'SZ' | 'BJ')[] = typeof markets === 'string' ? [markets] : markets;
     // 请求去重：同一时间多个并发请求共享一次网络拉取
     if (this.fetchAllPromise) {
       return await this.fetchAllPromise;
     }
-    this.fetchAllPromise = this.refreshFromNetwork(markets);
+    this.fetchAllPromise = this.refreshFromNetwork(mkts);
     try {
       return await this.fetchAllPromise;
     } finally {
@@ -128,7 +140,7 @@ export class DataFetcher {
       const startDate = new Date(endDate.getTime() - dbDays * 24 * 60 * 60 * 1000);
       const startStr = startDate.toISOString().slice(0, 10);
 
-      const dbRows = this.queryLocalKLine(code, startStr, todayStr);
+      const { rows: dbRows, source: localSrc } = this.queryLocalKLine(code, startStr, todayStr);
       allData = dbRows.map(r => ({
         date: r.date, open: r.open, close: r.close,
         high: r.high, low: r.low, volume: r.volume,
@@ -136,7 +148,7 @@ export class DataFetcher {
 
       if (dbRows.length > 0) {
         sources.push({
-          source: 'sqlite_local',
+          source: localSrc,
           count: dbRows.length,
           range: `${dbRows[0].date} to ${dbRows[dbRows.length - 1].date}`,
         });
@@ -160,13 +172,13 @@ export class DataFetcher {
             range: `${onlineData[0].date} to ${onlineData[onlineData.length - 1].date}`,
           });
           
-          // Online data takes priority over local SQLite.
-          // Merge: start with online data, then add SQLite-only dates that online didn't cover.
-          const onlineDates = new Set(onlineData.map(d => d.date));
-          const sqliteOnly = allData.filter(d => !onlineDates.has(d.date));
-          
-          allData = [...onlineData, ...sqliteOnly];
-          console.log(`[DataFetcher] fetchKLine: using ${onlineData.length} ${onlineSource} + ${sqliteOnly.length} SQLite-only entries for ${code}`);
+          // 口径一致化（2026-09-12）：本地 clean_daily 已是前复权，与在线腾讯 qfq 同口径。
+          // 因此改为「本地优先 + 在线只补本地缺失日期」，避免在线整体覆盖已审计的历史。
+          const localDates = new Set(allData.map(d => d.date));
+          const onlineOnly = onlineData.filter(d => !localDates.has(d.date));
+          const nLocal = allData.length;
+          allData = [...allData, ...onlineOnly];
+          console.log(`[DataFetcher] fetchKLine: local ${nLocal} (${localSrc}) + online-only ${onlineOnly.length} ${onlineSource} for ${code}`);
         } else {
           console.warn(`[DataFetcher] fetchKLine: online API returned no data for ${code}`);
         }
@@ -244,33 +256,52 @@ export class DataFetcher {
     };
   }
 
-  /** 从本地 SQLite 查 K线数据 */
-  private queryLocalKLine(code: string, startDate: string, endDate: string): Array<{
-    date: string; open: number; high: number; low: number; close: number; volume: number;
-  }> {
+  /**
+   * 从本地 SQLite 查日线（前复权优先，2026-09-12 口径统一）
+   *   1) clean_daily.db :: daily        —— 前复权，与回测/毒性排除同口径（首选）
+   *   2) stock_history.db :: stock_daily —— 未复权（仅当干净库无数据时回退）
+   */
+  private queryLocalKLine(code: string, startDate: string, endDate: string): {
+    rows: Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>;
+    source: string;
+  } {
+    const clean = this.querySqliteBars(CLEAN_DAILY_DB, 'daily', 'date', code, startDate, endDate);
+    if (clean.length > 0) return { rows: clean, source: 'sqlite_clean_daily' };
+    const raw = this.querySqliteBars(DB_PATH, 'stock_daily', 'date', code, startDate, endDate);
+    if (raw.length > 0) {
+      console.warn(`[DataFetcher] clean_daily 无 ${code} 数据，回退原始未复权库 stock_daily（口径不一致告警）`);
+      return { rows: raw, source: 'sqlite_local_raw' };
+    }
+    return { rows: [], source: 'sqlite_clean_daily' };
+  }
+
+  /** 通用：从指定库/表按 [startDate, endDate] 取 OHLCV（升序） */
+  private querySqliteBars(
+    dbPath: string, table: string, timeCol: string,
+    code: string, startDate: string, endDate: string,
+  ): Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }> {
     try {
-      if (!fs.existsSync(DB_PATH)) {
-        console.warn(`[DataFetcher] DB not found: ${DB_PATH}`);
+      if (!fs.existsSync(dbPath)) {
+        console.warn(`[DataFetcher] DB not found: ${dbPath}`);
         return [];
       }
       // Use better-sqlite3 for sync query (it's fast for indexed queries)
       const Database = require('better-sqlite3');
-      const db = new Database(DB_PATH, { readonly: true });
+      const db = new Database(dbPath, { readonly: true });
       try {
-        const rows = db.prepare(`
-          SELECT date, open, high, low, close, volume
-          FROM stock_daily
-          WHERE code = ? AND date >= ? AND date <= ?
-          ORDER BY date
+        return db.prepare(`
+          SELECT ${timeCol} AS date, open, high, low, close, volume
+          FROM ${table}
+          WHERE code = ? AND ${timeCol} >= ? AND ${timeCol} <= ?
+          ORDER BY ${timeCol}
         `).all(code, startDate, endDate) as Array<{
           date: string; open: number; high: number; low: number; close: number; volume: number;
         }>;
-        return rows;
       } finally {
         db.close();
       }
     } catch (err) {
-      console.warn(`[DataFetcher] queryLocalKLine error for ${code}:`, err);
+      console.warn(`[DataFetcher] querySqliteBars error for ${code} @ ${dbPath}:${table}:`, err);
       return [];
     }
   }
@@ -306,7 +337,7 @@ export class DataFetcher {
   private async fetchTencentFQKLine(code: string, market: 'SH' | 'SZ' | 'BJ', days: number): Promise<KLineData[]> {
     try {
       const symbol = market === 'SH' ? 'sh' + code : market === 'BJ' ? 'bj' + code : 'sz' + code;
-      const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${days},qfq`;
+      const url = `https://proxy.finance.qq.com/ifzqgtimg/appstock/app/fqkline/get?param=${symbol},day,,,${days},qfq`;
       
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -400,14 +431,114 @@ export class DataFetcher {
   }
 
   /**
-   * Fetch K-line data with configurable period (scale)
-   * period: 240 = daily, 60 = 60min, 30 = 30min, 15 = 15min, 5 = 5min
-   * Uses Sina API directly (supports all scale values for intraday charts)
+   * 分钟线（period < 240）—— 2026-09-12 起「本地前复权优先」
+   *
+   * 口径统一设计：
+   *   1) 历史部分取本地 clean_m30.db / clean_m60.db（前复权，与 clean_daily 同日因子）
+   *   2) 本地最后一根之后的「新 bar」取新浪原始价，用重叠交易日的日末收盘价
+   *      自校验出复权因子后折算（factor = 本地qfq末价 / 新浪原始末价），
+   *      校验不过则丢弃在线新 bar（宁缺勿错）
+   *   3) 本地库缺失时才退回新浪原始价（未复权），并打告警
    */
   async fetchKLineByPeriod(code: string, market: 'SH' | 'SZ' | 'BJ', days: number = 120, period: number = 240): Promise<{
     data: KLineData[];
     period: number;
   }> {
+    if (period === 30 || period === 60) {
+      const want = Math.max(days, 200);
+      const local = this.queryLocalMinute(code, period as 30 | 60, want);
+      const sina = await this.fetchSinaMinute(code, market, want, period);
+      if (local.length === 0) {
+        if (sina.length > 0) {
+          console.warn(`[DataFetcher] clean_m${period} 无 ${code} 分钟数据：回退新浪未复权分钟线（口径不一致告警）`);
+          return { data: sina.slice(-days), period };
+        }
+        return { data: [], period };
+      }
+      if (sina.length === 0) return { data: local.slice(-days), period };
+      const f = this.impliedAdjustFactor(local, sina);
+      if (f === null) {
+        console.warn(`[DataFetcher] ${code} p=${period} 重叠日校验失败：仅返回本地前复权数据（丢弃在线新bar）`);
+        return { data: local.slice(-days), period };
+      }
+      const lastLocalDay = local[local.length - 1].date.slice(0, 10);
+      const fresh = sina
+        .filter(d => d.date.slice(0, 10) > lastLocalDay)
+        .map(d => ({ ...d, open: d.open * f, high: d.high * f, low: d.low * f, close: d.close * f }));
+      if (fresh.length > 0) {
+        console.log(`[DataFetcher] ${code} p=${period}: 本地前复权 ${local.length} 根 + 在线折算 ${fresh.length} 根 (factor=${f.toFixed(4)})`);
+      }
+      return { data: [...local, ...fresh].slice(-days), period };
+    }
+    const data = await this.fetchSinaMinute(code, market, days, period);
+    return { data: data.slice(-days), period };
+  }
+
+  /**
+   * 本地分钟线（前复权）读取：clean_m30.db::m30 / clean_m60.db::m60
+   * 返回最后 limit 根，时间格式与新浪保持一致：'YYYY-MM-DD HH:MM:SS'（本地存 'YYYY-MM-DD HH:MM'）
+   */
+  private queryLocalMinute(code: string, period: 30 | 60, limit: number): KLineData[] {
+    try {
+      const dbPath = period === 30 ? CLEAN_M30_DB : CLEAN_M60_DB;
+      const table = period === 30 ? 'm30' : 'm60';
+      if (!fs.existsSync(dbPath)) return [];
+      const Database = require('better-sqlite3');
+      const db = new Database(dbPath, { readonly: true });
+      let rows: Array<{ datetime: string; open: number; high: number; low: number; close: number; volume: number }> = [];
+      try {
+        rows = db.prepare(`
+          SELECT datetime, open, high, low, close, volume
+          FROM ${table}
+          WHERE code = ?
+          ORDER BY datetime DESC
+          LIMIT ?
+        `).all(code, Math.max(limit, 1)) as any;
+      } finally {
+        db.close();
+      }
+      if (!rows || rows.length === 0) return [];
+      return rows.reverse().map(r => ({
+        date: r.datetime.length > 16 ? r.datetime.slice(0, 19) : r.datetime + ':00',
+        open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume,
+      }));
+    } catch (err) {
+      console.warn(`[DataFetcher] queryLocalMinute error for ${code} p=${period}:`, err);
+      return [];
+    }
+  }
+
+  /**
+   * 用「重叠交易日」的日末收盘价反推复权因子：factor = 本地qfq末价 / 新浪原始末价
+   * 取最近若干重叠日的中位数，且要求各日比值相互一致（偏离 >1% 视为不一致 → 返回 null）
+   */
+  private impliedAdjustFactor(local: KLineData[], sina: KLineData[]): number | null {
+    const lastPerDay = (arr: KLineData[]) => {
+      const m = new Map<string, KLineData>();
+      for (const d of arr) {
+        const day = d.date.slice(0, 10);
+        const prev = m.get(day);
+        if (!prev || d.date > prev.date) m.set(day, d);
+      }
+      return m;
+    };
+    const lmap = lastPerDay(local);
+    const smap = lastPerDay(sina);
+    const ratios: number[] = [];
+    for (const [, l] of lmap) {
+      const s = smap.get(l.date.slice(0, 10));
+      if (s && s.close > 0 && l.close > 0) ratios.push(l.close / s.close);
+    }
+    if (ratios.length === 0) return null;
+    const recent = ratios.slice(-5).sort((a, b) => a - b);
+    const med = recent[Math.floor(recent.length / 2)];
+    const spread = (recent[recent.length - 1] - recent[0]) / (med || 1);
+    if (!(med > 0.02 && med < 50) || spread > 0.01) return null;
+    return med;
+  }
+
+  /** 新浪分钟线原始价（未复权）—— 由 fetchKLineByPeriod 调用（period < 240） */
+  private async fetchSinaMinute(code: string, market: 'SH' | 'SZ' | 'BJ', days: number, period: number): Promise<KLineData[]> {
     try {
       const prefix = market === 'SH' ? 'sh' : market === 'BJ' ? 'bj' : 'sz';
       const symbol = prefix + code;
@@ -432,14 +563,17 @@ export class DataFetcher {
         });
         const text = await res.text();
         if (!text || text === 'null' || text.startsWith('<')) {
-          console.warn(`[DataFetcher] fetchKLineByPeriod: invalid response for ${symbol} period=${period}`);
-          return { data: [], period };
+          console.warn(`[DataFetcher] fetchSinaMinute: invalid response for ${symbol} period=${period}`);
+          return [];
         }
         const rows = JSON.parse(text);
-        if (!Array.isArray(rows) || rows.length === 0) return { data: [], period };
+        if (!Array.isArray(rows) || rows.length === 0) return [];
 
         const data = rows.map((row: any) => ({
-          date: String(row.day || '').slice(0, 10),
+          // 日内周期(5/15/30/60)保留时分秒，便于区分盘中各个bar；日线(240)仅保留日期
+          date: (period < 240 && String(row.day || '').includes(' '))
+            ? String(row.day || '').slice(0, 19)
+            : String(row.day || '').slice(0, 10),
           open: parseFloat(row.open) || 0,
           high: parseFloat(row.high) || 0,
           low: parseFloat(row.low) || 0,
@@ -447,13 +581,78 @@ export class DataFetcher {
           volume: parseInt(row.volume, 10) || 0,
         })).filter(d => d.date && d.close > 0);
 
-        return { data, period };
+        return data;
       } finally {
         clearTimeout(timeout);
       }
     } catch (err) {
-      console.warn(`[DataFetcher] fetchKLineByPeriod error for ${code} period ${period}:`, err);
-      return { data: [], period };
+      console.warn(`[DataFetcher] fetchSinaMinute error for ${code} period ${period}:`, err);
+      return [];
+    }
+  }
+
+  /**
+   * 获取指数日K收盘序列（专用于大盘 regime 判定）。
+   * 不能用 fetchKLine —— 它会先查 stock_daily 本地库，把指数代码(如 000001)当成同名股票(平安银行)取到错误价格。
+   * 这里直接从腾讯指数K线接口拉在线数据（前缀 sh/sz 按指数代码归属市场），只取 close。
+   */
+  async fetchIndexKLine(code: string, market: 'SH' | 'SZ' | 'BJ', days: number = 60): Promise<{
+    data: Array<{ date: string; close: number }>;
+    meta: KLineMeta;
+  }> {
+    const warnings: string[] = [];
+    const sources: KLineMeta['sources'] = [];
+    const endDate = new Date();
+    const todayStr = endDate.toISOString().slice(0, 10);
+
+    try {
+      const symbol = market === 'SH' ? 'sh' + code : market === 'BJ' ? 'bj' + code : 'sz' + code;
+      const url = `https://proxy.finance.qq.com/ifzqgtimg/appstock/app/fqkline/get?param=${symbol},day,,,${days + 30},qfq`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        const text = await res.text();
+        if (!text || text.startsWith('<')) {
+          warnings.push(`HTML response from Tencent for index ${symbol}`);
+          return { data: [], meta: { total: 0, requested_days: days, date_range: { from: '', to: '' }, sources, warnings } };
+        }
+        const j = JSON.parse(text);
+        const idxData = j?.data?.[symbol] || {};
+        const dayData: any[][] = idxData.qfqday || idxData.day || [];
+        if (!Array.isArray(dayData) || dayData.length === 0) {
+          warnings.push(`No index K-line data for ${symbol}`);
+          return { data: [], meta: { total: 0, requested_days: days, date_range: { from: '', to: '' }, sources, warnings } };
+        }
+        const data = dayData.map((row: any[]) => ({
+          date: String(row[0]),
+          close: parseFloat(row[2]) || 0,
+        })).filter(d => d.date && d.close > 0);
+        sources.push({
+          source: 'tencent_index_online',
+          count: data.length,
+          range: `${data[0]?.date || ''} to ${data[data.length - 1]?.date || ''}`,
+        });
+        return {
+          data,
+          meta: {
+            total: data.length,
+            requested_days: days,
+            date_range: { from: data[0]?.date || '', to: data[data.length - 1]?.date || '' },
+            sources,
+            warnings,
+          },
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      warnings.push(`fetchIndexKLine error for ${code}: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[DataFetcher] fetchIndexKLine error for ${code}:`, err);
+      return { data: [], meta: { total: 0, requested_days: days, date_range: { from: '', to: '' }, sources, warnings } };
     }
   }
 

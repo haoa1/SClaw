@@ -214,6 +214,9 @@ export class LocalDatabase {
     const params: any[] = [];
     let whereClause = '';
 
+    // ⚠️ 参数顺序必须与 SQL 占位符顺序一致：WHERE date >= ? AND date <= ? ...【code IN (...)]
+    params.push(query.startDate, query.endDate);
+
     if (query.code) {
       whereClause = 'AND sd.code = ?';
       params.push(query.code);
@@ -222,15 +225,13 @@ export class LocalDatabase {
       params.push(...query.codes);
     }
 
-    params.push(query.startDate, query.endDate);
-
     return this.db.prepare(`
       SELECT sd.code, sd.date, sd.open, sd.high, sd.low, sd.close,
              sd.volume, sd.amount, sd.change_pct as changePct, sd.turnover_rate as turnoverRate
       FROM stock_daily sd
       WHERE sd.date >= ? AND sd.date <= ? ${whereClause}
       ORDER BY sd.code, sd.date
-    `).all(...params.reverse()) as DailyKLine[];
+    `).all(...params) as DailyKLine[];
   }
 
   /** 获取某只股票的完整K线序列 */
@@ -362,16 +363,6 @@ export class LocalDatabase {
     const row = this.db.prepare(`
       SELECT COUNT(*) as cnt FROM data_sync_log
       WHERE date = ? AND source = ? AND status = 'success'
-    `).get(date, source) as any;
-    return row.cnt > 0;
-  }
-
-  /** 检查某日期是否为 0 股的成功记录（最近30天内，需要重试补齐） */
-  isZeroStockDate(date: string, source: string = 'tushare'): boolean {
-    const row = this.db.prepare(`
-      SELECT COUNT(*) as cnt FROM data_sync_log
-      WHERE date = ? AND source = ? AND status = 'success' AND stock_count = 0
-        AND date > date('now', '-30 days')
     `).get(date, source) as any;
     return row.cnt > 0;
   }

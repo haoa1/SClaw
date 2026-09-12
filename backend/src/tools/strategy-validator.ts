@@ -262,7 +262,16 @@ let loadedPlugins: Plugin[] | null = null;
 let loadError: string | null = null;
 
 function findPluginsDir(): string | null {
+  // 实际插件布局是 plugins/common/<pluginId>/index.ts（嵌套一层），
+  // 顶层 plugins/ 只有 backend/common/users 容器目录，直接 readdirSync 读不到 index.ts。
+  // 因此优先指向 plugins/common，其次 plugins/users/<uid>，再回退旧候选。
   const candidates = [
+    path.resolve(__dirname, "..", "..", "..", "plugins", "common"),
+    path.resolve(__dirname, "..", "..", "..", "..", "plugins", "common"),
+    path.resolve(process.cwd(), "..", "plugins", "common"),
+    path.resolve(process.cwd(), "plugins", "common"),
+    path.resolve(process.cwd(), "..", "plugins", "users"),
+    path.resolve(process.cwd(), "plugins", "users"),
     path.resolve(__dirname, "..", "..", "..", "plugins"),
     path.resolve(process.cwd(), "..", "plugins"),
     path.resolve(process.cwd(), "plugins"),
@@ -272,6 +281,7 @@ function findPluginsDir(): string | null {
   for (const dir of candidates) {
     try {
       if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+        // 容器目录（common/users）或顶层 plugins 都需递归一层找真正含 index.ts 的插件子目录
         const entries = fs.readdirSync(dir).filter((e) => {
           const fullPath = path.join(dir, e);
           return fs.statSync(fullPath).isDirectory() && 
@@ -338,18 +348,20 @@ function loadPlugins(): Plugin[] {
 /**
  * Reload plugins — uses PluginManager if available, fallback otherwise.
  */
-export function reloadPlugins(): Plugin[] {
+export async function reloadPlugins(): Promise<Plugin[]> {
   loadedPlugins = null;
   
   if (pluginManagerRef) {
-    // Use PluginManager to reload
-    pluginManagerRef.reloadAll().catch(err => {
+    // Use PluginManager to reload — must AWAIT reloadAll() because it
+    // clears commonPlugins first then reloads async. Reading getAll()
+    // before the reload completes would see an (empty) cleared map,
+    // causing "未加载到任何插件". So await, then read.
+    try {
+      await pluginManagerRef.reloadAll();
+    } catch (err) {
       console.error("[StrategyValidator] PluginManager reloadAll failed:", err);
-    });
-    // Return whatever is currently loaded
-    const result: Plugin[] = pluginManagerRef.getAll() as Plugin[];
-    // Also try to get common plugins for the fallback format
-    return result;
+    }
+    return pluginManagerRef.getAll() as Plugin[];
   }
   
   return loadPlugins();

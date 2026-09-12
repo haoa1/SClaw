@@ -469,9 +469,10 @@ describe("POST /api/chat", () => {
     expect(hasReasoningOrToken).toBe(true);
 
     // All event types should be valid
-    const validTypes = new Set(["reasoning", "token", "tool_call", "turn", "tool_result", "done"]);
+    // 合法事件类型全集（与 chat.ts 的 res.write 一致；action=前端 run_screen 结果、debug_prompt=提示词快照，ChatPanel 均消费）
+    const validTypes = new Set(["reasoning", "token", "tool_call", "turn", "tool_result", "action", "debug_prompt", "done"]);
     for (const event of events) {
-      expect(validTypes.has(event.type)).toBe(true);
+      expect(validTypes.has(event.type), `unexpected SSE event type: ${event.type}`).toBe(true);
       if (event.type === "tool_call") {
         expect(typeof event.id).toBe("string");
         expect(typeof event.name).toBe("string");

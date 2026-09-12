@@ -24,7 +24,6 @@ export interface UserConfig {
     params: Record<string, any>;
   }>;
   preferences: Record<string, any>; // future: theme, layout, etc.
-  model?: string; // user's selected AI model, e.g. "deepseek-v4-flash"
 }
 
 export interface ScreenRecord {

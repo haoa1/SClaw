@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { EventEmitter } from 'events';
+import { pathToFileURL } from 'url';
 import { StockScreenerPlugin } from '../types';
 
 export class PluginManager extends EventEmitter {
@@ -246,8 +247,12 @@ export class PluginManager extends EventEmitter {
       // Register tsx loader to handle .ts files via require()
       try { require('tsx/cjs'); } catch { /* tsx not available, .ts files may fail */ }
 
-      // Use dynamic import() instead of require() — handles .ts files with type annotations
-      const pluginModule = await import(entryPath);
+      // Use dynamic import() instead of require() — handles .ts files with type annotations.
+      // On Windows, Node's ESM loader requires a file:// URL (bare 'D:\...' paths fail
+      // with ERR_UNSUPPORTED_ESM_URL_SCHEME), so convert with pathToFileURL.
+      // Append a cache-busting query so hot-reload (startWatching) picks up edits:
+      // ESM import() caches by URL, so a timestamp query forces a fresh module load.
+      const pluginModule = await import(pathToFileURL(entryPath).href + '?t=' + Date.now());
       const plugin = pluginModule.default || pluginModule;
 
       if (!this.validatePlugin(plugin)) {
@@ -313,18 +318,26 @@ export class PluginManager extends EventEmitter {
         ) {
           console.log(`[PluginManager] Detected change in common plugin: ${pluginDir}, reloading...`);
 
-          // Remove old entry
-          for (const [id, plugin] of this.commonPlugins) {
-            if (plugin.id === pluginDir || pluginDir.includes(plugin.id)) {
-              this.commonPlugins.delete(id);
-              break;
-            }
-          }
-
+          // Load new version FIRST into a temp map; only replace on success.
+          // This prevents losing the old plugin when the new code fails to compile.
           const temp = new Map<string, StockScreenerPlugin>();
           await this.loadSinglePlugin(this.commonDir, pluginDir, temp);
-          for (const [id, p] of temp) {
-            this.commonPlugins.set(id, p);
+
+          if (temp.size > 0) {
+            // Remove old entry — strict equality on dir name (never substring),
+            // so editing serenity-chokepoint-v2 cannot delete serenity-chokepoint.
+            for (const [id, plugin] of this.commonPlugins) {
+              if (plugin.id === pluginDir) {
+                this.commonPlugins.delete(id);
+                break;
+              }
+            }
+            for (const [id, p] of temp) {
+              this.commonPlugins.set(id, p);
+            }
+            console.log(`[PluginManager] Reloaded ${pluginDir}`);
+          } else {
+            console.error(`[PluginManager] Reload of ${pluginDir} FAILED, keeping previous version`);
           }
         }
       }, 500);

@@ -12,7 +12,6 @@ interface ChatStockListProps {
   open: boolean
   onToggle: () => void
   onSelect: (stock: AiStock) => void
-  onDiscuss: (stock: AiStock) => void
   onClear: () => void
 }
 
@@ -20,7 +19,7 @@ interface ChatStockListProps {
  * 左侧股票列表 — AI 在聊天中选出的股票显示在这里，点击可查看缠论分析
  * 深色主题，风格与 ChatPanel 一致；可折叠为窄条
  */
-export default function ChatStockList({ stocks, open, onToggle, onSelect, onDiscuss, onClear }: ChatStockListProps) {
+export default function ChatStockList({ stocks, open, onToggle, onSelect, onClear }: ChatStockListProps) {
   const [hovered, setHovered] = useState<string | null>(null)
 
   return (
@@ -84,14 +83,7 @@ export default function ChatStockList({ stocks, open, onToggle, onSelect, onDisc
                     </span>
                   </div>
                   {hovered === s.code && (
-                    <div className="flex items-center gap-2 text-[9px] font-mono mt-0.5">
-                      <span className="text-bronze">→ 查看缠论</span>
-                      <span
-                        onClick={e => { e.stopPropagation(); onDiscuss(s) }}
-                        className="text-sky-400 hover:text-sky-300 cursor-pointer"
-                        title={`在聊天中讨论 ${s.name} (${s.code})`}
-                      >💬 讨论</span>
-                    </div>
+                    <div className="text-[9px] text-bronze font-mono mt-0.5">→ 查看缠论</div>
                   )}
                 </button>
               ))}

@@ -16,8 +16,9 @@ const TRADE_TIMEOUT = parseInt(process.env.GARUDA_TRADE_TIMEOUT || "15000", 10);
 
 /**
  * Direct HTTP call to Garuda Trade Bridge (no Express router dependency).
+ * Exported for reuse by the risk-control execution skeleton (auto-submit path).
  */
-function callGaruda(
+export function callGaruda(
   method: string,
   path: string,
   body?: unknown,

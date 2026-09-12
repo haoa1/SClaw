@@ -70,13 +70,8 @@ function parseTencentData(line: string): any | null {
   const circMcap = (safeParse(parts[44]) ?? 0) * 1e8;
   const volumeRatio = safeParse(parts[49]) ?? 0;
 
-  // avgPrice from volume/amount.
-  // Tencent qt.gtimg.cn volume unit is NOT uniform:
-  //   - Main board (60xxxx/00xxxx/30xxxx): volume is in 手 (lots of 100 shares)
-  //   - STAR board (688xxx):              volume is already in 股 (shares)
-  // Convert everything to shares first, then avgPrice = amount / shares.
-  const volumeInShares = code.startsWith('688') ? volume : volume * 100;
-  const avgPrice = volume > 0 ? amount / volumeInShares : 0;
+  // avgPrice from volume/amount
+  const avgPrice = volume > 0 ? amount / volume : 0;
 
   const changePctVal = parseFloat(changePct.toFixed(2));
   const turnoverVal = parseFloat(turnoverRate.toFixed(2));

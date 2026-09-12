@@ -15,9 +15,9 @@ import { withRetry } from './data-fetcher';
 
 const STOCK_LIST_PATH = path.resolve(__dirname, '../../data/stock_list.json');
 const AKSHARE_SCRIPT = path.resolve(__dirname, '../../scripts/fetch_bj_via_akshare.py');
-const CONCURRENCY = 5;
+const CONCURRENCY = 3;
 const DAYS_TO_FETCH = 500;
-const DELAY_MS = 100;
+const DELAY_MS = 250;
 
 interface StockListItem {
   code: string;
@@ -46,7 +46,7 @@ async function fetchFromTencent(code: string, market: 'SH' | 'SZ' | 'BJ', days: 
   const symbol = market === 'SH' ? 'sh' + code
     : market === 'BJ' ? 'bj' + code
     : 'sz' + code;
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${days},qfq`;
+  const url = `https://ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${days},qfq`;
 
   return withRetry(async () => {
     const controller = new AbortController();

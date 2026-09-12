@@ -45,5 +45,4 @@ export function registerMemoryTools(registry: ToolRegistry): void {
       }
     )
   );
-
 }

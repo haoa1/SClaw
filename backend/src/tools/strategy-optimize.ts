@@ -68,7 +68,15 @@ let loadedPlugins: Plugin[] | null = null;
 let loadError: string | null = null;
 
 function findPluginsDir(): string | null {
+  // 实际插件布局是 plugins/common/<pluginId>/index.ts（嵌套一层），
+  // 顶层 plugins/ 只有 backend/common/users 容器目录，直接 readdirSync 读不到 index.ts。
+  // 因此优先指向 plugins/common，其次 plugins/users/<uid>，再回退旧候选。
   const candidates = [
+    path.resolve(process.cwd(), "..", "plugins", "common"),
+    path.resolve(process.cwd(), "plugins", "common"),
+    path.resolve(__dirname, "..", "..", "..", "..", "plugins", "common"),
+    path.resolve(process.cwd(), "..", "plugins", "users"),
+    path.resolve(process.cwd(), "plugins", "users"),
     path.resolve(process.cwd(), "..", "plugins"),
     path.resolve(process.cwd(), "plugins"),
     path.resolve(__dirname, "..", "..", "..", "..", "plugins"),
@@ -76,6 +84,7 @@ function findPluginsDir(): string | null {
   for (const dir of candidates) {
     try {
       if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+        // 容器目录（common/users）或顶层 plugins 都需递归一层找真正含 index.ts 的插件子目录
         const entries = fs.readdirSync(dir).filter((e) => {
           const fullPath = path.join(dir, e);
           return fs.statSync(fullPath).isDirectory() &&

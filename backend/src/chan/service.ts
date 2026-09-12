@@ -23,6 +23,59 @@ function pickDb(): string {
 }
 const DB_PATH = pickDb();
 
+/**
+ * 前复权干净库（2026-09-12 口径统一）——读取优先，原始库仅作回退
+ * 与回测 / 毒性排除 / data-fetcher 同一口径，避免"日线前复权 × 30m 未复权"的跨口径拼接
+ */
+const CLEAN_DBS: Record<string, string[]> = {
+  daily: [
+    '/root/sclaw/backend/data/clean_daily.db',
+    path.resolve(__dirname, '../../data/clean_daily.db'),
+  ],
+  m30: [
+    '/root/sclaw/backend/data/clean_m30.db',
+    path.resolve(__dirname, '../../data/clean_m30.db'),
+  ],
+  m60: [
+    '/root/sclaw/backend/data/clean_m60.db',
+    path.resolve(__dirname, '../../data/clean_m60.db'),
+  ],
+};
+const CLEAN_TABLES: Record<string, string> = { daily: 'daily', m30: 'm30', m60: 'm60' };
+
+/** 干净库 K 线读取（前复权）；取不到返回 null 以便回退原始库 */
+function queryCleanKLine(level: 'daily' | 'm30' | 'm60', code: string, limit: number): KLine[] | null {
+  const table = CLEAN_TABLES[level];
+  const timeCol = level === 'daily' ? 'date' : 'datetime';
+  for (const p of CLEAN_DBS[level] || []) {
+    try {
+      if (!fs.existsSync(p) || fs.statSync(p).size < 1024 * 1024) continue; // 未建好/空库 → 跳过
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const Database = require('better-sqlite3');
+      const db = new Database(p, { readonly: true, timeout: 3000 });
+      try {
+        const rows = db.prepare(
+          `SELECT ${timeCol} AS date, open, high, low, close, volume
+           FROM ${table}
+           WHERE code = ?
+           ORDER BY ${timeCol} DESC
+           LIMIT ?`,
+        ).all(code, limit) as DbKLine[];
+        if (rows.length > 0) {
+          return rows.reverse().map(r => ({
+            date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume,
+          }));
+        }
+      } finally {
+        db.close();
+      }
+    } catch (err) {
+      console.warn(`[ChanService] clean ${level} read failed (${p}):`, (err as any)?.message || err);
+    }
+  }
+  return null;
+}
+
 interface DbKLine {
   date: string;
   open: number;
@@ -105,14 +158,21 @@ export function analyzeStock(
   level: 'daily' | 'm30' | 'm60' = 'daily',
   limit = 300,
 ): ChanAnalysis {
+  // 口径统一：优先读前复权干净库；不到（未建好/无该股）才回退原始库并在信号上打标
   const table = level === 'daily' ? 'stock_daily' : level === 'm30' ? 'stock_kline_30m' : 'stock_kline_60m';
-  const klines = queryKLine(table, code, limit);
-  if (klines.length < 30) {
-    throw new Error(`K线数据不足 (${klines.length}/${limit})，可能代码不存在或数据未同步: ${code} @ ${level}`);
+  let klines = queryCleanKLine(level, code, limit);
+  let caliber = 'qfq';
+  if (!klines || klines.length < 30) {
+    const raw = queryKLine(table, code, limit);
+    if (!klines || raw.length > klines.length) { klines = raw; caliber = 'raw-fallback'; }
+  }
+  if (!klines || klines.length < 30) {
+    throw new Error(`K线数据不足 (${klines ? klines.length : 0}/${limit})，可能代码不存在或数据未同步: ${code} @ ${level}`);
   }
   const analysis = analyzeChan(klines, code, level);
-  // 附加股票名称
+  // 附加股票名称 + 数据口径（供上游判断是否跨口径）
   (analysis as any).name = getStockName(code) || code;
+  (analysis as any).caliber = caliber;
   return analysis;
 }
 
@@ -128,6 +188,7 @@ export function quickSummary(
       code,
       name: (a as any).name || code,
       level,
+      caliber: (a as any).caliber,
       trend: a.trend,
       buyPoints: a.summary.buyPoints,
       sellPoints: a.summary.sellPoints,

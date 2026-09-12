@@ -192,7 +192,7 @@ const generateStrategyParams: ToolParamDef[] = [
   },
 ];
 
-const generateStrategyFn = (args: Record<string, unknown>): string => {
+const generateStrategyFn = async (args: Record<string, unknown>): Promise<string> => {
   const pluginId = (args.plugin_id as string || "").trim();
   const pluginName = (args.plugin_name as string || pluginId).trim();
   const description = (args.description as string || `AI generated plugin: ${pluginName}`).trim();
@@ -282,7 +282,7 @@ const generateStrategyFn = (args: Record<string, unknown>): string => {
   }
 
   try {
-    const reloaded = reloadPlugins();
+    const reloaded = await reloadPlugins();
     const pluginFound = reloaded.find((p: any) => p.id === pluginId);
     const pluginStatus = pluginFound
       ? `✅ 已成功加载 (${pluginFound.strategies.length} 个策略)`
@@ -320,9 +320,9 @@ export const generateStrategyTool = new Tool(
 
 const reloadPluginsParams: ToolParamDef[] = [];
 
-const reloadPluginsFn = (): string => {
+const reloadPluginsFn = async (): Promise<string> => {
   try {
-    const plugins = reloadPlugins();
+    const plugins = await reloadPlugins();
     const totalStrats = plugins.reduce((sum: number, p: any) => sum + p.strategies.length, 0);
 
     if (plugins.length === 0) {

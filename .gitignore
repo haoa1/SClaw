@@ -17,39 +17,18 @@ data-test-*/
 
 # --- OS ---
 .DS_Store
-Thumbs.db
 
-# --- Python ---
-__pycache__/
-*.py[cod]
-.pytest_cache/
-*.egg-info/
-
-# --- IDE ---
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# --- Logs ---
-*.log
-npm-debug.log*
-
-# --- Debug / Temp test files ---
-*.mjs
-test-results/
-playwright-report/
+# --- 本地新增: SClaw/Garuda on Debian ---
 backend/data/
-
-# --- Temp scripts ---
-check_*.js
-check_*.py
-test_*.js
-test_*.py
-
-# --- Core dumps ---
-core.*
-
-# --- Workspace / Runtime data (local only) ---
-.garuda/
-.sclaw/
+backend/logs/
+logs/
+*.log
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+backend/tmp_*
+backend/dist-plugins/
+*.bak
+*.bak-*
