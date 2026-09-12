@@ -142,6 +142,13 @@ def main():
 
     # 分钟线的日期下界 → 只载入覆盖得到的那段日线（避免全库 780 万行拖慢启动）
     dlo = src.execute("select min(substr(datetime,1,10)) from %s" % src_table).fetchone()[0]
+    # 源状态指纹（供例行判断「产物是否已消费当前源状态」）: 源末端日期 + 该日行数。
+    # 只比日期会漏掉「同一天从半成品补全」的情形（日期不变但行数变多），所以带上行数。
+    _smax = src.execute("select max(substr(datetime,1,10)) from %s" % src_table).fetchone()[0]
+    _srows = src.execute("select count(*) from %s where substr(datetime,1,10)=?" % src_table,
+                         (_smax,)).fetchone()[0] if _smax else 0
+    src_state = "%s|%d" % (_smax, _srows or 0)
+    print("[i] 源状态指纹: %s" % src_state)
     print("[i] 载入 clean_daily 前复权收盘价 (date >= %s) ..." % dlo)
     qfq = {}
     for code, date, close in cds.execute(
@@ -238,6 +245,7 @@ def main():
             "period": str(args.period),
             "src_raw": "%s :: %s :: %s" % (src_table, SRC, file_sig(SRC)),
             "src_daily": "%s :: %s" % (DAILY, file_sig(DAILY)),
+            "src_state": src_state,
             "rows": str(n_rows), "residue": str(n_residue),
             "date_range": "%s ~ %s" % (dmin, dmax),
             "adjust": "qfq via same-day factor = clean_daily.qfq_close / raw_minute_last_close",

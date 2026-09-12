@@ -14,14 +14,24 @@ set -u
 
 D=/root/sclaw/backend/scripts
 STATUS="$D/logs/routine_build_status.json"
-PAT="^bash $D/routine_build_minute\.sh$"   # 精确匹配（避免误伤命令行里提到 .sh 的其他进程）
+LOCK="$D/logs/.routine_build_minute.lock"     # routine 自己的单例锁
+LOOSE="routine_build_minute\.sh"              # 宽松匹配，仅用于回报 pid
 
-if pgrep -f "$PAT" >/dev/null 2>&1; then
-  echo "[launch] 已有例行实例在跑（$(pgrep -f "$PAT" | tr '\n' ' ')），本次跳过"
+# 判「是否已有实例」用 routine 自己的 flock 锁：最权威，且不依赖启动方式（绝对/相对路径都算）
+RUNNING=0
+exec 8>>"$LOCK"
+if flock -n 8; then
+  exec 8>&-        # 立即释放，且不能让它被下面 spawn 的子进程继承（继承会导致子进程自己抢锁失败）
+else
+  RUNNING=1
+fi
+
+if [ "$RUNNING" = "1" ]; then
+  echo "[launch] 已有例行实例在跑（pid: $(pgrep -f "$LOOSE" | tr '\n' ' ')），本次跳过"
 else
   nohup setsid bash "$D/routine_build_minute.sh" >/dev/null 2>&1 </dev/null &
   sleep 3
-  PIDS=$(pgrep -f "$PAT" | tr '\n' ' ')
+  PIDS=$(pgrep -f "$LOOSE" | tr '\n' ' ')
   if [ -n "$PIDS" ]; then
     echo "[launch] 已后台启动例行 pid=$PIDS（脱离 Garuda 进程组，Garuda 重启不影响）"
   else

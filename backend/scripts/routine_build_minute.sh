@@ -9,7 +9,10 @@
 #
 # 设计要点:
 #  - flock 单例：绝不并发跑（避免两个进程同时重建同一库）
-#  - 无新数据则跳过重建：源库 max(date) <= 产物覆盖末端时，重建没有意义（节假日/提前跑）
+#  - 无新数据则跳过重建：判据有两条 ——
+#      (1) 源末端日期 > 产物末端日期
+#      (2) 源状态指纹(末端日期+该日行数) != 产物 meta 里记录的「已消费源状态」
+#    (2) 覆盖「同一天从半成品补全」（日期没变但行数变多，只比日期会漏）
 #  - 幂等：回补用 INSERT OR REPLACE；重建是「先建临时库再替换」，重复跑结果一致
 #  - 只读源库、产物库有 .bak 备份由 build 脚本自身负责
 #
@@ -56,6 +59,9 @@ declare -A STEP_RC=()
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
 # 源库/产物库的日期覆盖（date-only）
+# 输出（空格分隔）:
+#   源库  : <总行数> <末端日期> <末端日期行数>
+#   产物库: <总行数> <产物末端日期> <产物记录的「已消费源状态」>
 read_cov() {
   python3 - "$1" <<'PY'
 import sqlite3, sys
@@ -64,14 +70,16 @@ D = "/root/sclaw/backend/data"
 if what == "30m" or what == "60m":
     c = sqlite3.connect("file:%s/stock_history.db?mode=ro" % D, uri=True)
     n, mx = c.execute("SELECT COUNT(*), MAX(substr(datetime,1,10)) FROM stock_kline_%s" % what).fetchone()
-    print("%s %s" % (n, mx or "-"))
+    nmx = c.execute("SELECT COUNT(*) FROM stock_kline_%s WHERE substr(datetime,1,10)=?" % what,
+                    (mx,)).fetchone()[0] if mx else 0
+    print("%s %s %s" % (n, mx or "-", nmx))
 else:
     t = "m30" if what == "m30" else "m60"
     c = sqlite3.connect("file:%s/clean_%s.db?mode=ro" % (D, what), uri=True)
     n = c.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
     meta = dict(c.execute("SELECT key,value FROM meta").fetchall())
     rng = meta.get("date_range", "") or ""
-    print("%s %s" % (n, rng.split("~")[-1].strip() or "-"))
+    print("%s %s %s" % (n, rng.split("~")[-1].strip() or "-", meta.get("src_state", "") or "-"))
 PY
 }
 
@@ -111,22 +119,30 @@ SRC_MAX_30=$(read_cov 30m | cut -d' ' -f2)
 SRC_MAX_60=$(read_cov 60m | cut -d' ' -f2)
 CLN_MAX_30=$(read_cov m30 | cut -d' ' -f2)
 CLN_MAX_60=$(read_cov m60 | cut -d' ' -f2)
+# 源状态指纹 = 「末端日期|末端日期行数」；产物端存的是上次构建时消费掉的源状态
+SRC_STATE_30="$(read_cov 30m | cut -d' ' -f2,3 | tr ' ' '|')"
+SRC_STATE_60="$(read_cov 60m | cut -d' ' -f2,3 | tr ' ' '|')"
+CONSUMED_30="$(read_cov m30 | cut -d' ' -f3)"
+CONSUMED_60="$(read_cov m60 | cut -d' ' -f3)"
 
-need_p30=1; need_p60=1
-if [ "$FORCE_REBUILD" != "1" ]; then
-  # 源末端 <= 产物末端 ⇒ 没有新数据，重建无意义（注意是 <=，相等也要跳过）
-  if [ "$SRC_MAX_30" \< "$CLN_MAX_30" ] || [ "$SRC_MAX_30" = "$CLN_MAX_30" ]; then need_p30=0; fi
-  if [ "$SRC_MAX_60" \< "$CLN_MAX_60" ] || [ "$SRC_MAX_60" = "$CLN_MAX_60" ]; then need_p60=0; fi
+need_p30=0; need_p60=0
+if [ "$FORCE_REBUILD" = "1" ]; then
+  need_p30=1; need_p60=1
+else
+  # 判据1: 源末端日期比产物新 → 必建
+  # 判据2: 源状态指纹 != 产物记录的「已消费源状态」→ 必建
+  #        （这条覆盖「同一天从半成品补全」：日期没变但行数变多，只比日期会漏）
+  if [ "$SRC_MAX_30" \> "$CLN_MAX_30" ] || [ "$SRC_STATE_30" != "$CONSUMED_30" ]; then need_p30=1; fi
+  if [ "$SRC_MAX_60" \> "$CLN_MAX_60" ] || [ "$SRC_STATE_60" != "$CONSUMED_60" ]; then need_p60=1; fi
 fi
-if [ "$FORCE_REBUILD" = "1" ]; then need_p30=1; need_p60=1; fi
-log "② 重建判定: 源30m末端=$SRC_MAX_30 产物末端=$CLN_MAX_30 → $([ $need_p30 = 1 ] && echo 重建 || echo 跳过); 源60m末端=$SRC_MAX_60 产物末端=$CLN_MAX_60 → $([ $need_p60 = 1 ] && echo 重建 || echo 跳过)"
+log "② 重建判定: 源30m末端=$SRC_MAX_30 产物末端=$CLN_MAX_30 (源状态=$SRC_STATE_30 vs 已消费=$CONSUMED_30) → $([ $need_p30 = 1 ] && echo 重建 || echo 跳过); 源60m末端=$SRC_MAX_60 产物末端=$CLN_MAX_60 (源状态=$SRC_STATE_60 vs 已消费=$CONSUMED_60) → $([ $need_p60 = 1 ] && echo 重建 || echo 跳过)"
 
 rb_rc=0
 BUILT=()
 for P in 30 60; do
-  if [ "$P" = "30" ]; then need=$need_p30; srcmax=$SRC_MAX_30; else need=$need_p60; srcmax=$SRC_MAX_60; fi
+  if [ "$P" = "30" ]; then need=$need_p30; else need=$need_p60; fi
   if [ "$need" = "0" ]; then
-    log "② 重建 clean_m$P: 跳过（产物已覆盖源末端 $srcmax）"
+    log "② 重建 clean_m$P: 跳过（源状态未变，产物已是最新）"
     continue
   fi
   log "② 重建 clean_m$P ..."
@@ -174,8 +190,12 @@ python3 - "$STATUS" "$STATUS_V" "$START_AT" "$ELAPSED" "$START_DATE" "$END_DATE"
 import json, sys
 p, st, start, el, ws, we, n30, n60, bf, rb, vf, vline, cs30, cs60, cc30, cc60, alertf = sys.argv[1:18]
 def cov(s):
-    n, d = s.split(" ", 1)
-    return {"rows": int(n), "max_date": d}
+    # "<rows> <max_date> [<extra>]"  extra: 源=末端日期行数 / 产物=已消费源状态("日期|行数")
+    parts = s.split(" ")
+    out = {"rows": int(parts[0]), "max_date": parts[1]}
+    if len(parts) > 2:
+        out["extra"] = parts[2]
+    return out
 alerts = [l.strip() for l in open(alertf, encoding="utf-8") if l.strip()]
 json.dump({
     "status": st,
