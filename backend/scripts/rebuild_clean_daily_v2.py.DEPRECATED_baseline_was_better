@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+clean_daily v2 重建器（baostock 乘法前复权）—— 可断点续跑。
+
+背景：生产 clean_daily.db 来自腾讯，其「前复权」是减法复权（qfq = raw - k），
+     保留绝对差值但摧毁百分比收益 → 所有基于它的日收益/回测结论系统性失真。
+     本脚本用 baostock adjustflag=2（乘法前复权）重建并行库 v2。
+
+原则：
+  * 只写并行库 clean_daily_v2.db，绝不碰生产库（安全半边原则）。
+  * 官方库 baostock 只 login 一次/进程，避免登录抖动触发 10001011 黑名单。
+  * 断点续跑：build_progress 表按 code 记账，已 ok 的跳过。
+
+用法：
+  python3 rebuild_clean_daily_v2.py --workers 4 --limit 20          # 小样试跑
+  python3 rebuild_clean_daily_v2.py --workers 4                     # 全量
+  python3 rebuild_clean_daily_v2.py --workers 4 --resume            # 续跑（默认即续跑）
+"""
+import argparse
+import os
+import sqlite3
+import sys
+import time
+import traceback
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPTS)
+
+PROD_DB = "/root/sclaw/backend/data/clean_daily.db"
+V2_DB = "/root/sclaw/backend/data/clean_daily_v2.db"
+DEFAULT_PROXY = os.environ.get("BS_PROXY", "127.0.0.1:17890")
+START_DATE = "1990-01-01"
+END_DATE = "2026-09-11"
+
+# af=2 给复权 OHLC；af=3 给原始 OHLC（用于复权因子校验）。
+# 其余字段(turn/pctChg/volume/amount/peTTM/pbMRQ/tradestatus/isST)两者一致。
+FIELDS = ("date,open,high,low,close,preclose,volume,amount,"
+          "turn,tradestatus,pctChg,isST")
+
+DDL = """
+CREATE TABLE IF NOT EXISTS daily (
+    code       TEXT NOT NULL,
+    date       TEXT NOT NULL,
+    open       REAL, high REAL, low REAL, close REAL,
+    raw_close  REAL,
+    volume     REAL,      -- 手（= baostock 股 / 100），与生产口径一致
+    amount     REAL,      -- 元
+    turn       REAL,      -- 换手率 %
+    pct_chg    REAL,      -- 当日涨跌幅 %
+    tradestatus INTEGER,  -- 1 正常 0 停牌
+    isST       INTEGER,
+    PRIMARY KEY (code, date)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_date ON daily(date);
+CREATE TABLE IF NOT EXISTS build_progress (
+    code   TEXT PRIMARY KEY,
+    status TEXT,          -- ok / empty / error
+    rows   INTEGER,
+    msg    TEXT,
+    ts     TEXT
+);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+"""
+
+
+def to_bs_code(code):
+    """把生产库的裸 6 位代码转成 baostock 的 sh./sz./bj. 前缀格式。"""
+    c = code.strip()
+    if "." in c:
+        return c
+    if c[0] == "6" or c[:2] in ("68", "60", "9"):
+        return "sh." + c
+    if c[0] in ("0", "2", "3"):
+        return "sz." + c
+    if c[0] in ("4", "8"):
+        return "bj." + c
+    return "sh." + c
+
+
+def read_universe(limit=0):
+    con = sqlite3.connect("file:%s?mode=ro" % PROD_DB, uri=True)
+    try:
+        codes = [r[0] for r in con.execute(
+            "SELECT DISTINCT code FROM daily ORDER BY code")]
+    finally:
+        con.close()
+    if limit:
+        codes = codes[:limit]
+    return codes
+
+
+def init_db(path):
+    con = sqlite3.connect(path, timeout=60)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA synchronous=NORMAL")
+    con.executescript(DDL)
+    con.commit()
+    return con
+
+
+def fetch_one(bs, code, adjustflag):
+    rs = bs.query_history_k_data_plus(
+        code, FIELDS, start_date=START_DATE, end_date=END_DATE,
+        frequency="d", adjustflag=adjustflag)
+    rows = []
+    while rs.next():
+        rows.append(rs.get_row_data())
+    return rs.error_code, rows
+
+
+def _f(x):
+    if x is None or x == "":
+        return None
+    try:
+        return float(x)
+    except ValueError:
+        return None
+
+
+def _i(x):
+    v = _f(x)
+    return None if v is None else int(v)
+
+
+def worker(chunk):
+    """在一个独立进程里处理一批 code。"""
+    proxy = DEFAULT_PROXY.strip()
+    if proxy:
+        from bs_proxy import install_socks_proxy
+        install_socks_proxy(proxy, timeout=30)
+    import baostock as bs
+
+    v2 = init_db(V2_DB)
+    done = {r[0] for r in v2.execute("SELECT code FROM build_progress WHERE status='ok'")}
+    todo = [c for c in chunk if c not in done]
+    out = {"ok": 0, "empty": 0, "err": 0, "skip": len(chunk) - len(todo)}
+
+    login_tries = 0
+    while login_tries < 6:
+        try:
+            lg = bs.login()
+        except Exception:
+            time.sleep(5)
+            login_tries += 1
+            continue
+        if lg.error_code == "0":
+            break
+        login_tries += 1
+        time.sleep(min(60, 10 * login_tries))  # 退避
+    else:
+        out["err"] = len(todo)
+        print("[worker] 登录失败，放弃本批 %d 只" % len(todo), flush=True)
+        return out
+
+    for i, code in enumerate(todo):
+        try:
+            rc1, adj = fetch_one(bs, to_bs_code(code), "2")
+            if rc1 != "0":
+                if rc1 == "10001011":
+                    time.sleep(20)
+                    bs.login()
+                    rc1, adj = fetch_one(bs, to_bs_code(code), "2")
+                if rc1 != "0":
+                    out["err"] += 1
+                    _mark(v2, code, "error", 0, "rc=%s" % rc1)
+                    continue
+            rc3, raw = fetch_one(bs, to_bs_code(code), "3")
+            if rc3 != "0":
+                raw = []
+            by_date = {r[0]: r for r in raw}
+
+            if not adj:
+                out["empty"] += 1
+                _mark(v2, code, "empty", 0, "no rows")
+                continue
+
+            recs = []
+            for r in adj:
+                # FIELDS: date,open,high,low,close,preclose,volume,amount,turn,tradestatus,pctChg,isST
+                d = r[0]
+                vol = _f(r[6])
+                raw_close = _f(by_date[d][4]) if d in by_date and len(by_date[d]) > 4 else None
+                recs.append((
+                    code, d, _f(r[1]), _f(r[2]), _f(r[3]), _f(r[4]),
+                    raw_close,
+                    None if vol is None else vol / 100.0,   # 股 -> 手
+                    _f(r[7]), _f(r[8]), _f(r[10]), _i(r[9]), _i(r[11]),
+                ))
+            v2.executemany(
+                "INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", recs)
+            v2.commit()
+            _mark(v2, code, "ok", len(recs), "")
+            out["ok"] += 1
+        except Exception as e:
+            out["err"] += 1
+            _mark(v2, code, "error", 0, "%s: %s" % (type(e).__name__, e))
+            traceback.print_exc()
+        if (i + 1) % 25 == 0:
+            print("[worker %d] %d/%d  ok=%d empty=%d err=%d  last=%s"
+                  % (os.getpid(), i + 1, len(todo), out["ok"], out["empty"], out["err"], code),
+                  flush=True)
+
+    try:
+        bs.logout()
+    except Exception:
+        pass
+    v2.close()
+    return out
+
+
+def _mark(con, code, status, rows, msg):
+    con.execute("INSERT OR REPLACE INTO build_progress VALUES (?,?,?,?,datetime('now'))",
+                (code, status, rows, msg))
+    con.commit()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--chunk", type=int, default=40, help="每批 code 数（决定进程粒度）")
+    args = ap.parse_args()
+
+    codes = read_universe(args.limit)
+    print("universe=%d  workers=%d  proxy=%s  range=%s~%s"
+          % (len(codes), args.workers, DEFAULT_PROXY, START_DATE, END_DATE), flush=True)
+
+    con = init_db(V2_DB)
+    done = {r[0] for r in con.execute("SELECT code FROM build_progress WHERE status='ok'")}
+    if done:
+        print("已 ok: %d 只（将跳过）" % len(done), flush=True)
+    con.close()
+
+    batches = [codes[i:i + args.chunk] for i in range(0, len(codes), args.chunk)]
+    t0 = time.time()
+    agg = {"ok": 0, "empty": 0, "err": 0, "skip": 0}
+    with ProcessPoolExecutor(max_workers=args.workers) as ex:
+        futs = {ex.submit(worker, b): b for b in batches}
+        for k, fu in enumerate(as_completed(futs), 1):
+            try:
+                r = fu.result()
+            except Exception as e:
+                print("batch EXC: %s" % e, flush=True)
+                continue
+            for key in agg:
+                agg[key] += r.get(key, 0)
+            el = time.time() - t0
+            print("== batch %d/%d  agg=%s  %.1f min"
+                  % (k, len(batches), agg, el / 60.0), flush=True)
+
+    con = init_db(V2_DB)
+    n = con.execute("SELECT COUNT(*) FROM daily").fetchone()[0]
+    mc = con.execute("SELECT COUNT(DISTINCT code) FROM daily").fetchone()[0]
+    lo, hi = con.execute("SELECT MIN(date), MAX(date) FROM daily").fetchone()
+    for kv in [("built_at", time.strftime("%Y-%m-%dT%H:%M:%S")),
+               ("source", "baostock"),
+               ("adjust", "adjustflag=2 multiplicative qfq"),
+               ("volume_unit", "手"),
+               ("price_unit", "元"),
+               ("date_range", "%s~%s" % (lo, hi)),
+               ("comment", "v2 重建：替换腾讯减法复权基座")]:
+        con.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", kv)
+    con.commit()
+    con.close()
+    print("\nDONE  rows=%d codes=%d range=%s~%s  用时 %.1f 分钟"
+          % (n, mc, lo, hi, (time.time() - t0) / 60.0), flush=True)
+
+
+if __name__ == "__main__":
+    main()

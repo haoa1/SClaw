@@ -3,10 +3,24 @@
 """
 build_m30_clean.py — 建「干净 30 分钟库」clean_m30.db（前复权，与 clean_daily 严格自洽）
 
-为什么需要它（2026-09-12 取证）:
-  - 现有 30m 存在于脏库 stock_history.db 的 stock_kline_30m：腾讯 mkline 原始价 = **未复权**
+为什么需要它（2026-09-12 取证；同日晚 **修正**）:
+  - 现有 30m 存在于脏库 stock_history.db 的 stock_kline_30m（原始假设：腾讯 mkline 原始价 = 未复权）
   - 而日线 clean_daily.db 是 **前复权**
   - 凡是用「日线红柱 + 30m 绿柱」这类跨级别判定的信号，都在做**跨口径拼接**，除权日附近必然错
+
+⚠️ 2026-09-12 晚实测修正（**原假设有误，勿再沿用「30m=未复权」**）:
+    · stock_kline_30m 实测 ≈ **前复权(qfq)**：与 clean_daily.qfq_close 同率
+      301550 逐日 243/243 = 100%；全库 2026-09-11 = 100%（5204 只）
+      2025-11-17 = 88.6%，其余落在 ±2% 内（疑 baostock 分批取数、qfq 锚点日不同）
+    · stock_kline_60m 实测 ≈ **后复权(hfq)**：2025-11-17 有 63.6% 高于 qfq，最大 2.1096×
+      交叉验证：m60 meta.factor_range 下界 0.474019 ≈ 1/2.1096 ✓
+    · ★ 本脚本设计**对源口径不敏感**：factor 按 (code,date) 逐日反推，
+      源不论 raw / qfq / hfq 都被归一 ⇒ 产物 clean_m30/m60 依然正确，
+      已过 canonical 验收 scripts/verify_minute_clean.py（[B] factor 偏差 0.00e+00、[G] 1.0000）
+      —— 本条只是修掉注释里的错误前提，**不是**产物有问题的信号
+    · 附带发现：stock_history.db.stock_daily 冻结于 2026-09-08，= **迁移后弃用遗留，勿回补**
+      （已核 ~/.garuda/data/scheduled_tasks.json：全库无任何定时任务写它）
+      chan/service.ts 的 raw-fallback 日线会拿到旧数据（主路径读 clean 库，已带 caliber 标注）
 
 复权方案（关键设计）:
   不依赖任何外部复权因子，直接用「同一日」的两库关系反推标量：
@@ -95,14 +109,15 @@ def file_sig(p):
     return "size=%d mtime=%s md5head=%s" % (st.st_size, int(st.st_mtime), h.hexdigest()[:12])
 
 
-def verify_volume_invariant(out, T, date):
+def verify_volume_invariant(out, T, date, daily_path=None):
     """口径自证: 同日同票 sum(分钟 volume) 必须 ≈ clean_daily.volume（同为「手」）。
 
     这是「volume 单位登记正确」的强不变量：若源单位记错（例如 30m 忘了 /100），
     中位比值会是 ~100 而不是 ~1，立刻暴露。返回 (ok|None, 说明文本)。
+    daily_path: 用哪个日线库做对比（volume 与复权基准无关，但须与本次构建同一基座）
     """
     try:
-        out.execute("ATTACH DATABASE 'file:%s?mode=ro' AS cd" % DAILY)
+        out.execute("ATTACH DATABASE 'file:%s?mode=ro' AS cd" % (daily_path or DAILY))
         rs = out.execute(
             "select cd.daily.volume, s.v from "
             "(select code, sum(volume) v from %s where substr(datetime,1,10)=? group by code) s "
@@ -125,6 +140,10 @@ def main():
     ap.add_argument("--chunk", type=int, default=400, help="每批股票数")
     ap.add_argument("--period", type=int, default=30, choices=[30, 60],
                     help="分钟周期：30=建 clean_m30.db（默认），60=建 clean_m60.db")
+    ap.add_argument("--daily-db", default="",
+                    help="日线复权基座库路径（默认 %s）。"
+                         "干净基座建好后用 --daily-db data/clean_daily_v2.db 切换；"
+                         "基座决定 m30 的复权口径（factor=日线qfq收盘/分钟末根原始收盘）" % DAILY)
     args = ap.parse_args()
 
     src_table, out_name, T = PERIODS[args.period]
@@ -137,8 +156,13 @@ def main():
         os.rename(out_path, bak)
         print("[i] 旧库已备份 -> %s" % bak)
 
+    daily_path = args.daily_db or DAILY
+    if not os.path.exists(daily_path):
+        print("[x] 日线基座库不存在: %s" % daily_path)
+        sys.exit(2)
+    print("[i] 日线复权基座: %s" % daily_path)
     src = sqlite3.connect("file:%s?mode=ro" % SRC, uri=True)
-    cds = sqlite3.connect("file:%s?mode=ro" % DAILY, uri=True)
+    cds = sqlite3.connect("file:%s?mode=ro" % daily_path, uri=True)
 
     # 分钟线的日期下界 → 只载入覆盖得到的那段日线（避免全库 780 万行拖慢启动）
     dlo = src.execute("select min(substr(datetime,1,10)) from %s" % src_table).fetchone()[0]
@@ -244,7 +268,7 @@ def main():
             "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "period": str(args.period),
             "src_raw": "%s :: %s :: %s" % (src_table, SRC, file_sig(SRC)),
-            "src_daily": "%s :: %s" % (DAILY, file_sig(DAILY)),
+            "src_daily": "%s :: %s" % (daily_path, file_sig(daily_path)),
             "src_state": src_state,
             "rows": str(n_rows), "residue": str(n_residue),
             "date_range": "%s ~ %s" % (dmin, dmax),
@@ -255,7 +279,7 @@ def main():
         }
         out.executemany("insert or replace into meta values (?,?)", list(meta.items()))
         out.commit()
-        ok_v, msg_v = verify_volume_invariant(out, T, dmax)
+        ok_v, msg_v = verify_volume_invariant(out, T, dmax, daily_path)
         print("[i] 成交量口径自证(%s): %s" % (dmax, msg_v))
         if ok_v is False:
             out.close()

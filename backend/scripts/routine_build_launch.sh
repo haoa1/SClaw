@@ -16,6 +16,10 @@ D=/root/sclaw/backend/scripts
 STATUS="$D/logs/routine_build_status.json"
 LOCK="$D/logs/.routine_build_minute.lock"     # routine 自己的单例锁
 LOOSE="routine_build_minute\.sh"              # 宽松匹配，仅用于回报 pid
+# 整轮硬上限（秒）。正常一轮 10~30min；这是最后的保险：
+# 一旦 routine 挂死（历史故障：源端不可达 → backfill 无限挂起 → 单例锁被永久持有 → 次日例行静默跳过），
+# timeout 到点整组收掉，锁随之释放，至少能恢复正常调度。
+ROUTINE_TIMEOUT="${ROUTINE_TIMEOUT:-5400}"
 
 # 判「是否已有实例」用 routine 自己的 flock 锁：最权威，且不依赖启动方式（绝对/相对路径都算）
 RUNNING=0
@@ -29,11 +33,13 @@ fi
 if [ "$RUNNING" = "1" ]; then
   echo "[launch] 已有例行实例在跑（pid: $(pgrep -f "$LOOSE" | tr '\n' ' ')），本次跳过"
 else
-  nohup setsid bash "$D/routine_build_minute.sh" >/dev/null 2>&1 </dev/null &
+  # timeout 非 --foreground 模式下会把 COMMAND 放进独立进程组并「整组」发信号
+  # → routine 挂死时能连 backfill 的进程池 worker 一起收干净，不留孤儿、锁必释放
+  nohup setsid timeout -k 30 "$ROUTINE_TIMEOUT" bash "$D/routine_build_minute.sh" >/dev/null 2>&1 </dev/null &
   sleep 3
   PIDS=$(pgrep -f "$LOOSE" | tr '\n' ' ')
   if [ -n "$PIDS" ]; then
-    echo "[launch] 已后台启动例行 pid=$PIDS（脱离 Garuda 进程组，Garuda 重启不影响）"
+    echo "[launch] 已后台启动例行 pid=$PIDS（脱离 Garuda 进程组，Garuda 重启不影响；整轮硬上限 ${ROUTINE_TIMEOUT}s）"
   else
     echo "[launch] !! 启动失败：3s 后未见例行进程，请检查 $D/logs/routine_build_minute.log"
     exit 1

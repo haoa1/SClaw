@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""clean_daily v2 全量重建：baostock 乘法复权（adjustflag=2）替代腾讯减法 qfq。
+
+铁律
+  - 只写并行库 clean_daily_v2.db，绝不原地覆盖生产库（1.18GB）。
+  - 单位契约：volume 由 baostock 的「股」÷100 归一为「手」（对齐生产库 meta）。
+  - 单线程 + sleep 限速（09-11 被封是 8 并发所致）。
+  - 可续传：progress 表记录每只状态，重跑自动跳过 done。
+
+产出
+  daily_v2(code,date,open,high,low,close,volume,amount,turn,raw_close,pct_chg)
+    - close/OHLC = 乘法前复权；raw_close = 未复权收盘（供闸门自检）
+    - pct_chg = baostock 官方涨跌幅（已正确处理除权）→ 可用于 G5 自证
+  progress(code,status,n_rows,msg,ts)
+"""
+import os
+import sqlite3
+import sys
+import time
+import argparse
+
+sys.path.insert(0, "/root/sclaw/backend/scripts")
+from bs_proxy import install_socks_proxy, proxy_from_env
+
+PROD = "file:/root/sclaw/backend/data/clean_daily.db?mode=ro"
+V2 = "/root/sclaw/backend/data/clean_daily_v2.db"
+END = "2026-09-11"
+
+DDL_K = """CREATE TABLE IF NOT EXISTS daily_v2(
+  code TEXT NOT NULL, date TEXT NOT NULL,
+  open REAL, high REAL, low REAL, close REAL,
+  volume REAL, amount REAL, turn REAL,
+  raw_close REAL, pct_chg REAL,
+  PRIMARY KEY (code, date))"""
+DDL_P = """CREATE TABLE IF NOT EXISTS progress(
+  code TEXT PRIMARY KEY, status TEXT, n_rows INTEGER, msg TEXT, ts TEXT)"""
+DDL_M = "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)"
+
+
+def exchange(code):
+    return "sh." if code[0] == "6" else "sz."
+
+
+def query(code, fields, flag, beg):
+    import baostock as bs
+    rs = bs.query_history_k_data_plus(
+        exchange(code) + code, fields, start_date=beg, end_date=END,
+        frequency="d", adjustflag=flag)
+    out = []
+    if rs.error_code != "0":
+        return None, "%s %s" % (rs.error_code, rs.error_msg)
+    while rs.next():
+        out.append(rs.get_row_data())
+    return out, None
+
+
+def f(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--sleep", type=float, default=0.25)
+    ap.add_argument("--beg", default="1990-01-01")
+    ap.add_argument("--codes", default="")
+    ap.add_argument("--no-raw", action="store_true")
+    a = ap.parse_args()
+
+    install_socks_proxy(proxy_from_env("127.0.0.1:17890"))
+    import baostock as bs
+
+    prod = sqlite3.connect(PROD, uri=True)
+    if a.codes:
+        codes = a.codes.split(",")
+    else:
+        codes = [r[0] for r in prod.execute(
+            "SELECT code FROM daily GROUP BY code ORDER BY code")]
+    prod.close()
+
+    con = sqlite3.connect(V2, timeout=60)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute(DDL_K)
+    con.execute(DDL_P)
+    con.execute(DDL_M)
+    con.commit()
+    done = {r[0] for r in con.execute(
+        "SELECT code FROM progress WHERE status='done'")}
+    todo = [c for c in codes if c not in done]
+    if a.limit:
+        todo = todo[:a.limit]
+    con.execute("INSERT OR REPLACE INTO meta VALUES('built_by','build_clean_daily_v2')")
+    con.execute("INSERT OR REPLACE INTO meta VALUES('source','baostock adjustflag=2 (multiplicative qfq)')")
+    con.execute("INSERT OR REPLACE INTO meta VALUES('volume_unit','手 (baostock 股 ÷100)')")
+    con.commit()
+    print("[v2] total=%d done=%d todo=%d" % (len(codes), len(done), len(todo)),
+          flush=True)
+
+    lg = bs.login()
+    print("[v2] login=%s %s" % (lg.error_code, lg.error_msg), flush=True)
+    if lg.error_code != "0":
+        return 2
+
+    ok = fail = 0
+    t0 = time.time()
+    for i, code in enumerate(todo, 1):
+        q, err = query(code, "date,open,high,low,close,volume,amount,turn,pctChg",
+                       "2", a.beg)
+        if err or not q:
+            con.execute("INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)",
+                        (code, "fail", 0, err or "empty", time.strftime("%F %T")))
+            con.commit()
+            fail += 1
+            print("[%d/%d] %s FAIL %s" % (i, len(todo), code, err), flush=True)
+            time.sleep(a.sleep)
+            continue
+
+        raw = {}
+        if not a.no_raw:
+            r, rerr = query(code, "date,close", "3", a.beg)
+            if not rerr and r:
+                raw = {x[0]: x[1] for x in r}
+
+        rows = []
+        for x in q:
+            d = x[0]
+            v = f(x[5])
+            rows.append((code, d, f(x[1]), f(x[2]), f(x[3]), f(x[4]),
+                         None if v is None else round(v / 100.0, 2),  # 股 -> 手
+                         f(x[6]), f(x[7]), f(raw.get(d)), f(x[8])))
+        con.executemany(
+            "INSERT OR REPLACE INTO daily_v2 VALUES(?,?,?,?,?,?,?,?,?,?,?)", rows)
+        con.execute("INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)",
+                    (code, "done", len(rows), "raw=%d" % len(raw),
+                     time.strftime("%F %T")))
+        con.commit()
+        ok += 1
+        if i % 50 == 0 or i <= 3:
+            el = time.time() - t0
+            eta = el / i * (len(todo) - i)
+            print("[%d/%d] ok=%d fail=%d %.2fs/stock ETA=%.0fmin"
+                  % (i, len(todo), ok, fail, el / i, eta / 60), flush=True)
+        time.sleep(a.sleep)
+
+    bs.logout()
+    con.execute("INSERT OR REPLACE INTO meta VALUES('finished_at',?)",
+                (time.strftime("%F %T"),))
+    con.commit()
+    con.close()
+    print("[v2] DONE ok=%d fail=%d elapsed=%.1fmin"
+          % (ok, fail, (time.time() - t0) / 60), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

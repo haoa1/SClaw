@@ -23,6 +23,11 @@ mkdir -p "$(dirname "$LOG")"
   ls -la data/clean_m30.db data/clean_m60.db 2>/dev/null
   echo
   echo "--- Step2 验收 ---"
-  python3 /tmp/verify_step2.py
+  # 2026-09-12: 原为 /tmp/verify_step2.py —— 自造验收脚本放在 /tmp 有两处硬伤:
+  #   (1) /tmp 易失(重启/tmpfiles 清理即丢闸门); (2) 该副本停留在 09:03 版,
+  #   其 [D] 断言「量额不变」早于 build_m30_clean.py 的 股→手(vol_div=100) 改造,
+  #   会对 m30 误报 FAIL。改用仓内 canonical 验收器(带 vol_div + [G] 量纲独立复算)。
+  python3 scripts/verify_minute_clean.py
+  echo "--- Step2 验收 rc=$? (0=全过) ---"
   echo "=== REBUILD_CLEAN_DONE $(date '+%F %T') ==="
 } >> "$LOG" 2>&1
