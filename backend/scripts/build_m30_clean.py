@@ -14,7 +14,15 @@ build_m30_clean.py — 建「干净 30 分钟库」clean_m30.db（前复权，�
       其中 raw_30m_close = 该日最后一根 30m bar 的 close（14:30-15:00）
   把该日全部 30m bar 的 OHLC 乘 factor。
   ⇒ **聚合到日线必然等于 clean_daily 的 qfq close（构造性保证）**，且日内形态（比值/背驰）不变。
-  volume / amount 保持原值（复权只改价格，不改成交量与成交额）。
+  amount 保持原值。
+
+成交量口径（2026-09-12 归一到「手」，否则跨级别量能比较差 100 倍）:
+  - 源 stock_kline_30m.volume = **股**（baostock/腾讯原生）  → 写库前 ÷100
+  - 源 stock_kline_60m.volume = **手**（backfill_m30.py 写源时就 ÷100 了）→ 不再除
+  - 目标口径 = 手：与 clean_daily.volume 一致，也与 src/tools/stock.ts 的
+    "volume(成交量手)" 工具契约一致
+  自证（每次构建末尾自动跑）: 同日同票 sum(分钟 volume) 必须 ≈ daily.volume
+  （见 SRC_VOL_DIV + verify_volume_invariant()）
 
 数据源:
   30m 原始: /root/sclaw/backend/data/stock_history.db :: stock_kline_30m  (code,datetime,open,high,low,close,volume,amount)
@@ -48,6 +56,11 @@ PERIODS = {
     60: ("stock_kline_60m", "clean_m60.db", "m60"),
 }
 
+# 周期 → 源 volume 单位换算到「手」的除数（2026-09-12 实测取证）
+#   30m 源=股 → /100 ；60m 源=手（backfill_m30.py 写源时已 /100）→ /1
+# 目标: 与 clean_daily.volume、与 src/tools/stock.ts "volume(成交量手)" 契约一致
+SRC_VOL_DIV = {30: 100.0, 60: 1.0}
+
 FACTOR_MIN, FACTOR_MAX = 0.02, 50.0     # 合理复权因子区间
 JUMP_WARN = 0.50                        # 相邻交易日因子跳变告警阈值
 
@@ -80,6 +93,28 @@ def file_sig(p):
     with open(p, "rb") as f:                    # 只哈希头 4MB，够做版本指纹
         h.update(f.read(4 * 1024 * 1024))
     return "size=%d mtime=%s md5head=%s" % (st.st_size, int(st.st_mtime), h.hexdigest()[:12])
+
+
+def verify_volume_invariant(out, T, date):
+    """口径自证: 同日同票 sum(分钟 volume) 必须 ≈ clean_daily.volume（同为「手」）。
+
+    这是「volume 单位登记正确」的强不变量：若源单位记错（例如 30m 忘了 /100），
+    中位比值会是 ~100 而不是 ~1，立刻暴露。返回 (ok|None, 说明文本)。
+    """
+    try:
+        out.execute("ATTACH DATABASE 'file:%s?mode=ro' AS cd" % DAILY)
+        rs = out.execute(
+            "select cd.daily.volume, s.v from "
+            "(select code, sum(volume) v from %s where substr(datetime,1,10)=? group by code) s "
+            "join cd.daily on cd.daily.code = s.code and cd.daily.date = ? "
+            "where cd.daily.volume > 0 and s.v > 0" % T, (date, date)).fetchall()
+    except Exception as e:
+        return None, "自证异常: %s" % e
+    if not rs:
+        return None, "无可比样本"
+    ratios = sorted(dv / mv for dv, mv in rs)
+    med = ratios[len(ratios) // 2]
+    return (0.98 <= med <= 1.02), "可比 %d 只  median(daily/minute)=%.4f (期望≈1.0)" % (len(ratios), med)
 
 
 def main():
@@ -134,6 +169,7 @@ def main():
     prev_factor = {}
     bars_per_day = {}
     dmin, dmax = "9999", "0000"
+    vol_div = SRC_VOL_DIV[args.period]       # 源 volume → 手（见文件头「成交量口径」）
 
     for ci in range(0, len(codes), args.chunk):
         batch = codes[ci: ci + args.chunk]
@@ -176,7 +212,9 @@ def main():
                 res_rows.append((code, dt, o, h, l, c, v, a, "no_qfq_daily"))
                 continue
             f, flag = got
-            out_rows.append((code, dt, o * f, h * f, l * f, c * f, v, a))
+            # volume 归一到「手」（30m 源=股 → /100；60m 源已是手）；residue 保持源样不换算
+            out_rows.append((code, dt, o * f, h * f, l * f, c * f,
+                             (v / vol_div) if v is not None else v, a))
             if flag:
                 aud_rows.append((code, date, last_of_day[(code, date)], qfq.get((code, date)), f, flag))
             else:
@@ -204,8 +242,19 @@ def main():
             "date_range": "%s ~ %s" % (dmin, dmax),
             "adjust": "qfq via same-day factor = clean_daily.qfq_close / raw_minute_last_close",
             "factor_range": "%s..%s" % (FACTOR_MIN, FACTOR_MAX),
+            "volume_unit": "手",
+            "volume_src_div": str(vol_div),
         }
         out.executemany("insert or replace into meta values (?,?)", list(meta.items()))
+        out.commit()
+        ok_v, msg_v = verify_volume_invariant(out, T, dmax)
+        print("[i] 成交量口径自证(%s): %s" % (dmax, msg_v))
+        if ok_v is False:
+            out.close()
+            print("[x] 口径自证失败: 分钟 volume 与 daily 不同量纲 → 检查 SRC_VOL_DIV")
+            sys.exit(3)
+        out.execute("insert or replace into meta values ('volume_verify',?)",
+                    ("date=%s; %s" % (dmax, msg_v),))
         out.commit()
         out.close()
 
