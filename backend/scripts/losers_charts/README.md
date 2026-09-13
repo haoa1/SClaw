@@ -1,15 +1,17 @@
 # losers_charts/ — 「最亏个股 × 最亏年份」买卖点图表报表
 
-产出于 2026-09-13。回答的问题：**把最亏的股票逐票画出来** —— 每票取它**自己最亏的那一年**，
-在 K 线上标出买点/卖点，装配成一张自包含静态 HTML 报表。
+产出 2026-09-13（v2：筹码面板 + MACD 面板 + 开关修复）。回答的问题：**把最亏的股票逐票画出来** ——
+每票取它**自己最亏的那一年**，在 K 线上标出买点/卖点，装配成一张自包含静态 HTML 报表。
 
 ## 文件
 
 | 文件 | 作用 |
 |---|---|
-| `step4_render.py` | **渲染器**：读 `targets.json` + `cache_charts.json` → 每票一张 SVG → 装配 `charts_report.html` |
-| `check_overlap.js` | **几何量测**（决定性验证）：在真页面里用 `getBoundingClientRect` 量「月份刻度行 × 图例行」是否重叠、右面板标签是否越出 viewBox。返回 `overlapPairs=N` |
-| `verify_charts_report.sh` | **真浏览器验证**：`agent-browser open` → viewport 1400×1500 → 跑 `check_overlap.js` → 逐卡滚动截图 → 打印 js errors |
+| `step4_render.py` | **渲染器**：读 `targets.json` + `cache_charts.json` → 每票一张 SVG（K线 + 成交量 + MACD + 筹码 + 累计贡献 + 仓位）→ 装配 `charts_report.html` |
+| `check_overlap.js` | **几何量测 v2**（决定性验证）：月份刻度行 × 图例行重叠数 / 右面板标签是否越出 viewBox / 全图文字两两重叠 / 文字右越界。返回 `overlapPairs=… textOverlapTotal=… rightOutTotal=…` |
+| `check_toggle.js` | **开关自检**：勾选「显示全部逐笔」→ `.full` 必须由 `display:none` 变可见（且可逆）。返回 `offShown/onShown/backToOffShown … verdict=` |
+| `verify_charts_report.sh` | **一站式真浏览器验证**：A 产物完整性(mTLS curl) → B 页面加载 → C 几何 → D 开关 → E 视觉证据(OFF/ON 截图 md5 必须不同) → F JS 异常。`VERDICT=PASS/FAIL`，exit code 同步 |
+| `step4_render.py.bak_pre_chips_20260913` | 打补丁前备份（19,734 B） |
 
 ## 用法
 
@@ -19,29 +21,39 @@ python3 step4_render.py
 # 自定义路径
 python3 step4_render.py --data DIR --targets F --cache F --outdir DIR --out NAME.html
 
-# 验证（会重开页面，避免看到旧 DOM）
+# 验证（默认验本地权威产物；给 URL 则先拉线上字节再验同一套）
 bash verify_charts_report.sh
+bash verify_charts_report.sh https://garuda.yizhipotian.top:8443/static/losers_charts_20260913/charts_report.html
 ```
 
 **输入件**（不在 git 里，落在 `/root/research_archive/losers_charts_20260913/`）：
-`targets.json`（18 票 × 目标年份清单）、`cache_charts.json`（K线/日历/逐笔缓存，589 KB）。
+`targets.json`（18 票 × 目标年份清单）、`cache_charts.json`（K线/日历/逐笔缓存，589 KB）、
+`enrich_metrics.json`（step3b 产出的筹码/MAE 等指标，18 票）。
 
 ## 产物
 
-- 唯一图 **18** 张（一票一年）
-- 档分布 `{A: 538, C: 245, C-: 423}`、格分布 `{D1×S1: 538, D2×S1: 252, D3×S1: 245, D4×S1: 171}`
-- 买点三角 1224 / 卖点圆 1242 / 逐笔明细行 1206
-- 线上：`https://garuda.yizhipotian.top:8443/static/losers_charts_20260913/charts_report.html`（mTLS 强制）
-- md5 `bb927f7c946ae5431a8def13b120ae65`，3,067,262 B
+- 唯一图 **18** 张（一票一年），viewBox `1216×776`
+- 档分布 `{A: 538, C: 245, C-: 423}`（共 1206 笔）、格分布 `{D1×S1: 538, D2×S1: 252, D3×S1: 245, D4×S1: 171}`
+- 默认可见：入场段三角 688 + 段末卖点；勾选开关后追加 **536** 个加仓点圆 → `.full` 元素合计 **1608**（全部在 SVG 内）
+- 面板：MACD(柱 5087 + DIF/DEA 36) / 成交量 18 / 累计贡献 19 / 获利盘 36 / 偏离成本 18 / 筹码面积 18 + 均成本线 36 + 偏离线 18
+- 线上：`https://garuda.yizhipotian.top:8443/static/losers_charts_20260913/charts_report.html`（mTLS 强制，无证书 403）
+- md5 `a69a75bb509c7786f374e618fab2dbeb`，**5,160,079 B**
 
-**复现性**：入库版重跑 → **字节完全一致**（已验 `BYTE_IDENTICAL=yes`）。
+**复现性**：入库版重跑 → **字节完全一致**（`BYTE_IDENTICAL=yes`，渲染无时间戳/随机序）。
 
-## 两个已修渲染缺陷（只有真浏览器/几何量测才发现）
+## 三个已修渲染缺陷（只有真浏览器/几何量测才发现）
 
 1. **月份刻度行压在图例行上** —— 两条基线撞在 `y=620` vs `y=622` → `HGT 640 → 664`（各占一条基线）
 2. **右面板「累计贡献/成交量」标签被 viewBox 裁掉**（只显示「累」「成」）—— 4 汉字 ≈40px 从 `x=1170` 起，越过 `W=1180` → `W 1180 → 1216`、`MR 16 → 52`
+3. **「显示全部逐笔」开关是死的（2026-09-13 修）** —— CSS 写的是
+   `#alltrades:checked ~ .wrap .full{display:inline}`，但 `#alltrades` 在 `.tgbar > label` **内部**，
+   `.wrap` 是 `.tgbar` 的**兄弟**（不是 checkbox 的兄弟）⇒ 通用兄弟选择器 `~` 永不匹配，
+   `fullShown` 恒为 0。修法：勾选时给 `document.body` 加 `showfull` 类（`change` 事件监听），
+   CSS 改 `body.showfull .full{display:inline}`（不依赖 DOM 兄弟关系）。
+   ⚠️ 该缺陷**静态自查完全看不出来**（HTML 里 CSS 规则和 checkbox 都在），只有「勾上再看 `getComputedStyle`」才暴露。
 
 > 布局类问题优先调几何常量（`W`/`MR`/`HGT`），不要重构结构。
+> 交互类问题**必须双向测**（OFF→ON→OFF），只测一个状态会把「死开关」当正常。
 
 ## 验证铁律（踩过的坑）
 
@@ -49,5 +61,12 @@ bash verify_charts_report.sh
 - **截图相同 ≠ 页面相同**：`scrollintoview` 这种指令看着「滚了」其实没滚，4 张截图会一模一样。
   必须用 `getBoundingClientRect` **回读落点**来证明。
 - **文件重生成后必须重新 `open`**，否则 `eval`/截图仍在旧 DOM 上。
-- 视觉缺陷要么用**眼睛**（截图），要么用**尺子**（几何量测）；纯文本自检对「重叠/裁切」天然失明。
+- 视觉缺陷要么用**眼睛**（截图），要么用**尺子**（几何量测）；纯文本自查对「重叠/裁切」天然失明。
 - 字体：需 `fonts-noto-cjk`，否则截图里汉字是豆腐块（等于看不见中文内容）。
+- **https（mTLS）站点浏览器进不去**：`agent-browser` 不带客户端证书，直接 `open` 只能看到 nginx 403 空白页
+  （实测 `document.body.innerHTML.length=33`、`svg=0`），几何/开关检查会**全部假失败**。
+  正解 = `curl --cert/--key` 先落到本地文件 → 浏览器开 `file://` 落地副本；无证书访问另测须 403。
+- **`getComputedStyle` 别全量扫**：1608 个 `.full` 元素逐个体检会打爆 CDP
+  （`✗ CDP command timed out: Runtime.evaluate`）⇒ 采样 40 个即可（开关是全局类，采样足够）。
+- **工具 shell 是 `dash` 且不支持 `$(...)` 里再套引号**：`$(md5sum "$F" | cut -d' ' -f1)` 会
+  `Syntax error: "(" unexpected` ⇒ 部署/校验脚本一律写成 `.sh` 文件再 `bash` 跑。

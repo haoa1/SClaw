@@ -1,0 +1,3 @@
+# 验证产物不入库
+_verify_shots/
+*.bak_pre_chips_*
