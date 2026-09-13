@@ -1,5 +1,5 @@
 #!/bin/bash
-# 真浏览器验证（v2·2026-09-13 筹码/MACD 补丁后）
+# 真浏览器验证（v3·2026-09-13 大盘腿补丁后：18 逐票图 + 1 上证总览 = 19 张 svg）
 #   A) 产物完整性：http(s) URL → 用 mTLS 客户端证书 curl 拉取，md5 对齐本地权威件；无证书须 403
 #   B) 几何量测：月份刻度 × 图例 重叠 / 右面板标签越界 / 全图 text 两两重叠
 #   C) 开关自检：勾选「显示全部逐笔」→ .full 由 display:none → 可见（可逆）
@@ -49,7 +49,7 @@ sleep 3
 agent-browser set viewport 1400 1500 >/dev/null
 HEAD="$(agent-browser eval "document.title + ' | bodyLen=' + document.body.innerHTML.length + ' | svg=' + document.querySelectorAll('svg').length" 2>&1 | tail -1)"
 echo "$HEAD"
-echo "$HEAD" | grep -q "svg=18" || { echo "❌ 页面没加载出 18 张图（空白/403？）"; FAIL=1; }
+echo "$HEAD" | grep -q "svg=19" || { echo "❌ 页面没加载出 19 张图（18 逐票 + 1 上证总览；空白/403？）"; FAIL=1; }
 
 echo "=== 2) 几何量测（决定性） ==="
 GEO="$(agent-browser eval "$(cat "$HERE/check_overlap.js")" 2>&1 | tail -1)"

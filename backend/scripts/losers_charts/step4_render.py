@@ -26,6 +26,20 @@ if os.path.exists(ENRICH):
 else:
     print("⚠️ 未找到", ENRICH, "→ MACD/筹码面板为空")
 
+# 大盘腿（上证指数 MACD + D 态，step3c_index.py 产出）；缺文件则大盘面板/总览留空
+INDEX = _arg("--index", os.path.join(DATA, "index_metrics.json"))
+IX, IX_SEQ, IXM = {}, [], {}
+if os.path.exists(INDEX):
+    _ix = json.load(open(INDEX, encoding="utf-8"))
+    IX_SEQ = _ix["series"]
+    IX = {r[0]: {"close": r[1], "dif": r[2], "dea": r[3], "hist": r[4], "state": r[5]}
+          for r in IX_SEQ}
+    IXM = _ix.get("meta", {})
+    print(f"大盘已载入: {INDEX} {len(IX)} 日 {IXM.get('first')}..{IXM.get('last')} "
+          f"最新 {IXM.get('last_state')}（D 态自检 {IXM.get('check_ratio')}）")
+else:
+    print("⚠️ 未找到", INDEX, "→ 大盘 MACD 面板/总览为空（先跑 step3c_index.py）")
+
 # ---------- 去重 (code, year)：同一票同年只画一张 ----------
 uniq, order = {}, []
 for c in cache["charts"]:
@@ -45,18 +59,22 @@ UP, DN = "#d14343", "#2e9e5b"          # 红涨 / 绿跌
 TIER_C = {"A": "#c0392b", "C": "#e67e22", "C-": "#f1c40f", "D": "#9aa0a6"}
 TIER_LBL = {"A": "A 100%", "C": "C 30%", "C-": "C- 10%", "D": "D 0%"}
 BUY_C = "#ff7f0e"
+# regime_matrix 状态底色（个股 S 态 / 大盘 D 态，同色系一一对应）——模块级，逐票图与总览共用
+S_TINT = {"S1": "#fdecec", "S2": "#fdf5e6", "S3": "#e9f6ef", "S4": "#eef1f4"}
+D_TINT = {"D%d" % (k + 1): S_TINT["S%d" % (k + 1)] for k in range(4)}
 
 # ---------- 几何 ----------
-W, ML, MR = 1216, 64, 52   # MR 留 52px 给右侧面板标签，避免被 viewBox 裁字
+W, ML, MR = 1216, 64, 80   # MR 留 80px：最长右侧标签＝「上证大盘MACD」，避免被 viewBox 裁字
 PW = W - ML - MR
 PAY, PAH = 34, 300    # K线
-PMY, PMH = 344, 84    # MACD（柱 + DIF/DEA，底色＝个股 S 态）
-PBY, PBH = 440, 58    # 成交量（真实高度）
-PCY, PCH = 508, 92    # 累计贡献
-PHY, PHH = 612, 56    # 筹码（获利盘面积 + 偏离均成本折线，双刻度）
-PDY, PDH = 678, 22    # 仓位带（高度＝权重）
-HGT = 776             # 底部：月份刻度行 + 两行图例，各留独立基线
-LY1, LY2 = HGT - 32, HGT - 12
+PMY, PMH = 344, 84    # 个股 MACD（柱 + DIF/DEA，底色＝个股 S 态）
+DDY, DDH = 436, 56    # 上证大盘 MACD（柱 + DIF/DEA，底色＝大盘 D 态）—— regime_matrix 的另一半
+PBY, PBH = 502, 58    # 成交量（真实高度）
+PCY, PCH = 568, 92    # 累计贡献
+PHY, PHH = 670, 56    # 筹码（获利盘面积 + 偏离均成本折线，双刻度）
+PDY, PDH = 736, 22    # 仓位带（高度＝权重）
+HGT = 844             # 底部：月份刻度行 + 三行图例，各留独立基线
+LY1, LY2, LY3 = HGT - 52, HGT - 32, HGT - 12
 
 
 def esc(s):
@@ -145,20 +163,53 @@ def build_svg(c):
             return "S3"
         return "S4"
 
+    # ---- 大盘腿（上证指数）：本窗口逐日 DIF/DEA/柱 + D 态（step3c_index.py 落盘）----
+    drow = [IX.get(b[0]) or {} for b in bars]
+    dhs = [r.get("hist") for r in drow]
+    ddfs = [r.get("dif") for r in drow]
+    ddes = [r.get("dea") for r in drow]
+    dst = [r.get("state") for r in drow]
+    dmax = max([abs(x) for x in dhs + ddfs + ddes if x is not None] + [1e-6]) * 1.10
+
+    def YDM(v):
+        return DDY + DDH / 2 - v / dmax * DDH / 2
+
+    def seg_labels(vals, min_len=10, min_gap=36):
+        """把状态序列切成「段」，只给够长的段标字（并保证字间 ≥min_gap，避开重叠审计）。"""
+        segs, start, cur = [], 0, (vals[0] if vals else None)
+        for i in range(1, n + 1):
+            st = vals[i] if i < n else None
+            if st != cur:
+                if cur and i - start >= min_len:
+                    segs.append((start, i - 1, cur))
+                start, cur = i, st
+        out, lastx = [], -1e9
+        for a, b_, st in segs:
+            x = min(max(X((a + b_) // 2), ML + 12), ML + PW - 12)
+            if x - lastx < min_gap:
+                continue
+            out.append((x, st))
+            lastx = x
+        return out
+
     P = []
     A = P.append
     A(f'<svg viewBox="0 0 {W} {HGT}" width="100%" class="chart" '
       f'xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,Segoe UI,sans-serif">')
     # 面板底
-    for y0, h in ((PAY, PAH), (PMY, PMH), (PBY, PBH), (PCY, PCH), (PHY, PHH)):
+    for y0, h in ((PAY, PAH), (PMY, PMH), (DDY, DDH), (PBY, PBH), (PCY, PCH), (PHY, PHH)):
         A(f'<rect x="{ML}" y="{y0}" width="{PW}" height="{h}" fill="#fbfbfd" stroke="#e3e6ea"/>')
     # MACD 面板底色 = 个股 S 态（与策略标签同源自算，自检 1341/1341 一致）
-    S_TINT = {"S1": "#fdecec", "S2": "#fdf5e6", "S3": "#e9f6ef", "S4": "#eef1f4"}
     for i, b in enumerate(bars):
         st = sstate(i)
         if st:
             A(f'<rect x="{ML+step*i:.1f}" y="{PMY}" width="{max(1.0, step):.1f}" height="{PMH}" '
               f'fill="{S_TINT[st]}" opacity="0.85"/>')
+    # 大盘面板底色 = 大盘 D 态（同一 regime_matrix 口径）
+    for i, st in enumerate(dst):
+        if st:
+            A(f'<rect x="{ML+step*i:.1f}" y="{DDY}" width="{max(1.0, step):.1f}" height="{DDH}" '
+              f'fill="{D_TINT[st]}" opacity="0.85"/>')
     # 月份网格（贯穿全部面板）
     prev = None
     for i, b in enumerate(bars):
@@ -194,7 +245,9 @@ def build_svg(c):
     A(f'<text x="{ML-6}" y="{YW(0.5)+3:.1f}" font-size="10" fill="#6b7280" text-anchor="end">50%</text>')
     A(f'<text x="{ML-6}" y="{YW(0)+11:.1f}" font-size="10" fill="#6b7280" text-anchor="end">0</text>')
     # 右侧面板标签
-    A(f'<text x="{ML+PW+6}" y="{PMY+14}" font-size="10" fill="#9aa0a6">MACD</text>')
+    A(f'<text x="{ML+PW+6}" y="{PMY+14}" font-size="10" fill="#9aa0a6">个股MACD</text>')
+    A(f'<text x="{ML+PW+6}" y="{DDY+14}" font-size="10" fill="#9aa0a6">上证大盘</text>')
+    A(f'<text x="{ML+PW+6}" y="{DDY+28}" font-size="10" fill="#9aa0a6">MACD(D态)</text>')
     A(f'<text x="{ML+PW+6}" y="{PBY+14}" font-size="10" fill="#9aa0a6">成交量</text>')
     A(f'<text x="{ML+PW+6}" y="{PCY+14}" font-size="10" fill="#9aa0a6">累计贡献</text>')
     A(f'<text x="{ML+PW+6}" y="{PHY+14}" font-size="10" fill="#9aa0a6">获利盘</text>')
@@ -235,6 +288,29 @@ def build_svg(c):
         if len(pp) > 1:
             A('<polyline points="%s" fill="none" stroke="%s" stroke-width="%.1f"/>'
               % (" ".join(f"{x:.1f},{y:.1f}" for x, y in pp), col, wd))
+
+    # ---- 上证大盘 MACD（同窗口、同 x 轴 = regime_matrix 的 D 腿）----
+    A(f'<line x1="{ML}" y1="{YDM(0):.1f}" x2="{ML+PW}" y2="{YDM(0):.1f}" stroke="#c8ced4"/>')
+    A(f'<text x="{ML-6}" y="{YDM(dmax)+10:.1f}" font-size="10" fill="#6b7280" text-anchor="end">+{dmax:.1f}</text>')
+    A(f'<text x="{ML-6}" y="{YDM(-dmax)-2:.1f}" font-size="10" fill="#6b7280" text-anchor="end">-{dmax:.1f}</text>')
+    for i in range(n):
+        hh = dhs[i]
+        if hh is None:
+            continue
+        y0, y1 = YDM(0), YDM(hh)
+        A(f'<rect x="{ML+step*i+bw*0.08:.1f}" y="{min(y0, y1):.1f}" width="{max(1.0, step*0.62):.1f}" '
+          f'height="{max(0.7, abs(y1-y0)):.1f}" fill="{"#d14343" if hh > 0 else "#2e9e5b"}" opacity="0.75"/>')
+    for vv, col in ((ddfs, "#1f2937"), (ddes, "#e08a1e")):
+        pp = [(X(i), YDM(vv[i])) for i in range(n) if vv[i] is not None]
+        if len(pp) > 1:
+            A('<polyline points="%s" fill="none" stroke="%s" stroke-width="1.2"/>'
+              % (" ".join(f"{x:.1f},{y:.1f}" for x, y in pp), col))
+    # 状态段标签：把「段」标出来（个股 S 态 / 大盘 D 态）
+    for x, st in seg_labels([sstate(i) for i in range(n)]):
+        A(f'<text x="{x:.1f}" y="{PMY+11}" font-size="9" fill="#8a9099" text-anchor="middle">{st}</text>')
+    if any(dst):
+        for x, st in seg_labels(dst, min_len=8):
+            A(f'<text x="{x:.1f}" y="{DDY+11}" font-size="9" fill="#8a9099" text-anchor="middle">{st}</text>')
 
     # ---- 筹码：获利盘面积 + 偏离均成本折线 ----
     wp = [(X(i), YW(wv_)) for i, wv_ in enumerate(
@@ -328,7 +404,11 @@ def build_svg(c):
         m = mg(d)
         s = f'{d} O{o:.2f} H{h:.2f} L{l:.2f} C{cl:.2f} V{v:,.0f}'
         if m.get("dif") is not None:
-            s += f' | MACD DIF{m["dif"]:.3f} DEA{m["dea"]:.3f} 柱{m["hist"]:+.3f}'
+            s += f' | {sstate(i)} 个股MACD DIF{m["dif"]:.3f} DEA{m["dea"]:.3f} 柱{m["hist"]:+.3f}'
+        _dr = drow[i]
+        if _dr.get("dif") is not None:
+            s += (f' | {_dr.get("state") or "D-"} 上证{_dr["close"]:.2f} '
+                  f'MACD DIF{_dr["dif"]:.3f} DEA{_dr["dea"]:.3f} 柱{_dr["hist"]:+.3f}')
         if m.get("win") is not None:
             s += f' | 筹码 获利盘{m["win"]:.1%} 均成本{m["cost"]:.2f} 集中度{m["conc"]:.3f}'
             dv_ = dev_of(d)
@@ -369,14 +449,26 @@ def build_svg(c):
     A(f'<rect x="{lx}" y="{ly-1}" width="11" height="8" fill="#d14343" opacity="0.75"/>')
     A(f'<text x="{lx+16}" y="{ly+5}" font-size="11" fill="#4b5563">红柱（D1..D4 同口径 2·(DIF−DEA)）</text>')
     lx += 268
-    for st, lab in (("S1", "S1 红强"), ("S2", "S2 红弱"), ("S3", "S3 绿缩"), ("S4", "S4 绿强")):
-        A(f'<rect x="{lx}" y="{ly-2}" width="12" height="9" fill="{S_TINT[st]}" stroke="#dfe3e8"/>')
-        A(f'<text x="{lx+16}" y="{ly+5}" font-size="11" fill="#4b5563">{lab}</text>')
-        lx += 84
     for t in ("A", "C", "C-"):
         A(f'<rect x="{lx}" y="{ly-2}" width="12" height="9" fill="{TIER_C[t]}"/>')
         A(f'<text x="{lx+16}" y="{ly+5}" font-size="11" fill="#4b5563">{TIER_LBL[t]}</text>')
         lx += 78
+    # 第三行：面板底色 = regime_matrix 状态（上＝个股 S 态，下＝大盘 D 态）
+    lx, ly = ML, LY3
+    A(f'<text x="{lx}" y="{ly+5}" font-size="11" fill="#4b5563">面板底色：</text>')
+    lx += 76
+    A(f'<text x="{lx}" y="{ly+5}" font-size="11" fill="#4b5563">个股S态</text>')
+    lx += 64
+    for st, lab in (("S1", "红强"), ("S2", "红弱"), ("S3", "绿缩"), ("S4", "绿强")):
+        A(f'<rect x="{lx}" y="{ly-2}" width="12" height="9" fill="{S_TINT[st]}" stroke="#dfe3e8"/>')
+        A(f'<text x="{lx+16}" y="{ly+5}" font-size="11" fill="#4b5563">{st} {lab}</text>')
+        lx += 76
+    A(f'<text x="{lx+10}" y="{ly+5}" font-size="11" fill="#4b5563">大盘D态</text>')
+    lx += 82
+    for st, lab in (("D1", "红强"), ("D2", "红弱"), ("D3", "绿缩"), ("D4", "绿强")):
+        A(f'<rect x="{lx}" y="{ly-2}" width="12" height="9" fill="{D_TINT[st]}" stroke="#dfe3e8"/>')
+        A(f'<text x="{lx+16}" y="{ly+5}" font-size="11" fill="#4b5563">{st} {lab}</text>')
+        lx += 76
     if miss:
         A(f'<text x="{ML+PW}" y="{ly+5}" font-size="11" fill="#b45309" text-anchor="end">'
           f'{miss} 笔无卖价（图上只画买点）</text>')
@@ -409,6 +501,14 @@ def chart_card(c):
         if prev is None or cell != prev[0] or i != prev[1] + 1:
             runs += 1
         prev = (cell, i)
+    dwin = collections.Counter()
+    for b in c["bars"]:
+        _r = IX.get(b[0]) or {}
+        if _r.get("state"):
+            dwin[_r["state"]] += 1
+    dtot = sum(dwin.values())
+    dstate_s = (" · ".join(f"{k} {dwin[k] / dtot:.0%}" for k in ("D1", "D2", "D3", "D4"))
+                if dtot else "无上证数据")
     chip_s = ""
     if ws:
         chip_s = (f'买点均获利盘 <b>{sum(ws)/len(ws):.1%}</b> '
@@ -452,6 +552,7 @@ def chart_card(c):
   </div>
   <div class="sub">档位：{esc(dist_s)} ｜ 格：{esc(cells_s)}</div>
   <div class="sub">筹码：{chip_s}</div>
+  <div class="sub">大盘态（窗口内交易日占比，口径＝上证日线 MACD）: {dstate_s}</div>
   {build_svg(c)}
   <details><summary>逐笔明细（{c["n_trades"]} 笔，按日期；含买点筹码与 MACD）</summary>
   <div class="tw"><table><thead><tr><th>买入日</th><th>格</th><th>档</th><th>权重</th><th>买价</th>
@@ -459,6 +560,125 @@ def chart_card(c):
   <th>卖出日</th><th>卖价</th><th>r5</th><th>贡献</th></tr></thead>
   <tbody>{"".join(rows)}</tbody></table></div></details>
 </section>'''
+
+
+def index_overview():
+    """上证大盘 MACD + D 态总览：窗口＝各票图窗口的并集（同一 regime_matrix 口径）。"""
+    if not IX_SEQ or not charts:
+        return {"svg": "", "table": "", "d0": "—", "d1": "—", "n2": 0}
+    d0 = min(c["bars"][0][0] for c in charts if c["bars"])
+    d1 = max(c["bars"][-1][0] for c in charts if c["bars"])
+    rows = [r for r in IX_SEQ if d0 <= r[0] <= d1]
+    n2 = len(rows)
+    if n2 < 5:
+        return {"svg": "", "table": "", "d0": d0, "d1": d1, "n2": n2}
+    W2, ML2, MR2 = W, ML, MR
+    PW2 = W2 - ML2 - MR2
+    CY, CH = 34, 150      # 收盘
+    MY, MH = 196, 100     # MACD
+    H2 = 340
+    step2 = PW2 / n2
+
+    def X2(i):
+        return ML2 + step2 * (i + 0.5)
+
+    cl2 = [r[1] for r in rows]
+    cminv, cmaxv = min(cl2), max(cl2)
+
+    def Y2(v):
+        return CY + (cmaxv - v) / (cmaxv - cminv) * CH
+
+    hm = max([abs(x) for r in rows for x in (r[2], r[3], r[4])] + [1e-6]) * 1.10
+
+    def YM2(v):
+        return MY + MH / 2 - v / hm * MH / 2
+
+    P = []
+    A = P.append
+    A(f'<svg viewBox="0 0 {W2} {H2}" width="100%" class="chart" '
+      f'xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,Segoe UI,sans-serif">')
+    for y0, h in ((CY, CH), (MY, MH)):
+        A(f'<rect x="{ML2}" y="{y0}" width="{PW2}" height="{h}" fill="#fbfbfd" stroke="#e3e6ea"/>')
+    for i, r in enumerate(rows):
+        if r[5]:
+            A(f'<rect x="{ML2+step2*i:.1f}" y="{MY}" width="{max(1.0, step2):.1f}" height="{MH}" '
+              f'fill="{D_TINT[r[5]]}" opacity="0.85"/>')
+    prev = None
+    lx = -1e9   # 上一枚年份标签的 x（防重叠闸门）
+    yc = {}
+    for r in rows:
+        yc[r[0][:4]] = yc.get(r[0][:4], 0) + 1
+    for i, r in enumerate(rows):
+        yv = r[0][:4]
+        if yv != prev:
+            x = X2(i)
+            A(f'<line x1="{x:.1f}" y1="{CY}" x2="{x:.1f}" y2="{MY+MH}" stroke="#dfe3e8"/>')
+            # 窗口并集可能起于年中（本报表起于 2020-12，2020 仅 23 个交易日）⇒ 这枚 4 字标签
+            # 既是噪音、又会把紧邻的 2021 挤掉（轴上出现 2020/2022「看起来跳年」的断档）。
+            # 规则：只跳过「被窗口左沿切断的开头残年」（i==0 且不足 60 交易日）；右沿残年
+            # （2026 仅 20 日）空间充裕，照贴。竖线一律照画，距离闸门兜底。
+            if x - lx >= 26 and not (i == 0 and yc.get(yv, 0) < 60):
+                tx = min(max(x, ML2 + 12), ML2 + PW2 - 12)
+                A(f'<text x="{tx:.1f}" y="{MY+MH+18}" font-size="10" fill="#7a828a" '
+                  f'text-anchor="middle">{yv}</text>')
+                lx = tx
+            prev = yv
+    for k in (0, 1, 2):
+        p = cminv + (cmaxv - cminv) * k / 2
+        y = Y2(p)
+        A(f'<line x1="{ML2}" y1="{y:.1f}" x2="{ML2+PW2}" y2="{y:.1f}" stroke="#eef1f4"/>')
+        A(f'<text x="{ML2-6}" y="{y+3:.1f}" font-size="10" fill="#6b7280" text-anchor="end">{p:.0f}</text>')
+    A('<polyline points="%s" fill="none" stroke="#111827" stroke-width="1.1"/>'
+      % " ".join(f"{X2(i):.1f},{Y2(cl2[i]):.1f}" for i in range(n2)))
+    A(f'<line x1="{ML2}" y1="{YM2(0):.1f}" x2="{ML2+PW2}" y2="{YM2(0):.1f}" stroke="#c8ced4"/>')
+    A(f'<text x="{ML2-6}" y="{YM2(hm)+10:.1f}" font-size="10" fill="#6b7280" text-anchor="end">+{hm:.1f}</text>')
+    A(f'<text x="{ML2-6}" y="{YM2(-hm)-2:.1f}" font-size="10" fill="#6b7280" text-anchor="end">-{hm:.1f}</text>')
+    for i, r in enumerate(rows):
+        hh = r[4]
+        y0, y1 = YM2(0), YM2(hh)
+        A(f'<rect x="{ML2+step2*i:.1f}" y="{min(y0, y1):.1f}" width="{max(1.0, step2*0.62):.1f}" '
+          f'height="{max(0.7, abs(y1-y0)):.1f}" fill="{"#d14343" if hh > 0 else "#2e9e5b"}" opacity="0.75"/>')
+    for k_, col in ((2, "#1f2937"), (3, "#e08a1e")):
+        pts = " ".join(f"{X2(i):.1f},{YM2(rows[i][k_]):.1f}" for i in range(n2))
+        A(f'<polyline points="{pts}" fill="none" stroke="{col}" stroke-width="1.1"/>')
+    # 段标签（口径同个股图的 大盘面板：seg_labels(dst, min_len=8)）
+    # ⚠️ 别把阈值往大调：D1/D2＝红柱走强/走弱，几乎逐日翻转（2021 各 ~60 日 ⇒ 平均段长≈4 根），
+    #    门槛一放大就一个标签都出不来（曾用 25 ⇒ dlabels=[]，总览的 D 态变成不可读）。
+    segs, start, cur = [], 0, (rows[0][5] if rows else None)
+    for i in range(1, n2 + 1):
+        st = rows[i][5] if i < n2 else None
+        if st != cur:
+            if cur and i - start >= 8:
+                segs.append((start, i - 1, cur))
+            start, cur = i, st
+    lastx = -1e9
+    for a, b_, st in segs:
+        x = min(max(X2((a + b_) // 2), ML2 + 14), ML2 + PW2 - 14)
+        if x - lastx < 30:
+            continue
+        A(f'<text x="{x:.1f}" y="{MY+12}" font-size="10" fill="#6b7280" text-anchor="middle">{st}</text>')
+        lastx = x
+    A(f'<text x="{ML2+PW2+6}" y="{CY+14}" font-size="10" fill="#9aa0a6">上证收盘</text>')
+    A(f'<text x="{ML2+PW2+6}" y="{MY+14}" font-size="10" fill="#9aa0a6">上证大盘</text>')
+    A(f'<text x="{ML2+PW2+6}" y="{MY+28}" font-size="10" fill="#9aa0a6">MACD(D态)</text>')
+    A('</svg>')
+    # 逐年 D 态分布表
+    yb = {}
+    for r in rows:
+        d = yb.setdefault(r[0][:4], {"D1": 0, "D2": 0, "D3": 0, "D4": 0, "n": 0, "c0": r[1], "c1": r[1]})
+        if r[5]:
+            d[r[5]] += 1
+        d["n"] += 1
+        d["c1"] = r[1]
+    trs = []
+    for y in sorted(yb):
+        d = yb[y]
+        dom = max(("D1", "D2", "D3", "D4"), key=lambda k: d[k])
+        chg = d["c1"] / d["c0"] - 1.0
+        trs.append(f'<tr><td>{y}</td><td class="r">{d["n"]}</td><td class="r">{d["D1"]}</td>'
+                   f'<td class="r">{d["D2"]}</td><td class="r">{d["D3"]}</td><td class="r">{d["D4"]}</td>'
+                   f'<td>{dom}</td><td class="r {"pl-u" if chg > 0 else "pl-d"}">{chg:+.1%}</td></tr>')
+    return {"svg": "".join(P), "table": "".join(trs), "d0": d0, "d1": d1, "n2": n2}
 
 
 # ---------- 页面数据块 ----------
@@ -554,6 +774,9 @@ _c_dev = _corr([x[1] for x in _chip_rows], [x[2] for x in _chip_rows])
 _c_wd = _corr([x[0] for x in _chip_rows], [x[1] for x in _chip_rows])
 
 cards = "".join(chart_card(c) for c in charts)
+OV = index_overview()
+OV_SVG, OV_TABLE, OV_D0, OV_D1, OV_N = OV["svg"], OV["table"], OV["d0"], OV["d1"], OV["n2"]
+print("上证总览:", "有" if OV_SVG else "无", f"窗口 {OV_D0}..{OV_D1} ({OV_N} 日)")
 
 HTML = f'''<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -618,12 +841,15 @@ body.showfull .full,body:has(#alltrades:checked) .full{{display:inline}}
     <li><b>档位带</b>＝每日所处的仓位档：<span style="color:#c0392b">A 100%</span> /
       <span style="color:#e67e22">C 30%</span> / <span style="color:#f1c40f">C- 10%</span>。空白＝无仓位。</li>
     <li><b>「亏」的定义</b>＝仓位加权收益贡献 ∑(<code>weight×r5</code>)，单位是无量纲的收益贡献，<b>不是金额</b>。</li>
-    <li><b>MACD 面板</b>＝个股日线 MACD(12,26,9)：<span style="color:#1f2937">DIF</span> /
+    <li><b>两个 MACD 面板</b>：上面＝<b>个股</b>（底色＝S 态），下面＝<b>上证大盘</b>（底色＝D 态）。
+      一格信号＝上下两个底色同时刻的组合，即 <code>D×S</code>；段够长时面板里会标出状态字母（S1/S3/D2…），
+      方便一眼看出「这一段是什么状态」。总览见 §6。</li>
+    <li><b>个股 MACD 面板</b>＝个股日线 MACD(12,26,9)：<span style="color:#1f2937">DIF</span> /
       <span style="color:#e08a1e">DEA</span> / 红绿柱=2·(DIF−DEA)，<b>底色</b>＝该日 S 态
       （S1 红强/S2 红弱/S3 绿缩/S4 绿强）。策略的个股侧就是这一格，信号依据在这里能看到。</li>
     <li><b>筹码面板</b>＝<span style="color:#3b6fb6">获利盘比例</span>（面积，0–100%，虚线为 50%）+
       <span style="color:#b45309">价格 / 均成本 − 1</span>（折线，刻度 ±40%，0 线＝正好在均成本上）。
-      K 线上的<span style="color:#8b5cf6">紫色虚线</span>＝筹码均成本（衰减模型，见 §7）。</li>
+      K 线上的<span style="color:#8b5cf6">紫色虚线</span>＝筹码均成本（衰减模型，见 §8）。</li>
     <li><b>为什么买卖点少了</b>：同一格连续建仓会合并成一条「入场段」（留一个段首买点 + 一个段末卖点）；
       想逐笔看就勾选顶部开关，或展开下面的明细表。</li>
     <li>悬停任意一根 K 线可看当日 O/H/L/C/量 + MACD + 筹码 + 当日信号（格/档/权重/r5/贡献）。</li>
@@ -683,11 +909,38 @@ body.showfull .full,body:has(#alltrades:checked) .full{{display:inline}}
   </ul>
 </section>
 
-<h2>6 · 逐票图</h2>
+<h2>6 · 上证大盘 MACD 与 D 态（regime_matrix 的另一半）</h2>
+<section class="box">
+  <div class="sub">窗口＝下面各票图的<b>并集</b>（<code>{OV_D0}</code> … <code>{OV_D1}</code>，共 <b>{OV_N}</b> 个交易日）。
+  指数＝<b>{IXM.get("index_name", "上证综指")}{IXM.get("index_code", "")}</b>，MACD(12,26,9) 与个股腿<b>同一实现</b>（同一个函数，
+  不是抄一份），红绿柱＝2·(DIF−DEA)。D 态口径＝<code>regime_matrix.classify_state</code>：
+  D1 红柱走强 / D2 红柱走弱 / D3 绿柱收缩 / D4 绿柱走强；<b>面板底色</b>就是当日 D 态（与个股面板一一对应）。</div>
+  {OV_SVG}
+  <div class="flex">
+    <div><h3>逐年 D 态分布（交易日数）</h3>
+      <table><thead><tr><th>年份</th><th class="r">交易日</th><th class="r">D1 红强</th><th class="r">D2 红弱</th>
+      <th class="r">D3 绿缩</th><th class="r">D4 绿强</th><th>主导态</th><th class="r">上证涨跌</th></tr></thead>
+      <tbody>{OV_TABLE}</tbody></table></div>
+  </div>
+  <ul class="tips">
+    <li><b>为什么要这张图</b>：<code>regime_matrix</code> 的每个格子是 <b>D×S</b>（大盘态×个股态）。逐票图只画了 S 腿，
+      于是「这一格为什么给 A 100% / C- 10%」少了一半依据；这张总览把 D 腿画出来，两腿可对读。</li>
+    <li><b>交叉自检（跨源）</b>：本图重算的 D 态，与生产策略自己记录的交易 D 标签逐一比对 ＝
+      <b>{IXM.get("check_trades", 0)} 笔 {IXM.get("check_ratio", 0):.2%} 一致</b>
+      （<code>step3c_index.py</code> 落盘时断言；不一致会直接报警不出报表）。
+      一致 ⇒ 指数序列、前复权口径、MACD 实现、状态机四者与生产同源。</li>
+    <li><b>数据出处</b>：<code>{IXM.get("cache")}</code>（md5 <code>{(IXM.get("cache_md5") or "")[:12]}</code>，
+      源 {IXM.get("source")}）→ <code>index_metrics.json</code>；缓存命中则离线可复现。</li>
+    <li><b>上证没有前复权问题</b>：指数不做除权处理，故 D 腿不受「脏基座（减法复权）」影响 ——
+      这也是拿它做两腿对读的一个附带好处。</li>
+  </ul>
+</section>
+
+<h2>7 · 逐票图</h2>
 {cards}
 
 <section class="box">
-  <h2>7 · 口径与出处</h2>
+  <h2>8 · 口径与出处</h2>
   <ul class="tips">
     <li>「该年」＝建仓日（entry）所在自然年；跨年持仓按建仓日归年。</li>
     <li>卖点＝买点 + 5 个交易日（用全市场交易日历推进，源 <code>clean_daily.db</code> 的 date 全集，共 {len(cache["calendar"])} 日）。</li>
